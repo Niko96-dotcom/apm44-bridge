@@ -47,7 +47,15 @@ Plans:
   2. Lock-free ring buffer between input and output callbacks maintains a configurable target fill (~10–20 ms default)
   3. Drift controller adjusts effective SRC ratio within ±500 ppm bounds to prevent buffer runaway or starvation
   4. User can run 30+ minutes of continuous 44.1 → 48 playback without crackle, drift-induced underrun, or unbounded latency growth
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Vendor libsamplerate 0.2.2 + CMake static link + smoke test
+- [ ] 02-02-PLAN.md — Power-of-two SPSC ring + fill metrics (ENG-03)
+- [ ] 02-03-PLAN.md — DriftController PI + ppm clamp (TDD, ENG-04)
+- [ ] 02-04-PLAN.md — LibSamplerateSrc streaming wrapper (ENG-02)
+- [ ] 02-05-PLAN.md — BridgeEngine integration + CLI flags
+- [ ] 02-06-PLAN.md — Offline soak harness, apm44-soak, QA-01 docs + CI
 
 ### Phase 3: Menu Bar Application
 **Goal**: User controls and monitors the bridge from a menu bar app with latency presets, device selection, and hotplug resilience
