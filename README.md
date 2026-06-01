@@ -7,7 +7,7 @@ macOS audio bridge: DAW sessions stay at **44.1 kHz** while monitoring through *
 | 1 — BlackHole console bridge | ✓ | `apm44-bridge` CLI, AudioToolbox SRC MVP |
 | 2 — Production SRC & drift | ✓ | libsamplerate, drift controller, offline soak |
 | 3 — Menu bar app | ✓ | **APM44 Bridge** SwiftUI app, latency/SRC presets, meters |
-| 4 — HAL virtual device | planned | `APM44Bridge.driver` @ 44100 (no BlackHole) |
+| 4 — HAL virtual device | skeleton | `APM44Bridge.driver`, shm ring, `--virtual-device` — see [docs/hal-driver.md](docs/hal-driver.md) |
 | 5 — Integration & ship readiness | in progress | DAW matrix, export QA, signing docs |
 
 **MVP path today:** DAW → **BlackHole 2ch @ 44100** → `apm44-bridge` → **AirPods @ 48000**.
@@ -56,7 +56,7 @@ Set **BlackHole 2ch** to **44100 Hz** and **AirPods** to **48000 Hz** in Audio M
 ./build/BridgeDaemon/apm44-bridge
 ```
 
-Options: `--help`, `--list-devices`, `--preflight`, `--print-config`, `--metrics-json`, `--target-fill-ms`, `--src-quality`, `--input-device UID`, `--output-device UID`.
+Options: `--help`, `--list-devices`, `--preflight`, `--print-config`, `--metrics-json`, `--target-fill-ms`, `--src-quality`, `--virtual-device`, `--input-device UID`, `--output-device UID`.
 
 **Menu bar app:** launch **APM44 Bridge** from Xcode or the built `.app`; set `APM44_BRIDGE_PATH` to the daemon binary if not embedded.
 
@@ -70,6 +70,7 @@ Options: `--help`, `--list-devices`, `--preflight`, `--print-config`, `--metrics
 | [Soak test (QA-01)](docs/soak-test.md) | 30+ min stability |
 | [Menu bar app](docs/menu-bar-app.md) | App architecture |
 | [Menu bar hardware QA](docs/menu-bar-qa.md) | APP-01–05 checklist |
+| [HAL virtual device](docs/hal-driver.md) | Driver install, shm IPC, `--virtual-device` |
 | [Release signing](docs/release.md) | Developer ID, `notarytool`, HAL install |
 | [BlackHole prerequisite](docs/blackhole-prerequisite.md) | MVP install |
 
@@ -78,6 +79,7 @@ Options: `--help`, `--list-devices`, `--preflight`, `--print-config`, `--metrics
 ```bash
 bash scripts/verify-devices.sh
 bash scripts/verify-menu-bar.sh
+bash scripts/verify-hal-driver.sh
 bash scripts/validate-export-rate.sh --instructions
 bash scripts/ci-soak.sh
 ```
