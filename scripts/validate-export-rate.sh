@@ -38,6 +38,14 @@ Principle: DAW output goes to BlackHole (MVP) or APM44 Bridge (production) for
 monitoring only. Bounce/export uses the project sample rate (44100 Hz). The
 bridge resamples to AirPods @ 48 kHz for listening — it does not change export.
 
+--- Cubase Pro / Nuendo ---
+1. Set project sample rate to 44100 Hz.
+2. **Studio → Audio Connections**: output **APM44 Bridge**.
+3. **Control Room**: Monitor 1 L/R device ports → APM44 Bridge (see docs/first-run-cubase.md).
+4. Start APM44 Bridge menu bar app; confirm HAL routing mode.
+5. **File → Export → Audio Mixdown** @ 44100 Hz.
+6. Run: bash scripts/validate-export-rate.sh --check-file /path/to/mix.wav
+
 --- Logic Pro ---
 1. Set project sample rate to 44100 Hz.
 2. Route monitoring output to BlackHole 2ch (MVP) or APM44 Bridge (production).

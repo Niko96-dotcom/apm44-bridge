@@ -1,6 +1,6 @@
 # DAW validation matrix
 
-End-to-end checklist for **Logic Pro** and **Ableton Live** (minimum v1 matrix). Record **pass** / **fail** / **skip** in the right column after each run.
+End-to-end checklist for **Cubase 15** (v1.1 primary sign-off), plus **Logic Pro** and **Ableton Live** (deferred beyond v1.1). Record **pass** / **fail** / **skip** in the right column after each run.
 
 ## Signal paths
 
@@ -21,6 +21,28 @@ Monitoring path in both cases: bridge resamples **44100 → 48000** and plays to
 | `bash scripts/verify-devices.sh` → exit 0 | | |
 | `./build/BridgeDaemon/apm44-bridge --preflight` → exit 0 | | |
 | Menu bar app **APM44 Bridge** running (or CLI bridge started) | | |
+
+| **Production (Phase 4+)** | **APM44 Bridge** @ 44100 Hz | `apm44-bridge --virtual-device` | HAL plug-in; menu bar spawns automatically when driver detected |
+
+## Cubase 15 (v1.1 sign-off host)
+
+| Step | Production (APM44 Bridge HAL) | Pass? | Notes |
+|------|-------------------------------|-------|-------|
+| Project sample rate **44100 Hz** | ✓ | | |
+| VST Audio System output **APM44 Bridge** | ✓ | | |
+| Control Room Monitor 1 **L/R device ports** → APM44 Bridge | ✓ | | See [first-run-cubase.md](first-run-cubase.md) |
+| Menu bar routing **APM44 Bridge (driver)** | ✓ | | Not BlackHole fallback |
+| Play 440 Hz ~10 s; audible in AirPods USB | ✓ | | |
+| AirPods Max USB-C stays **48000 Hz** in AMS (DEV-04) | ✓ | | |
+| **30+ min** soak (see [cubase-soak.md](cubase-soak.md)) | ✓ | | QA-01 |
+| Audio Mixdown export **44100 Hz** (QA-02) | ✓ | | `validate-export-rate.sh` |
+
+### Cubase export (QA-02)
+
+1. **File → Export → Audio Mixdown**
+2. Sample rate: **44,100 Hz**
+3. Export WAV
+4. `bash scripts/validate-export-rate.sh --check-file /path/to/mix.wav`
 
 ## Logic Pro
 
@@ -69,6 +91,7 @@ Monitoring path in both cases: bridge resamples **44100 → 48000** and plays to
 | Date | |
 | Tester | |
 | macOS version | |
+| Cubase version | |
 | Logic version | |
 | Ableton version | |
 | Bridge commit / build | |

@@ -35,6 +35,17 @@ bash scripts/ci-soak.sh
 
 ## Human 30+ minute soak (full QA-01)
 
+### HAL production path (Cubase → APM44 Bridge)
+
+See **[cubase-soak.md](cubase-soak.md)** for the operator checklist.
+
+1. Install signed HAL; menu bar shows **APM44 Bridge (driver)**.
+2. Cubase 15 @ **44100 Hz** → output **APM44 Bridge**; Control Room L/R ports assigned.
+3. Start bridge from menu bar; wait for **Running** status.
+4. Play looped material **30+ minutes**; confirm AirPods stay @ **48000 Hz**.
+
+### BlackHole MVP path (legacy)
+
 1. Run `bash scripts/verify-devices.sh` — both input (BlackHole @ 44100) and output (AirPods @ 48000) should PASS.
 2. `./build/BridgeDaemon/apm44-bridge --preflight` — exit 0.
 3. Start the bridge with recommended flags:
