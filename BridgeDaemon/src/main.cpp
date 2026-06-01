@@ -66,8 +66,10 @@ int RunPrintConfig(const apm44::CliOptions& options) {
     return 1;
   }
 
+  const apm44::BridgeEngineOptions engineOptions = apm44::ToEngineOptions(options);
+
   apm44::BridgeEngine engine;
-  if (!engine.prepare(*pair)) {
+  if (!engine.prepare(*pair, engineOptions)) {
     std::cerr << "error: engine prepare failed\n";
     return 1;
   }
@@ -134,8 +136,10 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  const apm44::BridgeEngineOptions engineOptions = apm44::ToEngineOptions(options);
+
   apm44::BridgeEngine engine;
-  if (!engine.prepare(*pair)) {
+  if (!engine.prepare(*pair, engineOptions)) {
     std::cerr << "error: engine prepare failed\n";
     return 1;
   }

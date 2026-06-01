@@ -1,5 +1,6 @@
 #include "CliOptions.h"
 
+#include <algorithm>
 #include <iostream>
 #include <string_view>
 
@@ -23,6 +24,19 @@ std::optional<std::string> ValueAfter(int argc, char* argv[], int& index) {
   return std::string{argv[index]};
 }
 
+std::optional<LibSamplerateSrc::Quality> ParseSrcQuality(std::string_view value) {
+  if (value == "medium") {
+    return LibSamplerateSrc::Quality::Medium;
+  }
+  if (value == "high") {
+    return LibSamplerateSrc::Quality::High;
+  }
+  if (value == "best") {
+    return LibSamplerateSrc::Quality::Best;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 void PrintUsage(const char* programName) {
@@ -35,7 +49,10 @@ void PrintUsage(const char* programName) {
             << "  --preflight         Validate devices/rates without starting audio\n"
             << "  --print-config      Print resolved device/config (no audio)\n"
             << "  --input-device UID  Input device UID (default: BlackHole 2ch)\n"
-            << "  --output-device UID Output device UID (default: AirPods Max)\n\n"
+            << "  --output-device UID Output device UID (default: AirPods Max)\n"
+            << "  --target-fill-ms N  Ring target fill 10–40 ms (default 15)\n"
+            << "  --src-quality Q     SRC quality: medium|high|best (default medium)\n"
+            << "  --legacy-converter  Use AudioToolbox converter (debug)\n\n"
             << "Prerequisite: BlackHole 2ch v0.6.1+ (user-installed, GPL-3.0).\n"
             << "  https://github.com/ExistentialAudio/BlackHole/releases\n"
             << "  Do not bundle or vendor BlackHole in this project.\n";
@@ -55,6 +72,8 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
       options.preflight = true;
     } else if (arg == "--print-config") {
       options.printConfig = true;
+    } else if (arg == "--legacy-converter") {
+      options.legacyConverter = true;
     } else if (arg == "--input-device") {
       options.inputDeviceUid = ValueAfter(argc, argv, i);
       if (!options.inputDeviceUid) {
@@ -67,12 +86,48 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
         std::cerr << "error: --output-device requires a UID\n";
         options.showHelp = true;
       }
+    } else if (arg == "--target-fill-ms") {
+      const auto value = ValueAfter(argc, argv, i);
+      if (!value) {
+        std::cerr << "error: --target-fill-ms requires a value\n";
+        std::exit(2);
+      }
+      try {
+        options.targetFillMs = std::stod(*value);
+      } catch (...) {
+        std::cerr << "error: invalid --target-fill-ms value\n";
+        std::exit(2);
+      }
+      if (options.targetFillMs < 10.0 || options.targetFillMs > 40.0) {
+        std::cerr << "error: --target-fill-ms must be between 10 and 40\n";
+        std::exit(2);
+      }
+    } else if (arg == "--src-quality") {
+      const auto value = ValueAfter(argc, argv, i);
+      if (!value) {
+        std::cerr << "error: --src-quality requires medium|high|best\n";
+        std::exit(2);
+      }
+      const auto quality = ParseSrcQuality(*value);
+      if (!quality) {
+        std::cerr << "error: unknown --src-quality (use medium|high|best)\n";
+        std::exit(2);
+      }
+      options.srcQuality = *quality;
     } else {
       std::cerr << "error: unknown option " << arg << "\n";
       options.showHelp = true;
     }
   }
   return options;
+}
+
+BridgeEngineOptions ToEngineOptions(const CliOptions& cli) {
+  BridgeEngineOptions engine;
+  engine.targetFillMs = cli.targetFillMs;
+  engine.srcQuality = cli.srcQuality;
+  engine.useLegacyConverter = cli.legacyConverter;
+  return engine;
 }
 
 }  // namespace apm44
