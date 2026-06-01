@@ -29,7 +29,13 @@ Deliver a macOS audio bridge that lets DAW users monitor 44.1 kHz sessions on Ai
   3. Bridge performs 44.1 kHz float → 48 kHz float conversion using AVAudioConverter or AudioToolbox with audible output and no sustained silence
   4. Documented manual routing steps exist: DAW → BlackHole @ 44.1; bridge reads BlackHole in → AirPods out @ 48
   5. Bridge audio callbacks run without malloc, locks, logging, or file I/O in the real-time path
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — CMake scaffold, Shared ASBD helpers, CLI skeleton
+- [ ] 01-02-PLAN.md — HAL device discovery, format negotiation, verify-devices.sh
+- [ ] 01-03-PLAN.md — Planar ring, AudioConverter SRC, dual IOProcs, BridgeEngine
+- [ ] 01-04-PLAN.md — MVP routing docs, verify tooling, 440 Hz human demo
 
 ### Phase 2: Production SRC & Drift Engine
 **Goal**: Bridge sustains long sessions without crackle, underrun, or latency creep using production-grade async SRC and drift correction
@@ -89,7 +95,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. BlackHole Console Bridge | 0/TBD | Not started | - |
+| 1. BlackHole Console Bridge | 0/4 | Not started | - |
 | 2. Production SRC & Drift Engine | 0/TBD | Not started | - |
 | 3. Menu Bar Application | 0/TBD | Not started | - |
 | 4. HAL Virtual Device | 0/TBD | Not started | - |
