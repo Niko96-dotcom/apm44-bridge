@@ -92,7 +92,14 @@ Plans:
   3. Driver does not open or control AirPods hardware; all SRC and physical output remain in the user-space bridge
   4. Driver hands audio buffers to the bridge daemon via documented IPC/shared-memory ring transport
   5. User can set DAW/session project rate to 44.1 kHz with output routed to APM44 Bridge in Logic, Ableton, and similar hosts
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — libASPL v3.1.2 submodule + CMake
+- [ ] 04-02-PLAN.md — ShmRingLayout + MmapShmRing + tests
+- [ ] 04-03-PLAN.md — APM44Bridge.driver skeleton (libASPL + shm producer)
+- [ ] 04-04-PLAN.md — Daemon `--virtual-device` + VirtualDeviceFeed
+- [ ] 04-05-PLAN.md — install-driver.sh, docs, verification scripts
 
 ### Phase 5: Integration & Ship Readiness
 **Goal**: Full production stack is validated across DAWs, export paths stay honest, and artifacts are signed for distribution
