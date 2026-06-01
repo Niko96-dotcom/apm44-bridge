@@ -1,5 +1,15 @@
 # Milestones
 
+## v1.1 Production Sign-Off (In progress: 2026-06-01)
+
+**Goal:** Close v1.0 audit gaps — signed HAL, Cubase 15 E2E, app `--virtual-device` wiring, DRV-02, 30+ min HAL soak, export QA.
+
+**Phases:** 6–9 (4 phases, 11 requirements)
+
+**Roadmap:** [.planning/ROADMAP.md](ROADMAP.md) · **Requirements:** [.planning/REQUIREMENTS.md](REQUIREMENTS.md)
+
+---
+
 ## v1.0 APM44 Bridge MVP (Shipped: 2026-06-01)
 
 **Phases completed:** 5 phases, 23 plans, 3 tasks
