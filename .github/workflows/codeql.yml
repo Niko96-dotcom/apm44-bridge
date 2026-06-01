@@ -33,6 +33,7 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           submodules: recursive
 
       - name: Install tools
@@ -47,12 +48,14 @@ jobs:
       - name: Build C/C++
         if: matrix.language == 'c-cpp'
         run: |
+          bash scripts/prepare-submodules.sh
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel
 
       - name: Build Swift
         if: matrix.language == 'swift'
         run: |
+          bash scripts/prepare-submodules.sh
           (cd App && xcodegen generate)
           xcodebuild -project App/APM44Bridge.xcodeproj \
             -scheme APM44Bridge \

@@ -11,6 +11,9 @@ cd "$ROOT"
 echo "== Secret scan =="
 bash scripts/check-secrets.sh
 
+echo "== Prepare submodules =="
+bash scripts/prepare-submodules.sh
+
 echo "== Configure CMake ($CONFIG) =="
 cmake -S "$ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$CONFIG"
 
