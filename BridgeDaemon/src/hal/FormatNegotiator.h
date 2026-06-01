@@ -14,6 +14,7 @@ struct FormatNegotiationError {
 class FormatNegotiator {
  public:
   std::optional<FormatNegotiationError> negotiate(BridgeDevicePair& pair);
+  std::optional<FormatNegotiationError> negotiateVirtualOutput(BridgeDevicePair& pair);
 };
 
 }  // namespace apm44

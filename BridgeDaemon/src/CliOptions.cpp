@@ -53,7 +53,8 @@ void PrintUsage(const char* programName) {
             << "  --target-fill-ms N  Ring target fill 6–40 ms (default 15)\n"
             << "  --src-quality Q     SRC quality: medium|high|best (default medium)\n"
             << "  --metrics-json      Emit JSON metrics on stdout every 500 ms while running\n"
-            << "  --legacy-converter  Use AudioToolbox converter (debug)\n\n"
+            << "  --legacy-converter  Use AudioToolbox converter (debug)\n"
+            << "  --virtual-device    Read input from APM44Bridge.driver shm (no BlackHole)\n\n"
             << "Prerequisite: BlackHole 2ch v0.6.1+ (user-installed, GPL-3.0).\n"
             << "  https://github.com/ExistentialAudio/BlackHole/releases\n"
             << "  Do not bundle or vendor BlackHole in this project.\n";
@@ -77,6 +78,8 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
       options.metricsJson = true;
     } else if (arg == "--legacy-converter") {
       options.legacyConverter = true;
+    } else if (arg == "--virtual-device") {
+      options.virtualDevice = true;
     } else if (arg == "--input-device") {
       options.inputDeviceUid = ValueAfter(argc, argv, i);
       if (!options.inputDeviceUid) {
@@ -142,6 +145,7 @@ BridgeEngineOptions ToEngineOptions(const CliOptions& cli) {
   engine.targetFillMs = cli.targetFillMs;
   engine.srcQuality = cli.srcQuality;
   engine.useLegacyConverter = cli.legacyConverter;
+  engine.virtualDevice = cli.virtualDevice;
   return engine;
 }
 

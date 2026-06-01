@@ -8,6 +8,7 @@ add_executable(apm44-bridge
   src/engine/IoProcHandlers.cpp
   src/engine/BridgeEngine.cpp
   src/engine/BridgeMetrics.cpp
+  src/engine/VirtualDeviceFeed.cpp
 )
 
 target_include_directories(apm44-bridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

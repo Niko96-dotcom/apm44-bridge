@@ -49,6 +49,14 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   devices_ = devices;
   options_ = options;
   useLegacyConverter_ = options.useLegacyConverter;
+  virtualDevice_ = options.virtualDevice;
+
+  if (virtualDevice_) {
+    if (!virtualFeed_.open()) {
+      std::cerr << "error: could not open shm ring (is APM44Bridge.driver IO running?)\n";
+      return false;
+    }
+  }
 
   const std::size_t targetFillFrames =
       PlanarRingBuffer::framesForMilliseconds(options_.targetFillMs, kInputSampleRate);
@@ -97,6 +105,11 @@ void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
 void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   std::memset(channels[0], 0, frames * sizeof(float));
   std::memset(channels[1], 0, frames * sizeof(float));
+
+  if (virtualDevice_) {
+    const std::size_t inputFramesNeeded = InputFramesForOutputFrames(frames);
+    virtualFeed_.drainTo(ring_, inputFramesNeeded + 256);
+  }
 
   const std::size_t fill = ring_.fillFrames();
   lastFillMs_ = ring_.fillMs(kInputSampleRate);
@@ -155,17 +168,24 @@ bool BridgeEngine::start() {
     return true;
   }
 
-  if (!TrySetBufferFrameSize(devices_.input.deviceId, 512)) {
-    std::cerr << "note: could not set 512-frame input buffer; using device default\n";
+  if (!virtualDevice_) {
+    if (!TrySetBufferFrameSize(devices_.input.deviceId, 512)) {
+      std::cerr << "note: could not set 512-frame input buffer; using device default\n";
+    }
   }
   if (!TrySetBufferFrameSize(devices_.output.deviceId, 512)) {
     std::cerr << "note: could not set 512-frame output buffer; using device default\n";
   }
 
-  const UInt32 inBuf = ReadBufferFrameSize(devices_.input.deviceId);
+  const UInt32 inBuf =
+      virtualDevice_ ? 0 : ReadBufferFrameSize(devices_.input.deviceId);
   const UInt32 outBuf = ReadBufferFrameSize(devices_.output.deviceId);
-  std::cerr << "apm44-bridge: input='" << devices_.input.name << "' uid=" << devices_.input.uid
-            << " rate=" << devices_.input.nominalRate << " buffer_frames=" << inBuf << "\n";
+  if (virtualDevice_) {
+    std::cerr << "apm44-bridge: input=APM44 Bridge (shm) virtual-device mode\n";
+  } else {
+    std::cerr << "apm44-bridge: input='" << devices_.input.name << "' uid=" << devices_.input.uid
+              << " rate=" << devices_.input.nominalRate << " buffer_frames=" << inBuf << "\n";
+  }
   std::cerr << "apm44-bridge: output='" << devices_.output.name << "' uid=" << devices_.output.uid
             << " rate=" << devices_.output.nominalRate << " buffer_frames=" << outBuf << "\n";
   std::cerr << "apm44-bridge: ring_capacity=" << ring_.capacityFrames()
@@ -173,22 +193,28 @@ bool BridgeEngine::start() {
             << " legacy_converter=" << (useLegacyConverter_ ? "yes" : "no")
             << " converter_ratio=" << converterRatio() << "\n";
 
-  OSStatus status =
-      AudioDeviceCreateIOProcID(devices_.input.deviceId, InputIoProc, this, &inputProc_);
-  if (status != noErr) {
-    return false;
+  OSStatus status = noErr;
+  if (!virtualDevice_) {
+    status = AudioDeviceCreateIOProcID(devices_.input.deviceId, InputIoProc, this, &inputProc_);
+    if (status != noErr) {
+      return false;
+    }
   }
   status = AudioDeviceCreateIOProcID(devices_.output.deviceId, OutputIoProc, this, &outputProc_);
   if (status != noErr) {
-    AudioDeviceDestroyIOProcID(devices_.input.deviceId, inputProc_);
-    inputProc_ = nullptr;
+    if (inputProc_ != nullptr) {
+      AudioDeviceDestroyIOProcID(devices_.input.deviceId, inputProc_);
+      inputProc_ = nullptr;
+    }
     return false;
   }
 
-  status = AudioDeviceStart(devices_.input.deviceId, inputProc_);
-  if (status != noErr) {
-    stop();
-    return false;
+  if (!virtualDevice_) {
+    status = AudioDeviceStart(devices_.input.deviceId, inputProc_);
+    if (status != noErr) {
+      stop();
+      return false;
+    }
   }
   status = AudioDeviceStart(devices_.output.deviceId, outputProc_);
   if (status != noErr) {
@@ -211,6 +237,9 @@ void BridgeEngine::stop() {
     AudioDeviceStop(devices_.input.deviceId, inputProc_);
     AudioDeviceDestroyIOProcID(devices_.input.deviceId, inputProc_);
     inputProc_ = nullptr;
+  }
+  if (virtualDevice_) {
+    virtualFeed_.close();
   }
   running_ = false;
 }

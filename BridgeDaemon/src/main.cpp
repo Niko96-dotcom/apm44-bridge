@@ -16,12 +16,16 @@ constexpr const char* kVersion = "0.1.0";
 std::optional<apm44::BridgeDevicePair> ResolveDevices(const apm44::CliOptions& options,
                                                       bool requirePresent) {
   apm44::DeviceEnumerator enumerator;
-  auto input = enumerator.resolveInput(options.inputDeviceUid);
-  if (!input) {
-    if (requirePresent) {
-      std::cerr << "error: input device not found. Install BlackHole 2ch or pass --input-device UID\n";
+  std::optional<apm44::AudioDeviceInfo> input;
+  if (!options.virtualDevice) {
+    input = enumerator.resolveInput(options.inputDeviceUid);
+    if (!input) {
+      if (requirePresent) {
+        std::cerr
+            << "error: input device not found. Install BlackHole 2ch or pass --input-device UID\n";
+      }
+      return std::nullopt;
     }
-    return std::nullopt;
   }
   auto output = enumerator.resolveOutput(options.outputDeviceUid);
   if (!output) {
@@ -32,9 +36,20 @@ std::optional<apm44::BridgeDevicePair> ResolveDevices(const apm44::CliOptions& o
   }
 
   apm44::BridgeDevicePair pair;
-  pair.input = *input;
+  if (input) {
+    pair.input = *input;
+  }
   pair.output = *output;
   return pair;
+}
+
+std::optional<apm44::FormatNegotiationError> NegotiatePair(apm44::FormatNegotiator& negotiator,
+                                                             apm44::BridgeDevicePair& pair,
+                                                             bool virtualDevice) {
+  if (virtualDevice) {
+    return negotiator.negotiateVirtualOutput(pair);
+  }
+  return negotiator.negotiate(pair);
 }
 
 int RunPreflight(const apm44::CliOptions& options) {
@@ -44,7 +59,7 @@ int RunPreflight(const apm44::CliOptions& options) {
   }
 
   apm44::FormatNegotiator negotiator;
-  if (const auto err = negotiator.negotiate(*pair)) {
+  if (const auto err = NegotiatePair(negotiator, *pair, options.virtualDevice)) {
     std::cerr << "error: " << err->message << "\n";
     return 1;
   }
@@ -62,7 +77,7 @@ int RunPrintConfig(const apm44::CliOptions& options) {
     return 1;
   }
   apm44::FormatNegotiator negotiator;
-  if (const auto err = negotiator.negotiate(*pair)) {
+  if (const auto err = NegotiatePair(negotiator, *pair, options.virtualDevice)) {
     std::cerr << "error: " << err->message << "\n";
     return 1;
   }
@@ -132,7 +147,7 @@ int main(int argc, char* argv[]) {
   }
 
   apm44::FormatNegotiator negotiator;
-  if (const auto err = negotiator.negotiate(*pair)) {
+  if (const auto err = NegotiatePair(negotiator, *pair, options.virtualDevice)) {
     std::cerr << "error: " << err->message << "\n";
     return 1;
   }

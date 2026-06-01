@@ -69,4 +69,34 @@ std::optional<FormatNegotiationError> FormatNegotiator::negotiate(BridgeDevicePa
   return std::nullopt;
 }
 
+std::optional<FormatNegotiationError> FormatNegotiator::negotiateVirtualOutput(
+    BridgeDevicePair& pair) {
+  pair.input.name = "APM44 Bridge (shm)";
+  pair.input.uid = "com.niko.apm44.bridge.device";
+  pair.input.nominalRate = kInputSampleRate;
+  pair.inputAsbd = MakeFloat32StereoNonInterleaved(kInputSampleRate);
+
+  const auto outputFormat = ReadStreamFormat(pair.output.deviceId, false);
+  if (!outputFormat) {
+    return FormatNegotiationError{
+        "Could not read output stream format for " + pair.output.name +
+        ". Set AirPods to 48000 Hz in Audio MIDI Setup."};
+  }
+  pair.outputAsbd = *outputFormat;
+
+  if (!AsbdMatchesFloat32StereoNonInterleaved(pair.outputAsbd, kOutputSampleRate)) {
+    return FormatNegotiationError{
+        "Output device '" + pair.output.name +
+        "' is not float32 stereo non-interleaved @ 48000 Hz."};
+  }
+
+  if (std::fabs(pair.output.nominalRate - kOutputSampleRate) > 1.0) {
+    return FormatNegotiationError{
+        "Output nominal rate is " + std::to_string(static_cast<int>(pair.output.nominalRate)) +
+        " Hz; expected 48000 Hz on AirPods."};
+  }
+
+  return std::nullopt;
+}
+
 }  // namespace apm44

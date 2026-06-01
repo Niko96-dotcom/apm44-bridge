@@ -2,6 +2,7 @@
 
 #include "engine/AudioConverterSrc.h"
 #include "engine/LibSamplerateSrc.h"
+#include "engine/VirtualDeviceFeed.h"
 #include "hal/HalTypes.h"
 
 #include <apm44/DriftController.h>
@@ -18,6 +19,7 @@ struct BridgeEngineOptions {
   double targetFillMs = 15.0;
   LibSamplerateSrc::Quality srcQuality = LibSamplerateSrc::Quality::Medium;
   bool useLegacyConverter = false;
+  bool virtualDevice = false;
 };
 
 class BridgeEngine {
@@ -63,6 +65,9 @@ class BridgeEngine {
 
   AudioDeviceIOProcID inputProc_ = nullptr;
   AudioDeviceIOProcID outputProc_ = nullptr;
+
+  VirtualDeviceFeed virtualFeed_;
+  bool virtualDevice_ = false;
 };
 
 }  // namespace apm44
