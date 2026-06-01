@@ -73,7 +73,8 @@ Install signed driver (requires admin):
 ```bash
 sudo cp -R "$DRIVER" /Library/Audio/Plug-Ins/HAL/
 sudo chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
-sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+bash scripts/reload-coreaudio.sh
+# macOS 14.4+: launchctl kickstart for coreaudiod is blocked (SIP); uses sudo killall coreaudiod
 ```
 
 For local development without a Developer ID cert, use `scripts/install-driver.sh` (ad-hoc sign).

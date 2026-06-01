@@ -20,7 +20,7 @@ Artifacts:
 
 ```bash
 ./scripts/install-driver.sh
-sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+./scripts/reload-coreaudio.sh   # sudo killall coreaudiod — kickstart is blocked on macOS 14.4+
 ./scripts/verify-hal-driver.sh
 ```
 

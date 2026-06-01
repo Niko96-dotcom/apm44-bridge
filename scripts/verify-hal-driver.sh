@@ -44,10 +44,37 @@ else
   fi
 fi
 
+if xattr -l "$DRIVER" 2>/dev/null | grep -q com.apple.quarantine; then
+  warn "quarantine xattr present — run: xattr -cr \"$DRIVER\" before install"
+else
+  pass "no quarantine xattr on bundle"
+fi
+
+SPCTL_OUT="$(spctl -a -vv -t install "$DRIVER" 2>&1 || true)"
+if grep -q 'accepted' <<<"$SPCTL_OUT"; then
+  pass "Gatekeeper accepts driver (signed + notarized/stapled)"
+elif grep -qi 'Unnotarized' <<<"$SPCTL_OUT"; then
+  warn "Developer ID signed but NOT notarized — macOS 15+ will not load HAL (run scripts/notarize-hal-driver.sh)"
+else
+  warn "Gatekeeper does not accept driver — check codesign / notarization"
+fi
+
+INSTALLED="/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+if [[ -d "$INSTALLED" ]]; then
+  INST_OUT="$(spctl -a -vv -t install "$INSTALLED" 2>&1 || true)"
+  if grep -q 'accepted' <<<"$INST_OUT"; then
+    pass "installed HAL copy is Gatekeeper-accepted"
+  elif grep -qi 'Unnotarized' <<<"$INST_OUT"; then
+    warn "installed HAL is signed but not notarized — reinstall after notarize-hal-driver.sh"
+  else
+    warn "installed HAL at $INSTALLED is not Gatekeeper-accepted"
+  fi
+fi
+
 if system_profiler SPAudioDataType 2>/dev/null | grep -qi 'APM44 Bridge'; then
   pass "system_profiler lists APM44 Bridge"
 else
-  warn "APM44 Bridge not visible (driver may be unsigned or coreaudiod not reloaded)"
+  warn "APM44 Bridge not visible (notarize+staple, reinstall, reload-coreaudio.sh, or reboot)"
 fi
 
 echo ""
