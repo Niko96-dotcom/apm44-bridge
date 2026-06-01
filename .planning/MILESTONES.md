@@ -30,9 +30,7 @@
 - Dev install scripts and HAL documentation; phase verification records honest manual gaps.
 - DAW validation matrix, QA-02 export-rate script, and Developer ID / notarytool release guide with HAL entitlements.
 
-**Audit:** `gaps_found` at close (17/23 requirements fully evidenced; see [v1.0-MILESTONE-AUDIT.md](milestones/v1.0-MILESTONE-AUDIT.md)).
-
-**Known deferred items at close:** 10 (see STATE.md Deferred Items)
+**Audit:** `gaps_found` at close (17/23 requirements fully evidenced; accepted — see Known Gaps below).
 
 ### Known Gaps (accepted at ship)
 
