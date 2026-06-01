@@ -59,7 +59,7 @@ completed: 2026-06-01
 2. **Task 2: Release signing docs and entitlements** - `7269ee0` (docs)
 3. **Task 3: README, verification report, summaries** - `c4c49d9` (docs)
 
-**Plan metadata:** `TBD` (final docs commit)
+**Plan metadata:** `fbd9ba3` (docs: complete plan)
 
 ## Files Created/Modified
 
