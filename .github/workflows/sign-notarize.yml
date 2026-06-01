@@ -1,0 +1,48 @@
+name: Sign and Notarize
+
+# Manual release signing — requires Apple Developer credentials on the runner.
+# Local path: scripts/sign-release.sh + scripts/notary-dry-run.sh
+on:
+  workflow_dispatch:
+    inputs:
+      notarize:
+        description: "Submit to Apple notary service after signing"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  sign-notarize:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Release artifacts
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target apm44-bridge APM44Bridge
+          bash scripts/verify-app-build.sh || true
+
+      - name: Sign (requires SIGN_ID secret)
+        env:
+          SIGN_ID: ${{ secrets.APPLE_SIGN_ID }}
+        run: |
+          if [[ -z "${SIGN_ID:-}" ]]; then
+            echo "SKIP: APPLE_SIGN_ID secret not configured — use local scripts/sign-release.sh"
+            exit 0
+          fi
+          bash scripts/embed-daemon-in-app.sh
+          bash scripts/sign-release.sh
+          bash scripts/codesign-verify-release.sh
+
+      - name: Notarize (requires AC_NOTARY keychain profile on runner)
+        if: inputs.notarize == 'true'
+        run: |
+          if ! xcrun notarytool history --keychain-profile AC_NOTARY 2>/dev/null; then
+            echo "SKIP: AC_NOTARY profile not on runner — use local scripts/notary-dry-run.sh"
+            exit 0
+          fi
+          bash scripts/notary-dry-run.sh

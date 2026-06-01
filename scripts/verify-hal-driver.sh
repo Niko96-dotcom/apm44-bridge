@@ -77,6 +77,32 @@ else
   warn "APM44 Bridge not visible (notarize+staple, reinstall, reload-coreaudio.sh, or reboot)"
 fi
 
+if [[ -n "$BIN" ]]; then
+  CS_INFO="$(codesign -dv --verbose=2 "$BIN" 2>&1 || true)"
+  if grep -qi 'Developer ID Application' <<<"$CS_INFO"; then
+    pass "executable signed with Developer ID Application"
+  else
+    warn "executable not Developer ID signed — run scripts/sign-release.sh before production install"
+  fi
+  if grep -q 'Runtime Version' <<<"$CS_INFO"; then
+    pass "executable has Hardened Runtime"
+  else
+    warn "Hardened Runtime not detected on executable"
+  fi
+fi
+
+if [[ -d "$INSTALLED" ]]; then
+  if pgrep -x coreaudiod >/dev/null 2>&1; then
+    pass "coreaudiod is running"
+  else
+    warn "coreaudiod not running"
+  fi
+fi
+
+echo ""
+echo "Release signing: scripts/sign-release.sh"
+echo "Notarize driver: scripts/notarize-hal-driver.sh"
+echo "Full release zip: scripts/notary-dry-run.sh"
 echo ""
 if [[ "$FAIL" -eq 0 ]]; then
   echo "verify-hal-driver: structural checks passed"

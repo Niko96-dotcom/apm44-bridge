@@ -27,10 +27,22 @@ bash scripts/verify-app-build.sh   # generates Release .app when configured
 
 ## Developer ID signing (release)
 
-Set your signing identity (adjust team name):
+Set your signing identity (sign-off Mac defaults):
 
 ```bash
-export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
+export SIGN_ID="Developer ID Application: Nikolay Mohr (4H5447ZWS3)"
+export NOTARY_PROFILE="AC_NOTARY"
+```
+
+One-command release signing (after Release build):
+
+```bash
+bash scripts/embed-daemon-in-app.sh
+bash scripts/sign-release.sh
+bash scripts/codesign-verify-release.sh
+bash scripts/notary-dry-run.sh          # full zip submit (SHIP-02 evidence)
+# or driver-only:
+bash scripts/notarize-hal-driver.sh
 ```
 
 ### Bridge daemon
