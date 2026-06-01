@@ -1,7 +1,6 @@
 [submodule "third_party/libsamplerate"]
 	path = third_party/libsamplerate
 	url = https://github.com/libsndfile/libsamplerate.git
-	branch = .
 [submodule "third_party/libASPL"]
 	path = third_party/libASPL
 	url = https://github.com/gavv/libASPL.git
