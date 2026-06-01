@@ -32,10 +32,10 @@ Deliver a macOS audio bridge that lets DAW users monitor 44.1 kHz sessions on Ai
 **Plans**: 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — CMake scaffold, Shared ASBD helpers, CLI skeleton
-- [ ] 01-02-PLAN.md — HAL device discovery, format negotiation, verify-devices.sh
-- [ ] 01-03-PLAN.md — Planar ring, AudioConverter SRC, dual IOProcs, BridgeEngine
-- [ ] 01-04-PLAN.md — MVP routing docs, verify tooling, 440 Hz human demo
+- [x] 01-01-PLAN.md — CMake scaffold, Shared ASBD helpers, CLI skeleton
+- [x] 01-02-PLAN.md — HAL device discovery, format negotiation, verify-devices.sh
+- [x] 01-03-PLAN.md — Planar ring, AudioConverter SRC, dual IOProcs, BridgeEngine
+- [x] 01-04-PLAN.md — MVP routing docs, verify tooling, 440 Hz human demo
 
 ### Phase 2: Production SRC & Drift Engine
 **Goal**: Bridge sustains long sessions without crackle, underrun, or latency creep using production-grade async SRC and drift correction

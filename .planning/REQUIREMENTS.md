@@ -10,21 +10,21 @@
 - [ ] **DEV-01**: User can select a stereo output device that reports **44,100 Hz** nominal rate in Audio MIDI Setup and the DAW
 - [ ] **DEV-02**: Virtual device exposes **2 channels**, **Float32** format suitable for DAW routing
 - [ ] **DEV-03**: User can set DAW/session project sample rate to **44.1 kHz** with output routed to the bridge device (Logic, Ableton, and similar hosts)
-- [ ] **DEV-04**: Physical AirPods Max USB-C endpoint remains at **48,000 Hz** in Audio MIDI Setup while bridge is active
+- [x] **DEV-04**: Physical AirPods Max USB-C endpoint remains at **48,000 Hz** in Audio MIDI Setup while bridge is active
 
 ### Bridge engine (audio path)
 
-- [ ] **ENG-01**: Bridge captures 44.1 kHz float audio from the virtual/loopback input path and plays 48 kHz float to AirPods Max USB-C output
+- [x] **ENG-01**: Bridge captures 44.1 kHz float audio from the virtual/loopback input path and plays 48 kHz float to AirPods Max USB-C output
 - [ ] **ENG-02**: Sample-rate conversion supports the **160/147** nominal ratio with **variable-ratio** streaming SRC for clock drift
 - [ ] **ENG-03**: Lock-free ring buffer sits between input and output callbacks with a configurable target fill level (~10–20 ms default)
 - [ ] **ENG-04**: Drift controller adjusts effective SRC ratio within bounded PPM (e.g. ±500 ppm) to prevent long-run underrun, overflow, or latency creep
-- [ ] **ENG-05**: Real-time callbacks avoid malloc, locks, logging, file I/O, device enumeration, and UI mutation
+- [x] **ENG-05**: Real-time callbacks avoid malloc, locks, logging, file I/O, device enumeration, and UI mutation
 
 ### MVP (BlackHole proof)
 
-- [ ] **MVP-01**: Bridge runs with **BlackHole 2ch @ 44.1 kHz** as input and **AirPods Max USB-C @ 48 kHz** as output
-- [ ] **MVP-02**: MVP uses **AVAudioConverter** or AudioToolbox `AudioConverter` for initial SRC before libsamplerate swap
-- [ ] **MVP-03**: Documented manual routing: DAW → BlackHole @ 44.1; bridge BlackHole in → AirPods out @ 48
+- [x] **MVP-01**: Bridge runs with **BlackHole 2ch @ 44.1 kHz** as input and **AirPods Max USB-C @ 48 kHz** as output
+- [x] **MVP-02**: MVP uses **AVAudioConverter** or AudioToolbox `AudioConverter` for initial SRC before libsamplerate swap
+- [x] **MVP-03**: Documented manual routing: DAW → BlackHole @ 44.1; bridge BlackHole in → AirPods out @ 48
 
 ### Production driver
 
@@ -76,15 +76,15 @@
 | DEV-01 | Phase 4 | Pending |
 | DEV-02 | Phase 4 | Pending |
 | DEV-03 | Phase 4 | Pending |
-| DEV-04 | Phase 1 | Pending |
-| ENG-01 | Phase 1 | Pending |
+| DEV-04 | Phase 1 | Complete |
+| ENG-01 | Phase 1 | Complete |
 | ENG-02 | Phase 2 | Pending |
 | ENG-03 | Phase 2 | Pending |
 | ENG-04 | Phase 2 | Pending |
-| ENG-05 | Phase 1 | Pending |
-| MVP-01 | Phase 1 | Pending |
-| MVP-02 | Phase 1 | Pending |
-| MVP-03 | Phase 1 | Pending |
+| ENG-05 | Phase 1 | Complete |
+| MVP-01 | Phase 1 | Complete |
+| MVP-02 | Phase 1 | Complete |
+| MVP-03 | Phase 1 | Complete |
 | DRV-01 | Phase 4 | Pending |
 | DRV-02 | Phase 4 | Pending |
 | DRV-03 | Phase 4 | Pending |
