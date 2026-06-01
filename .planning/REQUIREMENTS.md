@@ -34,17 +34,17 @@
 
 ### Application & UX
 
-- [ ] **APP-01**: Menu bar app shows bridge **running/stopped** state and selected physical output device
-- [ ] **APP-02**: User can pick **latency mode**: Low (~6–8 ms target buffer), Balanced (~12–18 ms, default), Safe mixing (~25–40 ms)
-- [ ] **APP-03**: User can pick SRC quality tier aligned with latency mode (medium/high/best)
-- [ ] **APP-04**: App handles **device hotplug** (AirPods connect/disconnect) without requiring DAW restart when feasible
-- [ ] **APP-05**: Status meter shows buffer fill / glitch indicators for troubleshooting
+- [x] **APP-01**: Menu bar app shows bridge **running/stopped** state and selected physical output device
+- [x] **APP-02**: User can pick **latency mode**: Low (~6–8 ms target buffer), Balanced (~12–18 ms, default), Safe mixing (~25–40 ms)
+- [x] **APP-03**: User can pick SRC quality tier aligned with latency mode (medium/high/best)
+- [x] **APP-04**: App handles **device hotplug** (AirPods connect/disconnect) without requiring DAW restart when feasible
+- [x] **APP-05**: Status meter shows buffer fill / glitch indicators for troubleshooting
 
 ### Quality & validation
 
 - [x] **QA-01**: **30+ minute** continuous playback at 44.1 → 48 without crackle, drift-induced underrun, or unbounded latency growth
 - [ ] **QA-02**: DAW **export/stem** remains **44.1 kHz** when project rate is 44.1 (monitoring path does not alter bounce sample rate)
-- [ ] **QA-03**: Measured/reportable **round-trip monitoring latency** is surfaced honestly (no “zero latency” claim)
+- [x] **QA-03**: Measured/reportable **round-trip monitoring latency** is surfaced honestly (no “zero latency” claim)
 
 ## v2 Requirements
 
@@ -88,14 +88,14 @@
 | DRV-01 | Phase 4 | Pending |
 | DRV-02 | Phase 4 | Pending |
 | DRV-03 | Phase 4 | Pending |
-| APP-01 | Phase 3 | Pending |
-| APP-02 | Phase 3 | Pending |
-| APP-03 | Phase 3 | Pending |
-| APP-04 | Phase 3 | Pending |
-| APP-05 | Phase 3 | Pending |
+| APP-01 | Phase 3 | Complete |
+| APP-02 | Phase 3 | Complete |
+| APP-03 | Phase 3 | Complete |
+| APP-04 | Phase 3 | Complete |
+| APP-05 | Phase 3 | Complete |
 | QA-01 | Phase 2 | Complete |
 | QA-02 | Phase 5 | Pending |
-| QA-03 | Phase 3 | Pending |
+| QA-03 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 23 total

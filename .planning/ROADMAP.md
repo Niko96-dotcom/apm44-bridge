@@ -71,13 +71,13 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Xcode MenuBarExtra shell + subprocess start/stop (APP-01 core)
-- [ ] 03-02-PLAN.md — Daemon `--metrics-json` + fill-ms clamp 6–40
-- [ ] 03-03-PLAN.md — Parse metrics, meters, honest latency label (APP-05, QA-03)
-- [ ] 03-04-PLAN.md — Output device picker via `--list-devices`
-- [ ] 03-05-PLAN.md — Latency presets + SRC quality override (APP-02, APP-03)
-- [ ] 03-06-PLAN.md — Core Audio hotplug debounced restart (APP-04)
-- [ ] 03-07-PLAN.md — verify-menu-bar.sh + hardware UAT checkpoint
+- [x] 03-01-PLAN.md — Xcode MenuBarExtra shell + subprocess start/stop (APP-01 core)
+- [x] 03-02-PLAN.md — Daemon `--metrics-json` + fill-ms clamp 6–40
+- [x] 03-03-PLAN.md — Parse metrics, meters, honest latency label (APP-05, QA-03)
+- [x] 03-04-PLAN.md — Output device picker via `--list-devices`
+- [x] 03-05-PLAN.md — Latency presets + SRC quality override (APP-02, APP-03)
+- [x] 03-06-PLAN.md — Core Audio hotplug debounced restart (APP-04)
+- [x] 03-07-PLAN.md — verify-menu-bar.sh + hardware UAT checkpoint
 
 **UI hint**: yes (03-UI-SPEC.md not present — plans follow 03-CONTEXT.md; align to UI-SPEC when added)
 
