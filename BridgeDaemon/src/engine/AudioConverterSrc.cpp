@@ -106,8 +106,9 @@ bool AudioConverterSrc::convert(const float* const inputChannels[2], std::size_t
       static_cast<std::size_t>(std::lround(static_cast<double>(inputFrames) * nominalRatio_));
   const std::size_t maxOut =
       std::min(outputCapacity, std::max(expectedOut, static_cast<std::size_t>(1)));
+  // outputInterleaved_ is sized in prepare(); never resize here (IOProc / RT path).
   if (outputInterleaved_.size() < maxOut * 2) {
-    outputInterleaved_.resize(maxOut * 2);
+    return false;
   }
 
   UInt32 outputPackets = static_cast<UInt32>(maxOut);

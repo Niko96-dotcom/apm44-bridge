@@ -32,10 +32,10 @@ class BridgeEngine {
   PlanarRingBuffer ring_;
   AudioConverterSrc converter_;
 
-  std::vector<float> channel0Scratch_;
-  std::vector<float> channel1Scratch_;
-  std::vector<float> convertOut0_;
-  std::vector<float> convertOut1_;
+  std::vector<float> outputScratch0_;
+  std::vector<float> outputScratch1_;
+  std::vector<float> inputDropScratch0_;
+  std::vector<float> inputDropScratch1_;
 
   std::atomic<uint64_t> xruns_{0};
   bool running_ = false;

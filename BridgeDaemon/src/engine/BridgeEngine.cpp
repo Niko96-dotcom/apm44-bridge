@@ -2,6 +2,7 @@
 
 #include "engine/IoProcHandlers.h"
 
+#include <algorithm>
 #include <cmath>
 #include <csignal>
 #include <cstring>
@@ -46,22 +47,32 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices) {
     return false;
   }
 
-  channel0Scratch_.resize(1024);
-  channel1Scratch_.resize(1024);
-  convertOut0_.resize(1024);
-  convertOut1_.resize(1024);
+  constexpr std::size_t kMaxCallbackFrames = 1024;
+  outputScratch0_.resize(kMaxCallbackFrames);
+  outputScratch1_.resize(kMaxCallbackFrames);
+  inputDropScratch0_.resize(kMaxCallbackFrames);
+  inputDropScratch1_.resize(kMaxCallbackFrames);
   return true;
 }
 
+namespace {
+
+std::size_t InputFramesForOutputFrames(std::size_t outputFrames) {
+  return static_cast<std::size_t>(
+      std::ceil(static_cast<double>(outputFrames) * apm44::kInputSampleRate / apm44::kOutputSampleRate));
+}
+
+}  // namespace
+
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
-  // MVP drop policy: if ring is full, drop oldest by popping then pushing (approximation via push limit).
+  // MVP drop policy: if ring is full, drop oldest then push only the remainder (live monitoring).
   std::size_t pushed = ring_.push(channels, frames);
   if (pushed < frames) {
-    // Ring full — drop oldest frames to make room for newest (live monitoring preference).
-    float* dropCh[2] = {channel0Scratch_.data(), channel1Scratch_.data()};
+    float* dropCh[2] = {inputDropScratch0_.data(), inputDropScratch1_.data()};
     const std::size_t toDrop = frames - pushed;
     ring_.pop(dropCh, toDrop);
-    ring_.push(channels, frames);
+    const float* remainder[2] = {channels[0] + pushed, channels[1] + pushed};
+    ring_.push(remainder, frames - pushed);
   }
 }
 
@@ -69,8 +80,9 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   std::memset(channels[0], 0, frames * sizeof(float));
   std::memset(channels[1], 0, frames * sizeof(float));
 
-  float* popCh[2] = {channel0Scratch_.data(), channel1Scratch_.data()};
-  const std::size_t maxPop = std::min(frames, channel0Scratch_.size());
+  float* popCh[2] = {outputScratch0_.data(), outputScratch1_.data()};
+  const std::size_t inputFramesNeeded = InputFramesForOutputFrames(frames);
+  const std::size_t maxPop = std::min(inputFramesNeeded, outputScratch0_.size());
   const std::size_t popped = ring_.pop(popCh, maxPop);
   if (popped == 0) {
     xruns_.fetch_add(1, std::memory_order_relaxed);
