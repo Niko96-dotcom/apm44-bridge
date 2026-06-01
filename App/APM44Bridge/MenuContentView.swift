@@ -135,13 +135,31 @@ struct MenuContentView: View {
     }
 
     private var footerSection: some View {
-        HStack {
-            Text("APM44 Bridge \(Bundle.main.shortVersion)")
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Open at login", isOn: openAtLoginBinding)
                 .font(.caption)
-            Spacer()
-            Link("Routing help", destination: URL(string: "https://github.com/ExistentialAudio/BlackHole")!)
-                .font(.caption)
+            HStack {
+                Text("APM44 Bridge \(Bundle.main.shortVersion)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Link("Cubase setup", destination: URL(string: "https://github.com/Niko96-dotcom/apm44-bridge/blob/master/docs/first-run-cubase.md")!)
+                    .font(.caption)
+            }
         }
+    }
+
+    private var openAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { LaunchAtLogin.isEnabled },
+            set: { enabled, _ in
+                do {
+                    try LaunchAtLogin.setEnabled(enabled)
+                } catch {
+                    manager.bannerMessage = "Could not update Open at login"
+                }
+            }
+        )
     }
 
     private func bannerView(_ message: String) -> some View {

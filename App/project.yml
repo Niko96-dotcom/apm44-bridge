@@ -16,7 +16,8 @@ targets:
       - path: APM44Bridge
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.niko.apm44.menu
-      PRODUCT_NAME: APM44Bridge
+      PRODUCT_NAME: "APM44 Bridge"
+      INFOPLIST_KEY_CFBundleDisplayName: "APM44 Bridge"
       GENERATE_INFOPLIST_FILE: YES
       INFOPLIST_KEY_LSUIElement: YES
       INFOPLIST_KEY_NSHumanReadableCopyright: "APM44 Bridge"

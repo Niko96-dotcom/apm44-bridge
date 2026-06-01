@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install tools
+        run: brew install xcodegen
+
+      - name: Build Release (unsigned on CI)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target apm44-bridge APM44Bridge
+          (cd App && xcodegen generate)
+          xcodebuild -project App/APM44Bridge.xcodeproj -scheme APM44Bridge \
+            -configuration Release build CODE_SIGNING_ALLOWED=NO \
+            CONFIGURATION_BUILD_DIR="$PWD/build/Release"
+          bash scripts/embed-daemon-in-app.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: APM44Bridge-unsigned
+          path: |
+            build/Release/APM44 Bridge.app
+            build/Driver/APM44Bridge.driver
+            build/BridgeDaemon/apm44-bridge
+
+      - name: Note
+        run: |
+          echo "Signed/notarized pkg must be built on a maintainer Mac with AC_NOTARY:"
+          echo "  bash scripts/release-all.sh"

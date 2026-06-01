@@ -8,11 +8,12 @@ namespace apm44 {
 
 namespace {
 
-// Tuned for ~512-frame output blocks @ 48 kHz; soak (plan 06) may adjust.
-constexpr double kProportionalGain = 0.08;
-constexpr double kIntegralGain = 0.002;
+// Tuned for ~512-frame output blocks @ 48 kHz. Gentler ratio tracking reduces
+// audible SRC micro-steps (occasional clicks under HAL + host jitter).
+constexpr double kProportionalGain = 0.05;
+constexpr double kIntegralGain = 0.0015;
 constexpr double kIntegralClamp = 5000.0;
-constexpr double kRatioSmoothingAlpha = 0.05;
+constexpr double kRatioSmoothingAlpha = 0.025;
 
 }  // namespace
 

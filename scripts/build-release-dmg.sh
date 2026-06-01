@@ -25,9 +25,7 @@ echo "Building Release…"
 cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$ROOT/build" --target apm44-bridge APM44Bridge
 
-if [[ ! -d "$ROOT/App/APM44Bridge.xcodeproj" ]]; then
-  (cd "$ROOT/App" && xcodegen generate)
-fi
+(cd "$ROOT/App" && xcodegen generate)
 xcodebuild -project "$ROOT/App/APM44Bridge.xcodeproj" -scheme APM44Bridge \
   -configuration "$CONFIG" build CODE_SIGNING_ALLOWED=NO \
   CONFIGURATION_BUILD_DIR="$ROOT/build/$CONFIG"

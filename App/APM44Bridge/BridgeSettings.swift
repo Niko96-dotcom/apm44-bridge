@@ -41,7 +41,8 @@ final class BridgeSettings: ObservableObject {
            let preset = LatencyPreset(rawValue: raw) {
             latencyPreset = preset
         } else {
-            latencyPreset = .balanced
+            // Safe default reduces rare HAL/Cubase underrun clicks for new installs.
+            latencyPreset = .safe
         }
         if let raw = defaults.string(forKey: Keys.srcQualityOverride) {
             srcQualityOverride = SrcQuality(rawValue: raw)

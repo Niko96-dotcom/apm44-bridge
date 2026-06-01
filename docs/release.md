@@ -34,13 +34,23 @@ export SIGN_ID="Developer ID Application: Nikolay Mohr (4H5447ZWS3)"
 export NOTARY_PROFILE="AC_NOTARY"
 ```
 
-One-command release signing (after Release build):
+**One-command release** (build, notarize, staple, pkg):
+
+```bash
+bash scripts/release-all.sh
+```
+
+Manual steps (after Release build):
 
 ```bash
 bash scripts/embed-daemon-in-app.sh
 bash scripts/sign-release.sh
 bash scripts/codesign-verify-release.sh
 bash scripts/notary-dry-run.sh          # full zip submit (SHIP-02 evidence)
+xcrun stapler staple "build/Release/APM44 Bridge.app"
+xcrun stapler staple build/Driver/APM44Bridge.driver
+bash scripts/build-release-pkg.sh
+bash scripts/notarize-release-pkg.sh    # pkg notarize + staple
 # or driver-only:
 bash scripts/notarize-hal-driver.sh
 ```

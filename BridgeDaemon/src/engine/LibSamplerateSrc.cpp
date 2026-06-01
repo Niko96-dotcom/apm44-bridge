@@ -8,7 +8,8 @@ namespace apm44 {
 
 namespace {
 
-constexpr double kRatioEpsilon = 1e-9;
+// Skip tiny ratio updates — libsamplerate can click when src_set_ratio changes too often.
+constexpr double kMinRelativeRatioDelta = 2e-7;  // ~0.2 ppm at nominal 48000/44100
 constexpr std::size_t kMaxBlockFrames = 1024;
 
 }  // namespace
@@ -58,7 +59,7 @@ void LibSamplerateSrc::setRatio(double ratio) {
   if (state_ == nullptr || !std::isfinite(ratio) || ratio <= 0.0) {
     return;
   }
-  if (std::abs(ratio - lastRatio_) < kRatioEpsilon) {
+  if (std::abs(ratio - lastRatio_) < lastRatio_ * kMinRelativeRatioDelta) {
     return;
   }
   src_set_ratio(state_, ratio);

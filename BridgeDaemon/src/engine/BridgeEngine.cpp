@@ -9,6 +9,7 @@
 #include <thread>
 #include <cstring>
 #include <iostream>
+#include <vector>
 
 namespace apm44 {
 
@@ -43,6 +44,18 @@ std::size_t InputFramesForOutputFrames(std::size_t outputFrames) {
                                             kOutputSampleRate));
 }
 
+void HoldLastSample(float* ch0, float* ch1, std::size_t converted, std::size_t frames) {
+  if (converted == 0 || converted >= frames) {
+    return;
+  }
+  const float l = ch0[converted - 1];
+  const float r = ch1[converted - 1];
+  for (std::size_t i = converted; i < frames; ++i) {
+    ch0[i] = l;
+    ch1[i] = r;
+  }
+}
+
 }  // namespace
 
 bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options) {
@@ -74,12 +87,21 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
     }
   }
 
+  const double targetFillMs =
+      virtualDevice_ ? std::max(options_.targetFillMs, 20.0) : options_.targetFillMs;
   const std::size_t targetFillFrames =
-      PlanarRingBuffer::framesForMilliseconds(options_.targetFillMs, kInputSampleRate);
+      PlanarRingBuffer::framesForMilliseconds(targetFillMs, kInputSampleRate);
   const std::size_t ringRequest = std::max(targetFillFrames * 2 + 512, std::size_t{1024});
   ring_.prepare(ringRequest);
   drift_.reset();
   drift_.setTargetFillFrames(targetFillFrames);
+
+  {
+    std::vector<float> prefill0(targetFillFrames, 0.0f);
+    std::vector<float> prefill1(targetFillFrames, 0.0f);
+    const float* preCh[2] = {prefill0.data(), prefill1.data()};
+    ring_.push(preCh, targetFillFrames);
+  }
 
   if (useLegacyConverter_) {
     if (!legacyConverter_.prepare(devices_.inputAsbd, devices_.outputAsbd)) {
@@ -151,8 +173,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
       return;
     }
     if (converted < frames) {
-      std::memset(channels[0] + converted, 0, (frames - converted) * sizeof(float));
-      std::memset(channels[1] + converted, 0, (frames - converted) * sizeof(float));
+      HoldLastSample(channels[0], channels[1], converted, frames);
     }
     return;
   }
@@ -171,8 +192,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   }
 
   if (converted < frames) {
-    std::memset(channels[0] + converted, 0, (frames - converted) * sizeof(float));
-    std::memset(channels[1] + converted, 0, (frames - converted) * sizeof(float));
+    HoldLastSample(channels[0], channels[1], converted, frames);
   }
   if (popped < maxPop) {
     drift_.notifyUnderrun();
@@ -204,8 +224,10 @@ bool BridgeEngine::start() {
   }
   std::cerr << "apm44-bridge: output='" << devices_.output.name << "' uid=" << devices_.output.uid
             << " rate=" << devices_.output.nominalRate << " buffer_frames=" << outBuf << "\n";
+  const double loggedTargetMs =
+      virtualDevice_ ? std::max(options_.targetFillMs, 20.0) : options_.targetFillMs;
   std::cerr << "apm44-bridge: ring_capacity=" << ring_.capacityFrames()
-            << " target_fill_ms=" << options_.targetFillMs
+            << " target_fill_ms=" << loggedTargetMs
             << " legacy_converter=" << (useLegacyConverter_ ? "yes" : "no")
             << " converter_ratio=" << converterRatio() << "\n";
 

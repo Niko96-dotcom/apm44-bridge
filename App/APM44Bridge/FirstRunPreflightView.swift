@@ -28,12 +28,12 @@ struct FirstRunPreflightView: View {
 
             Text("Cubase Control Room")
                 .font(.headline)
-            Text("Assign **Monitor 1** device ports to **APM44 Bridge** left and right (German UI: *Geräteanschlüsse*). See the setup guide for screenshots.")
+            Text("Assign Monitor 1 device ports to APM44 Bridge left and right (German UI: Geräteanschlüsse). For click-free monitoring, use Safe latency and USB-C AirPods.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
-                Link("Cubase setup guide", destination: URL(string: "https://github.com/niko/apm44-bridge/blob/master/docs/first-run-cubase.md")!)
+                Link("Cubase setup guide", destination: URL(string: "https://github.com/Niko96-dotcom/apm44-bridge/blob/master/docs/first-run-cubase.md")!)
                 Spacer()
                 Button("Continue") {
                     UserDefaults.standard.set(true, forKey: FirstRunKeys.completed)

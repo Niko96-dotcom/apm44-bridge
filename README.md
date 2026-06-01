@@ -2,95 +2,68 @@
 
 macOS audio bridge: DAW sessions stay at **44.1 kHz** while monitoring through **AirPods Max USB-C at 48 kHz**.
 
-| Phase | Status | What ships |
-|-------|--------|------------|
-| 1 — BlackHole console bridge | ✓ | `apm44-bridge` CLI, AudioToolbox SRC MVP |
-| 2 — Production SRC & drift | ✓ | libsamplerate, drift controller, offline soak |
-| 3 — Menu bar app | ✓ | **APM44 Bridge** SwiftUI app, latency/SRC presets, meters |
-| 4 — HAL virtual device | skeleton | `APM44Bridge.driver`, shm ring, `--virtual-device` — see [docs/hal-driver.md](docs/hal-driver.md) |
-| 5 — Integration & ship readiness | in progress | DAW matrix, export QA, signing docs |
+**Production path:** Cubase/DAW → **APM44 Bridge** (HAL virtual device) → `apm44-bridge` → **AirPods @ 48 kHz**.
 
-**MVP path today:** DAW → **BlackHole 2ch @ 44100** → `apm44-bridge` → **AirPods @ 48000**.
+| Component | Status |
+|-----------|--------|
+| HAL driver `APM44Bridge.driver` | ✓ 44.1 kHz only, signed + notarized |
+| Bridge daemon `apm44-bridge` | ✓ libsamplerate + drift controller |
+| Menu bar app **APM44 Bridge** | ✓ `--virtual-device`, latency presets, open at login |
+| Release pkg/DMG | ✓ `scripts/build-release-pkg.sh` |
 
-## Prerequisites
+## Install (end users)
 
-- macOS 14+
-- Xcode Command Line Tools (Xcode 16.x for menu bar app)
-- CMake 3.28+
-- [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole/releases) v0.6.1+ for MVP routing (GPL-3.0 — **not bundled**)
-- AirPods Max USB-C @ **48000 Hz** for monitoring
+Download **`APM44Bridge-0.1.0.pkg`** from [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases), double-click, enter your password, reboot once if the device is missing in Audio MIDI Setup.
 
-## Build & test
+Then every session: open **APM44 Bridge** from Applications → menu bar **headphones** icon → **Start** → play in Cubase.
+
+Full guide: **[docs/install.md](docs/install.md)** · Cubase: **[docs/first-run-cubase.md](docs/first-run-cubase.md)**
+
+## Maintainer release (signed + notarized)
+
+On a Mac with **Developer ID Application**, **Developer ID Installer**, and **`AC_NOTARY`** profile:
+
+```bash
+bash scripts/release-all.sh
+```
+
+Artifacts: `build/signing/APM44Bridge-0.1.0.pkg`, `build/signing/APM44Bridge-0.1.0.dmg`
+
+See **[docs/release.md](docs/release.md)** for manual steps.
+
+## Developer build
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build --output-on-failure
-```
-
-Binaries:
-
-- `build/BridgeDaemon/apm44-bridge` — bridge daemon
-- `build/BridgeDaemon/apm44-soak` — offline soak harness
-
-Menu bar app (XcodeGen):
-
-```bash
+(cd App && xcodegen generate)
 bash scripts/verify-app-build.sh
+bash scripts/embed-daemon-in-app.sh
 ```
 
-## Pre-flight
+Pre-flight:
 
 ```bash
 bash scripts/verify-devices.sh
-./build/BridgeDaemon/apm44-bridge --preflight
+bash scripts/verify-hal-driver.sh
 ```
-
-Set **BlackHole 2ch** to **44100 Hz** and **AirPods** to **48000 Hz** in Audio MIDI Setup.
-
-## Run
-
-**CLI:**
-
-```bash
-./build/BridgeDaemon/apm44-bridge
-```
-
-Options: `--help`, `--list-devices`, `--preflight`, `--print-config`, `--metrics-json`, `--target-fill-ms`, `--src-quality`, `--virtual-device`, `--input-device UID`, `--output-device UID`.
-
-**Menu bar app:** launch **APM44 Bridge** from Xcode or the built `.app`; set `APM44_BRIDGE_PATH` to the daemon binary if not embedded.
 
 ## Documentation
 
 | Doc | Purpose |
 |-----|---------|
-| [MVP routing (Logic + Ableton)](docs/mvp-routing.md) | BlackHole signal path |
-| [DAW validation matrix](docs/daw-matrix.md) | Logic/Ableton checklist + QA sign-off |
-| [Export rate validation (QA-02)](scripts/validate-export-rate.sh) | Bounce stays 44100 Hz |
-| [Soak test (QA-01)](docs/soak-test.md) | 30+ min stability |
-| [Menu bar app](docs/menu-bar-app.md) | App architecture |
-| [Menu bar hardware QA](docs/menu-bar-qa.md) | APP-01–05 checklist |
-| [HAL virtual device](docs/hal-driver.md) | Driver install, shm IPC, `--virtual-device` |
-| [Release signing](docs/release.md) | Developer ID, `notarytool`, HAL install |
-| [BlackHole prerequisite](docs/blackhole-prerequisite.md) | MVP install |
+| [install.md](docs/install.md) | End-user install & daily use |
+| [first-run-cubase.md](docs/first-run-cubase.md) | Cubase 15 Control Room |
+| [cubase-soak.md](docs/cubase-soak.md) | 30+ min QA soak |
+| [release.md](docs/release.md) | Signing & notarization |
+| [hal-driver.md](docs/hal-driver.md) | HAL + shm IPC |
+| [menu-bar-app.md](docs/menu-bar-app.md) | App architecture |
+| [mvp-routing.md](docs/mvp-routing.md) | BlackHole fallback path |
 
-## Verification scripts
+## MVP fallback (BlackHole)
 
-```bash
-bash scripts/verify-devices.sh
-bash scripts/verify-menu-bar.sh
-bash scripts/verify-hal-driver.sh
-bash scripts/validate-export-rate.sh --instructions
-bash scripts/ci-soak.sh
-```
+DAW → **BlackHole 2ch @ 44100** → `apm44-bridge` → AirPods. Used when HAL is not installed. [BlackHole](https://github.com/ExistentialAudio/BlackHole/releases) is GPL-3.0 — not bundled.
 
-## Distribution (preview)
+## License
 
-- Sign with **Developer ID Application** + hardened runtime — see [docs/release.md](docs/release.md)
-- HAL driver dev install: `bash scripts/install-driver.sh` (ad-hoc; Phase 4 build required)
-- Notarization: `xcrun notarytool submit` on a zip/dmg container, then `xcrun stapler staple`
-
-## License / dependencies
-
-- BlackHole: user-installed, GPL-3.0 — not vendored
-- libsamplerate: BSD-2-Clause (submodule)
+See repository license. HAL/driver and application are proprietary unless otherwise noted.
