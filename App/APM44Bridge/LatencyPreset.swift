@@ -30,6 +30,21 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Short label for the segmented control — the "~N ms" detail is shown
+    /// separately beneath the picker so the segments don't clip.
+    var shortTitle: String {
+        switch self {
+        case .low: return "Low"
+        case .balanced: return "Balanced"
+        case .safe: return "Safe"
+        }
+    }
+
+    /// One-line target description shown under the latency segmented control.
+    var targetDescription: String {
+        "~\(Int(targetFillMs)) ms buffer target"
+    }
+
     var stoppedLatencyHint: String {
         switch self {
         case .low: return "About 10–12 ms in Low mode when running."
