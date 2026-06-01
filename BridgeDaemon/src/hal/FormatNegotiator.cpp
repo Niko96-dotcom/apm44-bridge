@@ -41,16 +41,15 @@ std::optional<FormatNegotiationError> FormatNegotiator::negotiate(BridgeDevicePa
   }
   pair.outputAsbd = *outputFormat;
 
-  if (!AsbdMatchesFloat32StereoNonInterleaved(pair.inputAsbd, kInputSampleRate)) {
+  if (!AsbdMatchesFloat32Stereo(pair.inputAsbd, kInputSampleRate)) {
     return FormatNegotiationError{
-        "Input device '" + pair.input.name + "' is not float32 stereo non-interleaved @ 44100 Hz. "
+        "Input device '" + pair.input.name + "' is not float32 stereo @ 44100 Hz. "
         "Open Audio MIDI Setup and set BlackHole 2ch nominal rate to 44100 Hz."};
   }
 
-  if (!AsbdMatchesFloat32StereoNonInterleaved(pair.outputAsbd, kOutputSampleRate)) {
+  if (!AsbdMatchesFloat32Stereo(pair.outputAsbd, kOutputSampleRate)) {
     return FormatNegotiationError{
-        "Output device '" + pair.output.name +
-        "' is not float32 stereo non-interleaved @ 48000 Hz. "
+        "Output device '" + pair.output.name + "' is not float32 stereo @ 48000 Hz. "
         "Open Audio MIDI Setup and set AirPods Max USB-C to 48000 Hz (do not force 44100)."};
   }
 
@@ -84,10 +83,9 @@ std::optional<FormatNegotiationError> FormatNegotiator::negotiateVirtualOutput(
   }
   pair.outputAsbd = *outputFormat;
 
-  if (!AsbdMatchesFloat32StereoNonInterleaved(pair.outputAsbd, kOutputSampleRate)) {
+  if (!AsbdMatchesFloat32Stereo(pair.outputAsbd, kOutputSampleRate)) {
     return FormatNegotiationError{
-        "Output device '" + pair.output.name +
-        "' is not float32 stereo non-interleaved @ 48000 Hz."};
+        "Output device '" + pair.output.name + "' is not float32 stereo @ 48000 Hz."};
   }
 
   if (std::fabs(pair.output.nominalRate - kOutputSampleRate) > 1.0) {

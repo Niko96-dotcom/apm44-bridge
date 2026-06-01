@@ -13,4 +13,14 @@ bool AsbdMatchesFloat32StereoNonInterleaved(const AudioStreamBasicDescription& a
                                             double sampleRate,
                                             double rateTolerance = 1.0);
 
+// Accepts float32 stereo @ sampleRate (interleaved or non-interleaved). USB AirPods are
+// typically interleaved; BlackHole and many HAL devices use non-interleaved.
+bool AsbdMatchesFloat32Stereo(const AudioStreamBasicDescription& asbd,
+                              double sampleRate,
+                              double rateTolerance = 1.0);
+
+inline bool AsbdIsNonInterleaved(const AudioStreamBasicDescription& asbd) {
+  return (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+}
+
 }  // namespace apm44

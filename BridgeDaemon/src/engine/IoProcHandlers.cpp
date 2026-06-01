@@ -2,6 +2,8 @@
 
 #include "engine/BridgeEngine.h"
 
+#include <apm44/AudioFormats.h>
+
 #include <cstring>
 
 namespace apm44 {
@@ -29,7 +31,27 @@ OSStatus InputIoProc(AudioDeviceID,
                      const AudioTimeStamp*,
                      void* clientData) {
   auto* engine = static_cast<BridgeEngine*>(clientData);
-  if (inputData == nullptr || inputData->mNumberBuffers < 2) {
+  if (inputData == nullptr || inputData->mNumberBuffers < 1) {
+    return noErr;
+  }
+  const auto& asbd = engine->devices().inputAsbd;
+  if (!AsbdIsNonInterleaved(asbd)) {
+    const float* interleaved = static_cast<const float*>(inputData->mBuffers[0].mData);
+    if (interleaved == nullptr) {
+      return noErr;
+    }
+    const std::size_t frames =
+        inputData->mBuffers[0].mDataByteSize / (sizeof(float) * asbd.mChannelsPerFrame);
+    float* scratch[2] = {engine->inputScratch0(), engine->inputScratch1()};
+    for (std::size_t i = 0; i < frames; ++i) {
+      scratch[0][i] = interleaved[i * 2 + 0];
+      scratch[1][i] = interleaved[i * 2 + 1];
+    }
+    const float* channels[2] = {scratch[0], scratch[1]};
+    engine->onInput(channels, frames);
+    return noErr;
+  }
+  if (inputData->mNumberBuffers < 2) {
     return noErr;
   }
   const float* b0 = static_cast<const float*>(inputData->mBuffers[0].mData);
@@ -51,7 +73,26 @@ OSStatus OutputIoProc(AudioDeviceID,
                       const AudioTimeStamp*,
                       void* clientData) {
   auto* engine = static_cast<BridgeEngine*>(clientData);
-  if (outputData == nullptr || outputData->mNumberBuffers < 2) {
+  if (outputData == nullptr || outputData->mNumberBuffers < 1) {
+    return noErr;
+  }
+  const auto& asbd = engine->devices().outputAsbd;
+  if (!AsbdIsNonInterleaved(asbd)) {
+    float* interleaved = static_cast<float*>(outputData->mBuffers[0].mData);
+    if (interleaved == nullptr) {
+      return noErr;
+    }
+    const std::size_t frames =
+        outputData->mBuffers[0].mDataByteSize / (sizeof(float) * asbd.mChannelsPerFrame);
+    float* scratch[2] = {engine->outputScratch0(), engine->outputScratch1()};
+    engine->onOutput(scratch, frames);
+    for (std::size_t i = 0; i < frames; ++i) {
+      interleaved[i * 2 + 0] = scratch[0][i];
+      interleaved[i * 2 + 1] = scratch[1][i];
+    }
+    return noErr;
+  }
+  if (outputData->mNumberBuffers < 2) {
     return noErr;
   }
   float* b0 = static_cast<float*>(outputData->mBuffers[0].mData);

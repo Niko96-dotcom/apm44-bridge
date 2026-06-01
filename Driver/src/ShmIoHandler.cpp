@@ -7,15 +7,31 @@
 
 namespace apm44 {
 
-OSStatus ShmIoHandler::OnStartIO() {
+ShmIoHandler::ShmIoHandler() { ensureRingReady(); }
+
+bool ShmIoHandler::ensureRingReady() {
+  if (ring_.isMapped()) {
+    return true;
+  }
   if (!ring_.create(kDefaultShmCapacityFrames)) {
-    return kAudioHardwareUnspecifiedError;
+    return false;
   }
   convertScratch_.resize(kDefaultShmCapacityFrames * kShmChannels);
+  return true;
+}
+
+OSStatus ShmIoHandler::OnStartIO() {
+  if (!ensureRingReady()) {
+    return kAudioHardwareUnspecifiedError;
+  }
+  ioRunning_ = true;
   return kAudioHardwareNoError;
 }
 
-void ShmIoHandler::OnStopIO() { ring_.close(); }
+void ShmIoHandler::OnStopIO() {
+  ioRunning_ = false;
+  // Keep shm mapped so apm44-bridge can stay connected across transport stop/start.
+}
 
 void ShmIoHandler::OnWriteMixedOutput(const std::shared_ptr<aspl::Stream>&,
                                       Float64,

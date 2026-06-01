@@ -1,6 +1,7 @@
 #include "CliOptions.h"
 
 #include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <string_view>
 
@@ -12,6 +13,16 @@ constexpr const char* kVersion = "0.1.0";
 
 bool IsFlag(std::string_view arg) { return !arg.empty() && arg[0] == '-'; }
 
+std::string TrimCopy(std::string_view value) {
+  while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
+    value.remove_prefix(1);
+  }
+  while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) {
+    value.remove_suffix(1);
+  }
+  return std::string{value};
+}
+
 std::optional<std::string> ValueAfter(int argc, char* argv[], int& index) {
   if (index + 1 >= argc) {
     return std::nullopt;
@@ -21,7 +32,7 @@ std::optional<std::string> ValueAfter(int argc, char* argv[], int& index) {
     return std::nullopt;
   }
   ++index;
-  return std::string{argv[index]};
+  return TrimCopy(argv[index]);
 }
 
 std::optional<LibSamplerateSrc::Quality> ParseSrcQuality(std::string_view value) {

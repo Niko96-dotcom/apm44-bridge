@@ -22,6 +22,16 @@ bool ContainsIgnoreCase(std::string_view haystack, std::string_view needle) {
   return ToLower(haystack).find(ToLower(needle)) != std::string::npos;
 }
 
+std::string_view TrimUid(std::string_view uid) {
+  while (!uid.empty() && std::isspace(static_cast<unsigned char>(uid.front()))) {
+    uid.remove_prefix(1);
+  }
+  while (!uid.empty() && std::isspace(static_cast<unsigned char>(uid.back()))) {
+    uid.remove_suffix(1);
+  }
+  return uid;
+}
+
 OSStatus GetStringProperty(AudioObjectID objectId, AudioObjectPropertySelector selector,
                            std::string& out) {
   AudioObjectPropertyAddress address{
@@ -147,9 +157,33 @@ std::vector<AudioDeviceInfo> DeviceEnumerator::listAll() {
 }
 
 std::optional<AudioDeviceInfo> DeviceEnumerator::findByUid(std::string_view uid) {
+  const std::string_view needle = TrimUid(uid);
+  if (needle.empty()) {
+    return std::nullopt;
+  }
   for (const auto& device : listAll()) {
-    if (device.uid == uid) {
+    if (TrimUid(device.uid) == needle) {
       return device;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<AudioDeviceInfo> DeviceEnumerator::findOutputByUid(std::string_view uid) {
+  const std::string_view needle = TrimUid(uid);
+  if (needle.empty()) {
+    return std::nullopt;
+  }
+  if (auto exact = findByUid(needle)) {
+    if (exact->hasOutput) {
+      return exact;
+    }
+  }
+  // Allow base UID without ":output" suffix (common when copying from AMS).
+  if (needle.find(':') == std::string_view::npos) {
+    const std::string suffix = std::string(needle) + ":output";
+    if (auto withSuffix = findByUid(suffix)) {
+      return withSuffix;
     }
   }
   return std::nullopt;
@@ -174,7 +208,7 @@ std::optional<AudioDeviceInfo> DeviceEnumerator::resolveInput(
 std::optional<AudioDeviceInfo> DeviceEnumerator::resolveOutput(
     const std::optional<std::string>& uidOverride) {
   if (uidOverride) {
-    return findByUid(*uidOverride);
+    return findOutputByUid(*uidOverride);
   }
   return defaultOutput();
 }

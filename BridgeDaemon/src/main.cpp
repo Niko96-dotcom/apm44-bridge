@@ -30,7 +30,19 @@ std::optional<apm44::BridgeDevicePair> ResolveDevices(const apm44::CliOptions& o
   auto output = enumerator.resolveOutput(options.outputDeviceUid);
   if (!output) {
     if (requirePresent) {
-      std::cerr << "error: output device not found. Connect AirPods Max USB-C or pass --output-device UID\n";
+      if (options.outputDeviceUid) {
+        std::cerr << "error: output device UID not found: \"" << *options.outputDeviceUid
+                  << "\"\nRun --list-devices and copy the UID column only (no tabs or device name).\n";
+      } else {
+        std::cerr << "error: output device not found. Connect AirPods Max USB-C or pass --output-device UID\n";
+      }
+      std::cerr << "Output devices currently visible:\n";
+      for (const auto& device : enumerator.listAll()) {
+        if (device.hasOutput) {
+          std::cerr << "  " << device.uid << "  (" << device.name << " @ "
+                    << static_cast<int>(device.nominalRate) << " Hz)\n";
+        }
+      }
     }
     return std::nullopt;
   }

@@ -52,9 +52,25 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   virtualDevice_ = options.virtualDevice;
 
   if (virtualDevice_) {
-    if (!virtualFeed_.open()) {
-      std::cerr << "error: could not open shm ring (is APM44Bridge.driver IO running?)\n";
-      return false;
+    constexpr auto kPollInterval = std::chrono::milliseconds(100);
+    constexpr auto kWaitTimeout = std::chrono::seconds(120);
+    const auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
+    bool printedWaitHint = false;
+    while (!virtualFeed_.open()) {
+      if (!printedWaitHint) {
+        std::cerr << "Waiting for APM44 Bridge shm: reload HAL driver if this persists, then in "
+                     "Cubase assign Control Room Monitor L/R ports (or Outputs bus ports) to "
+                     "APM44 Bridge and start playback...\n";
+        printedWaitHint = true;
+      }
+      if (std::chrono::steady_clock::now() >= deadline) {
+        std::cerr << "error: could not open shm ring (is APM44Bridge.driver IO running?)\n";
+        return false;
+      }
+      std::this_thread::sleep_for(kPollInterval);
+    }
+    if (printedWaitHint) {
+      std::cerr << "Connected to APM44 Bridge shared-memory ring.\n";
     }
   }
 

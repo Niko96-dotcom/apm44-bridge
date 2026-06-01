@@ -16,6 +16,7 @@ class DeviceEnumerator {
  public:
   std::vector<AudioDeviceInfo> listAll();
   std::optional<AudioDeviceInfo> findByUid(std::string_view uid);
+  std::optional<AudioDeviceInfo> findOutputByUid(std::string_view uid);
   std::optional<AudioDeviceInfo> defaultInput();
   std::optional<AudioDeviceInfo> defaultOutput();
 

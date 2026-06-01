@@ -21,12 +21,19 @@ AudioStreamBasicDescription MakeFloat32StereoNonInterleaved(double sampleRate) {
 bool AsbdMatchesFloat32StereoNonInterleaved(const AudioStreamBasicDescription& asbd,
                                             double sampleRate,
                                             double rateTolerance) {
+  if (!AsbdMatchesFloat32Stereo(asbd, sampleRate, rateTolerance)) {
+    return false;
+  }
+  return (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+}
+
+bool AsbdMatchesFloat32Stereo(const AudioStreamBasicDescription& asbd,
+                              double sampleRate,
+                              double rateTolerance) {
   if (asbd.mFormatID != kAudioFormatLinearPCM) {
     return false;
   }
-  const auto requiredFlags = static_cast<UInt32>(kAudioFormatFlagIsFloat |
-                                                 kAudioFormatFlagIsNonInterleaved);
-  if ((asbd.mFormatFlags & requiredFlags) != requiredFlags) {
+  if ((asbd.mFormatFlags & kAudioFormatFlagIsFloat) == 0) {
     return false;
   }
   if (asbd.mChannelsPerFrame != 2 || asbd.mBitsPerChannel != 32) {

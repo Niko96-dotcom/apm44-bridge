@@ -12,6 +12,7 @@ namespace apm44 {
 
 class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestHandler {
  public:
+  ShmIoHandler();
   OSStatus OnStartIO() override;
   void OnStopIO() override;
 
@@ -22,8 +23,11 @@ class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestH
                           UInt32 buffBytesSize) override;
 
  private:
+  bool ensureRingReady();
+
   MmapShmRing ring_;
   std::vector<float> convertScratch_;
+  bool ioRunning_ = false;
 };
 
 }  // namespace apm44

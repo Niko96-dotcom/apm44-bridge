@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cerrno>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -22,13 +23,20 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
   role_ = ShmRingRole::Producer;
 
   const std::size_t totalSize = ShmTotalSize(capacityFrames);
-  fd_ = ::shm_open(kShmRingName, O_CREAT | O_RDWR, 0600);
-  if (fd_ < 0) {
-    ::shm_unlink(kShmRingName);
-    fd_ = ::shm_open(kShmRingName, O_CREAT | O_RDWR, 0600);
+  // Driver runs in coreaudiod; daemon runs as the logged-in user — world rw required.
+  ::shm_unlink(kShmRingName);
+  fd_ = ::shm_open(kShmRingName, O_CREAT | O_RDWR | O_EXCL, 0666);
+  if (fd_ < 0 && errno == EEXIST) {
+    fd_ = ::shm_open(kShmRingName, O_RDWR, 0666);
+    if (fd_ >= 0) {
+      ::fchmod(fd_, 0666);
+    }
   }
   if (fd_ < 0) {
     return false;
+  }
+  if (::fchmod(fd_, 0666) != 0) {
+    // Continue; mode at create time should already allow daemon access.
   }
   if (::ftruncate(fd_, static_cast<off_t>(totalSize)) != 0) {
     close();
