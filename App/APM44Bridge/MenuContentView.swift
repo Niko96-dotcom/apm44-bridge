@@ -23,14 +23,22 @@ struct MenuContentView: View {
     }
 
     private var statusSection: some View {
-        HStack(spacing: 4) {
-            Image(systemName: statusSymbol)
-                .foregroundStyle(statusTint)
-                .accessibilityHidden(true)
-            Text(statusText)
-                .font(.headline)
-                .accessibilityLabel("Bridge status")
-                .accessibilityValue(statusText)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: statusSymbol)
+                    .foregroundStyle(statusTint)
+                    .accessibilityHidden(true)
+                Text(statusText)
+                    .font(.headline)
+                    .accessibilityLabel("Bridge status")
+                    .accessibilityValue(statusText)
+            }
+            Text(manager.routingMode.menuLabel)
+                .font(.caption.weight(.semibold))
+            Text(manager.routingMode.detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -200,10 +208,13 @@ struct MenuContentView: View {
     }
 
     private var statusText: String {
+        if manager.isRunning {
+            return manager.connectionPhase.label
+        }
         switch manager.state {
         case .idle: return "Stopped"
         case .starting: return "Starting…"
-        case .running: return "Running"
+        case .running: return manager.connectionPhase.label
         case .stopping: return "Stopping…"
         case .error: return "Error"
         }

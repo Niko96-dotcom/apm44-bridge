@@ -15,6 +15,8 @@ final class BridgeProcessManager: ObservableObject {
     @Published private(set) var glitchFlash = false
     @Published private(set) var metricsStale = false
     @Published private(set) var devices: [AudioDeviceRow] = []
+    @Published private(set) var routingMode: RoutingMode = .blackHoleFallback
+    @Published private(set) var connectionPhase: BridgeConnectionPhase = .stopped
     @Published var bannerMessage: String?
 
     private var process: Process?
@@ -49,6 +51,7 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func refreshDevices() async {
+        refreshRoutingMode()
         guard let url = binaryURL else {
             bannerMessage = "Bridge not found — build or install apm44-bridge"
             return
@@ -68,6 +71,11 @@ final class BridgeProcessManager: ObservableObject {
         }
     }
 
+    func refreshRoutingMode() {
+        routingMode = HalDriverDetector.isHalInstalled() ? .halVirtualDevice : .blackHoleFallback
+        updateConnectionPhase()
+    }
+
     func start() {
         guard case .idle = state else { return }
         guard let url = binaryURL else {
@@ -80,6 +88,7 @@ final class BridgeProcessManager: ObservableObject {
         }
 
         state = .starting
+        connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
         stderrLines.removeAll()
         latestMetrics = nil
         lastXrunCount = 0
@@ -120,6 +129,7 @@ final class BridgeProcessManager: ObservableObject {
             try proc.run()
             process = proc
             state = .running
+            updateConnectionPhase()
             scheduleStaleWatch()
         } catch {
             state = .error("Bridge could not start.")
@@ -144,6 +154,7 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func handleHotplug() async {
+        refreshRoutingMode()
         guard isRunning else { return }
         await refreshDevices()
         guard let uid = settings.outputDeviceUid else {
@@ -166,12 +177,16 @@ final class BridgeProcessManager: ObservableObject {
     private func buildArguments(outputUid: String) -> [String] {
         let ms = settings.effectiveTargetFillMs
         let quality = settings.effectiveSrcQuality.cliArgument
-        return [
+        var args: [String] = [
             "--output-device", outputUid,
             "--target-fill-ms", String(format: "%.0f", ms),
             "--src-quality", quality,
             "--metrics-json",
         ]
+        if routingMode == .halVirtualDevice {
+            args.insert("--virtual-device", at: 0)
+        }
+        return args
     }
 
     private func consumeStdout(_ chunk: Data) {
@@ -201,6 +216,31 @@ final class BridgeProcessManager: ObservableObject {
         latestMetrics = snapshot
         lastMetricsAt = Date()
         metricsStale = false
+        updateConnectionPhase()
+    }
+
+    private func updateConnectionPhase() {
+        switch state {
+        case .idle, .stopping:
+            connectionPhase = .stopped
+        case .starting:
+            connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
+        case .error:
+            connectionPhase = .stopped
+        case .running:
+            guard let metrics = latestMetrics else {
+                connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .running
+                return
+            }
+            let target = max(metrics.targetFillMs, 1.0)
+            if metrics.fillMs < 2.0 {
+                connectionPhase = .waitingForDAW
+            } else if metrics.fillMs < target * 0.5 {
+                connectionPhase = .connected
+            } else {
+                connectionPhase = .running
+            }
+        }
     }
 
     private func triggerGlitchFlash() {
@@ -241,6 +281,7 @@ final class BridgeProcessManager: ObservableObject {
         staleTask?.cancel()
         if case .stopping = state {
             state = .idle
+            connectionPhase = .stopped
             return
         }
         if proc.terminationStatus != 0, case .running = state {
@@ -251,6 +292,7 @@ final class BridgeProcessManager: ObservableObject {
         } else if case .starting = state {
             state = .error("Bridge could not start.")
         }
+        connectionPhase = .stopped
     }
 
 }

@@ -15,6 +15,12 @@ enum BridgeBinaryLocator {
             return bundled
         }
 
+        let macOSBinary = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS/apm44-bridge")
+        if FileManager.default.isExecutableFile(atPath: macOSBinary.path) {
+            return macOSBinary
+        }
+
         if let devRoot = devRepoRoot() {
             let url = devRoot
                 .appendingPathComponent("build/BridgeDaemon/apm44-bridge")

@@ -4,6 +4,7 @@ import SwiftUI
 struct APM44BridgeApp: App {
     @StateObject private var settings = BridgeSettings()
     @StateObject private var manager: BridgeProcessManager
+    @State private var showFirstRun = false
     private let hotplug: HotplugMonitor
 
     init() {
@@ -21,9 +22,16 @@ struct APM44BridgeApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuContentView(manager: manager, settings: settings)
+                .sheet(isPresented: $showFirstRun) {
+                    FirstRunPreflightView(manager: manager, isPresented: $showFirstRun)
+                }
                 .onAppear {
                     hotplug.start()
+                    manager.refreshRoutingMode()
                     Task { await manager.refreshDevices() }
+                    if !UserDefaults.standard.bool(forKey: FirstRunKeys.completed) {
+                        showFirstRun = true
+                    }
                 }
                 .onDisappear {
                     hotplug.stop()
