@@ -1,8 +1,10 @@
 #pragma once
 
 #include "engine/AudioConverterSrc.h"
+#include "engine/LibSamplerateSrc.h"
 #include "hal/HalTypes.h"
 
+#include <apm44/DriftController.h>
 #include <apm44/PlanarRingBuffer.h>
 
 #include <atomic>
@@ -11,17 +13,29 @@
 
 namespace apm44 {
 
+struct BridgeEngineOptions {
+  double targetFillMs = 15.0;
+  LibSamplerateSrc::Quality srcQuality = LibSamplerateSrc::Quality::Medium;
+  bool useLegacyConverter = false;
+};
+
 class BridgeEngine {
  public:
-  bool prepare(const BridgeDevicePair& devices);
+  bool prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options = {});
   bool start();
   void stop();
   void runUntilSignal();
 
   const BridgeDevicePair& devices() const { return devices_; }
   std::size_t ringCapacity() const { return ring_.capacityFrames(); }
-  double converterRatio() const { return converter_.nominalRatio(); }
+  double converterRatio() const;
   uint64_t xrunCount() const { return xruns_.load(std::memory_order_relaxed); }
+
+  double lastFillMs() const { return lastFillMs_; }
+  double lastSmoothedRatio() const { return drift_.smoothedRatio(); }
+  double lastPpm() const { return drift_.currentPpm(); }
+  uint64_t underrunCount() const { return drift_.underrunCount(); }
+  uint64_t overrunCount() const { return drift_.overrunCount(); }
 
   // Called from IOProcs (RT-safe).
   void onInput(const float* const channels[2], std::size_t frames);
@@ -29,8 +43,12 @@ class BridgeEngine {
 
  private:
   BridgeDevicePair devices_{};
+  BridgeEngineOptions options_{};
   PlanarRingBuffer ring_;
-  AudioConverterSrc converter_;
+  DriftController drift_;
+  LibSamplerateSrc src_;
+  AudioConverterSrc legacyConverter_;
+  bool useLegacyConverter_ = false;
 
   std::vector<float> outputScratch0_;
   std::vector<float> outputScratch1_;
@@ -39,6 +57,8 @@ class BridgeEngine {
 
   std::atomic<uint64_t> xruns_{0};
   bool running_ = false;
+
+  double lastFillMs_ = 0.0;
 
   AudioDeviceIOProcID inputProc_ = nullptr;
   AudioDeviceIOProcID outputProc_ = nullptr;

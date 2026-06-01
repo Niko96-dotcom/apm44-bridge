@@ -36,15 +36,33 @@ UInt32 ReadBufferFrameSize(AudioDeviceID deviceId) {
   return frames;
 }
 
+std::size_t InputFramesForOutputFrames(std::size_t outputFrames) {
+  return static_cast<std::size_t>(std::ceil(static_cast<double>(outputFrames) * kInputSampleRate /
+                                            kOutputSampleRate));
+}
+
 }  // namespace
 
-bool BridgeEngine::prepare(const BridgeDevicePair& devices) {
+bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options) {
   devices_ = devices;
-  constexpr std::size_t kRingCapacity = 2048;
-  ring_.prepare(kRingCapacity);
+  options_ = options;
+  useLegacyConverter_ = options.useLegacyConverter;
 
-  if (!converter_.prepare(devices_.inputAsbd, devices_.outputAsbd)) {
-    return false;
+  const std::size_t targetFillFrames =
+      PlanarRingBuffer::framesForMilliseconds(options_.targetFillMs, kInputSampleRate);
+  const std::size_t ringRequest = std::max(targetFillFrames * 2 + 512, std::size_t{1024});
+  ring_.prepare(ringRequest);
+  drift_.reset();
+  drift_.setTargetFillFrames(targetFillFrames);
+
+  if (useLegacyConverter_) {
+    if (!legacyConverter_.prepare(devices_.inputAsbd, devices_.outputAsbd)) {
+      return false;
+    }
+  } else {
+    if (!src_.prepare(options_.srcQuality)) {
+      return false;
+    }
   }
 
   constexpr std::size_t kMaxCallbackFrames = 1024;
@@ -55,19 +73,17 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices) {
   return true;
 }
 
-namespace {
-
-std::size_t InputFramesForOutputFrames(std::size_t outputFrames) {
-  return static_cast<std::size_t>(
-      std::ceil(static_cast<double>(outputFrames) * apm44::kInputSampleRate / apm44::kOutputSampleRate));
+double BridgeEngine::converterRatio() const {
+  if (useLegacyConverter_) {
+    return legacyConverter_.nominalRatio();
+  }
+  return src_.nominalRatio();
 }
 
-}  // namespace
-
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
-  // MVP drop policy: if ring is full, drop oldest then push only the remainder (live monitoring).
-  std::size_t pushed = ring_.push(channels, frames);
+  const std::size_t pushed = ring_.push(channels, frames);
   if (pushed < frames) {
+    drift_.notifyOverrun();
     float* dropCh[2] = {inputDropScratch0_.data(), inputDropScratch1_.data()};
     const std::size_t toDrop = frames - pushed;
     ring_.pop(dropCh, toDrop);
@@ -80,20 +96,45 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   std::memset(channels[0], 0, frames * sizeof(float));
   std::memset(channels[1], 0, frames * sizeof(float));
 
+  const std::size_t fill = ring_.fillFrames();
+  lastFillMs_ = ring_.fillMs(kInputSampleRate);
+
   float* popCh[2] = {outputScratch0_.data(), outputScratch1_.data()};
   const std::size_t inputFramesNeeded = InputFramesForOutputFrames(frames);
   const std::size_t maxPop = std::min(inputFramesNeeded, outputScratch0_.size());
   const std::size_t popped = ring_.pop(popCh, maxPop);
   if (popped == 0) {
+    drift_.notifyUnderrun();
     xruns_.fetch_add(1, std::memory_order_relaxed);
     return;
   }
 
+  if (useLegacyConverter_) {
+    std::size_t converted = 0;
+    const float* inCh[2] = {popCh[0], popCh[1]};
+    if (!legacyConverter_.convert(inCh, popped, channels, frames, converted) || converted == 0) {
+      std::memset(channels[0], 0, frames * sizeof(float));
+      std::memset(channels[1], 0, frames * sizeof(float));
+      drift_.notifyUnderrun();
+      xruns_.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
+    if (converted < frames) {
+      std::memset(channels[0] + converted, 0, (frames - converted) * sizeof(float));
+      std::memset(channels[1] + converted, 0, (frames - converted) * sizeof(float));
+    }
+    return;
+  }
+
+  const double ratio = drift_.update(fill);
+  src_.setRatio(ratio);
+
   std::size_t converted = 0;
   const float* inCh[2] = {popCh[0], popCh[1]};
-  if (!converter_.convert(inCh, popped, channels, frames, converted) || converted == 0) {
+  if (!src_.process(inCh, popped, channels, frames, converted) || converted == 0) {
     std::memset(channels[0], 0, frames * sizeof(float));
     std::memset(channels[1], 0, frames * sizeof(float));
+    drift_.notifyUnderrun();
     xruns_.fetch_add(1, std::memory_order_relaxed);
     return;
   }
@@ -101,6 +142,9 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   if (converted < frames) {
     std::memset(channels[0] + converted, 0, (frames - converted) * sizeof(float));
     std::memset(channels[1] + converted, 0, (frames - converted) * sizeof(float));
+  }
+  if (popped < maxPop) {
+    drift_.notifyUnderrun();
   }
 }
 
@@ -123,7 +167,9 @@ bool BridgeEngine::start() {
   std::cerr << "apm44-bridge: output='" << devices_.output.name << "' uid=" << devices_.output.uid
             << " rate=" << devices_.output.nominalRate << " buffer_frames=" << outBuf << "\n";
   std::cerr << "apm44-bridge: ring_capacity=" << ring_.capacityFrames()
-            << " converter_ratio=" << converter_.nominalRatio() << "\n";
+            << " target_fill_ms=" << options_.targetFillMs
+            << " legacy_converter=" << (useLegacyConverter_ ? "yes" : "no")
+            << " converter_ratio=" << converterRatio() << "\n";
 
   OSStatus status =
       AudioDeviceCreateIOProcID(devices_.input.deviceId, InputIoProc, this, &inputProc_);
@@ -172,10 +218,12 @@ void BridgeEngine::runUntilSignal() {
   std::signal(SIGTERM, SignalHandler);
   std::cerr << "apm44-bridge: running (Ctrl+C to stop)\n";
   while (gStopRequested == 0) {
-    // Main thread idle — stats on exit only (no periodic logging).
   }
   stop();
-  std::cerr << "apm44-bridge: stopped. xruns=" << xrunCount() << "\n";
+  std::cerr << "apm44-bridge: stopped. fill_ms=" << lastFillMs_
+            << " ratio=" << drift_.smoothedRatio() << " ppm=" << drift_.currentPpm()
+            << " underruns=" << drift_.underrunCount() << " overruns=" << drift_.overrunCount()
+            << " xruns=" << xrunCount() << "\n";
 }
 
 }  // namespace apm44
