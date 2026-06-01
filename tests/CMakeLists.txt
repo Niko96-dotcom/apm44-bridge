@@ -25,6 +25,11 @@ apm44_add_test(test_libsamplerate_smoke test_libsamplerate_smoke.cpp)
 apm44_add_test(test_drift_controller test_drift_controller.cpp)
 apm44_add_test(test_lib_samplerate_src test_lib_samplerate_src.cpp)
 apm44_add_test(test_soak_offline test_soak_offline.cpp)
+apm44_add_test(test_bridge_metrics_json test_bridge_metrics_json.cpp)
+
+target_sources(test_bridge_metrics_json PRIVATE
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/BridgeMetrics.cpp
+)
 
 target_link_libraries(test_libsamplerate_smoke PRIVATE samplerate::samplerate)
 target_link_libraries(test_lib_samplerate_src PRIVATE samplerate::samplerate)

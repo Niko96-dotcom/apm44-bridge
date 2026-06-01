@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <csignal>
+#include <thread>
 #include <cstring>
 #include <iostream>
 
@@ -213,11 +215,15 @@ void BridgeEngine::stop() {
   running_ = false;
 }
 
-void BridgeEngine::runUntilSignal() {
+void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick) {
   std::signal(SIGINT, SignalHandler);
   std::signal(SIGTERM, SignalHandler);
   std::cerr << "apm44-bridge: running (Ctrl+C to stop)\n";
   while (gStopRequested == 0) {
+    if (onTick) {
+      onTick(*this);
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
   }
   stop();
   std::cerr << "apm44-bridge: stopped. fill_ms=" << lastFillMs_

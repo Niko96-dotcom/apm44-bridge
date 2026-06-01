@@ -20,6 +20,7 @@ struct CliOptions {
   double targetFillMs = 15.0;
   LibSamplerateSrc::Quality srcQuality = LibSamplerateSrc::Quality::Medium;
   bool legacyConverter = false;
+  bool metricsJson = false;
 };
 
 CliOptions ParseCliOptions(int argc, char* argv[]);
@@ -27,5 +28,7 @@ CliOptions ParseCliOptions(int argc, char* argv[]);
 void PrintUsage(const char* programName);
 
 BridgeEngineOptions ToEngineOptions(const CliOptions& cli);
+
+const char* SrcQualityCliString(LibSamplerateSrc::Quality quality);
 
 }  // namespace apm44

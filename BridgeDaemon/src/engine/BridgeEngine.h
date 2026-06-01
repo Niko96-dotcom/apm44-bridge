@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace apm44 {
@@ -24,7 +25,7 @@ class BridgeEngine {
   bool prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options = {});
   bool start();
   void stop();
-  void runUntilSignal();
+  void runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick = nullptr);
 
   const BridgeDevicePair& devices() const { return devices_; }
   std::size_t ringCapacity() const { return ring_.capacityFrames(); }

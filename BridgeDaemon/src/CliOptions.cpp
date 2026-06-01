@@ -50,8 +50,9 @@ void PrintUsage(const char* programName) {
             << "  --print-config      Print resolved device/config (no audio)\n"
             << "  --input-device UID  Input device UID (default: BlackHole 2ch)\n"
             << "  --output-device UID Output device UID (default: AirPods Max)\n"
-            << "  --target-fill-ms N  Ring target fill 10–40 ms (default 15)\n"
+            << "  --target-fill-ms N  Ring target fill 6–40 ms (default 15)\n"
             << "  --src-quality Q     SRC quality: medium|high|best (default medium)\n"
+            << "  --metrics-json      Emit JSON metrics on stdout every 500 ms while running\n"
             << "  --legacy-converter  Use AudioToolbox converter (debug)\n\n"
             << "Prerequisite: BlackHole 2ch v0.6.1+ (user-installed, GPL-3.0).\n"
             << "  https://github.com/ExistentialAudio/BlackHole/releases\n"
@@ -72,6 +73,8 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
       options.preflight = true;
     } else if (arg == "--print-config") {
       options.printConfig = true;
+    } else if (arg == "--metrics-json") {
+      options.metricsJson = true;
     } else if (arg == "--legacy-converter") {
       options.legacyConverter = true;
     } else if (arg == "--input-device") {
@@ -98,8 +101,8 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
         std::cerr << "error: invalid --target-fill-ms value\n";
         std::exit(2);
       }
-      if (options.targetFillMs < 10.0 || options.targetFillMs > 40.0) {
-        std::cerr << "error: --target-fill-ms must be between 10 and 40\n";
+      if (options.targetFillMs < 6.0 || options.targetFillMs > 40.0) {
+        std::cerr << "error: --target-fill-ms must be between 6 and 40\n";
         std::exit(2);
       }
     } else if (arg == "--src-quality") {
@@ -120,6 +123,18 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
     }
   }
   return options;
+}
+
+const char* SrcQualityCliString(LibSamplerateSrc::Quality quality) {
+  switch (quality) {
+    case LibSamplerateSrc::Quality::High:
+      return "high";
+    case LibSamplerateSrc::Quality::Best:
+      return "best";
+    case LibSamplerateSrc::Quality::Medium:
+    default:
+      return "medium";
+  }
 }
 
 BridgeEngineOptions ToEngineOptions(const CliOptions& cli) {

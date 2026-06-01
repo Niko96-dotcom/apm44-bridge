@@ -1,5 +1,6 @@
 #include "CliOptions.h"
 #include "engine/BridgeEngine.h"
+#include "engine/BridgeMetrics.h"
 #include "hal/DeviceEnumerator.h"
 #include "hal/FormatNegotiator.h"
 
@@ -148,6 +149,16 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  engine.runUntilSignal();
+  if (options.metricsJson) {
+    engine.runUntilSignal([&options](const apm44::BridgeEngine& snapshot) {
+      const auto metrics = apm44::MakeBridgeMetrics(
+          snapshot.lastFillMs(), snapshot.lastSmoothedRatio(), snapshot.lastPpm(),
+          snapshot.underrunCount(), snapshot.overrunCount(), snapshot.xrunCount(),
+          options.targetFillMs, apm44::SrcQualityCliString(options.srcQuality));
+      std::cout << apm44::ToJsonLine(metrics) << '\n' << std::flush;
+    });
+  } else {
+    engine.runUntilSignal();
+  }
   return 0;
 }
