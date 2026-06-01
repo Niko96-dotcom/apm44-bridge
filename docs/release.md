@@ -1,0 +1,178 @@
+# Release: code signing and notarization
+
+Distribution checklist for **apm44-bridge**, **APM44 Bridge.app**, and **APM44Bridge.driver** (HAL Audio Server Plug-in).
+
+## Prerequisites
+
+- Apple Developer Program membership (required for HAL load on macOS 15+ in production)
+- **Developer ID Application** certificate in Keychain
+- Xcode 16.x (or 15.4+) with `codesign`, `xcrun notarytool`, `xcrun stapler`
+- App-specific password or App Store Connect API key for notarization
+
+## Artifacts
+
+| Artifact | Path (typical) | Entitlements |
+|----------|----------------|--------------|
+| Bridge daemon | `build/BridgeDaemon/apm44-bridge` | none (CLI) |
+| Menu bar app | `build/Release/APM44 Bridge.app` | `App/APM44Bridge/APM44Bridge.entitlements` |
+| HAL plug-in | `build/Release/APM44Bridge.driver` | `Driver/APM44Bridge.entitlements` |
+
+Build Release binaries before signing:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+bash scripts/verify-app-build.sh   # generates Release .app when configured
+```
+
+## Developer ID signing (release)
+
+Set your signing identity (adjust team name):
+
+```bash
+export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
+```
+
+### Bridge daemon
+
+```bash
+codesign --force --sign "$SIGN_ID" \
+  --timestamp --options runtime \
+  build/BridgeDaemon/apm44-bridge
+codesign --verify --verbose build/BridgeDaemon/apm44-bridge
+```
+
+### Menu bar app
+
+Embed the daemon if your packaging copies it into `Contents/MacOS/` or `Resources/`, then sign inner binaries before the bundle:
+
+```bash
+APP="build/Release/APM44 Bridge.app"
+codesign --force --sign "$SIGN_ID" \
+  --timestamp --options runtime \
+  --entitlements App/APM44Bridge/APM44Bridge.entitlements \
+  "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
+```
+
+### HAL driver
+
+HAL plug-ins load inside `coreaudiod`. Use hardened runtime and the driver entitlements plist:
+
+```bash
+DRIVER="build/Release/APM44Bridge.driver"
+codesign --force --sign "$SIGN_ID" \
+  --timestamp --options runtime \
+  --entitlements Driver/APM44Bridge.entitlements \
+  "$DRIVER"
+codesign --verify --deep --strict --verbose=2 "$DRIVER"
+```
+
+Install signed driver (requires admin):
+
+```bash
+sudo cp -R "$DRIVER" /Library/Audio/Plug-Ins/HAL/
+sudo chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
+sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+```
+
+For local development without a Developer ID cert, use `scripts/install-driver.sh` (ad-hoc sign).
+
+## Notarization (dry-run / staging)
+
+Apple expects a **container** (zip, dmg, or pkg), not loose binaries.
+
+### 1. Package
+
+Example zip of app + daemon:
+
+```bash
+RELEASE_DIR="$(mktemp -d)"
+cp -R "build/Release/APM44 Bridge.app" "$RELEASE_DIR/"
+cp build/BridgeDaemon/apm44-bridge "$RELEASE_DIR/"
+ditto -c -k --keepParent "$RELEASE_DIR/APM44 Bridge.app" APM44Bridge-app.zip
+```
+
+For driver distribution, zip the signed `.driver` bundle separately or ship a pkg that installs to `/Library/Audio/Plug-Ins/HAL/`.
+
+### 2. Submit
+
+Using App Store Connect API key (recommended for CI):
+
+```bash
+xcrun notarytool submit APM44Bridge-app.zip \
+  --keychain-profile "AC_NOTARY" \
+  --wait
+```
+
+Using Apple ID (interactive / one-off):
+
+```bash
+xcrun notarytool submit APM44Bridge-app.zip \
+  --apple-id "you@example.com" \
+  --team-id "TEAMID" \
+  --password "@keychain:AC_PASSWORD" \
+  --wait
+```
+
+Store credentials once:
+
+```bash
+xcrun notarytool store-credentials "AC_NOTARY" \
+  --apple-id "you@example.com" \
+  --team-id "TEAMID" \
+  --password "app-specific-password"
+```
+
+### 3. Staple
+
+After `status: Accepted`:
+
+```bash
+xcrun stapler staple "build/Release/APM44 Bridge.app"
+xcrun stapler validate "build/Release/APM44 Bridge.app"
+```
+
+Re-zip if you ship a download artifact after stapling.
+
+### 4. Log on failure
+
+```bash
+xcrun notarytool log <submission-id> --keychain-profile "AC_NOTARY" notary-log.json
+```
+
+## Ad-hoc signing (local dev only)
+
+Ad-hoc signed HAL bundles may fail AMFI on macOS 15+ before plug-in code runs. Use for **SIP-disabled / dev machines only**:
+
+```bash
+codesign --force --sign - --timestamp \
+  --entitlements Driver/APM44Bridge.entitlements \
+  build/Debug/APM44Bridge.driver
+```
+
+Or run:
+
+```bash
+bash scripts/install-driver.sh [path/to/APM44Bridge.driver]
+```
+
+## Entitlements notes
+
+- **App** (`App/APM44Bridge/APM44Bridge.entitlements`): minimal; menu bar app spawns `apm44-bridge` subprocess. Add only entitlements required for hardened runtime (e.g. audio device access if Apple requires explicit keys in future builds).
+- **Driver** (`Driver/APM44Bridge.entitlements`): empty/minimal dict. HAL plug-ins run in `coreaudiod`; do not enable app sandbox on the driver bundle.
+
+## CI scope
+
+Current repo CI expectation (see [daw-matrix.md](daw-matrix.md)):
+
+- **Automated:** `cmake --build`, `ctest`, offline soak (`scripts/ci-soak.sh`)
+- **Manual:** DAW matrix, export bounce QA-02, 30+ min hardware soak, notarization with real Developer ID credentials
+
+Optional future: GitHub Actions `macos-latest` job compiling daemon + tests only (no HAL install, no notary secrets).
+
+## Related
+
+- [DAW validation matrix](daw-matrix.md)
+- [Export rate check](../scripts/validate-export-rate.sh)
+- Project stack: `CLAUDE.md` (signing table)

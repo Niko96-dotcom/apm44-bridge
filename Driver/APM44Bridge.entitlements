@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- HAL Audio Server Plug-in: minimal entitlements for hardened runtime.
+	     Driver runs inside coreaudiod; do not enable app sandbox here. -->
+</dict>
+</plist>
