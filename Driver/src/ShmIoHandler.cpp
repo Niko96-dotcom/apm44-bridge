@@ -1,0 +1,50 @@
+#include "ShmIoHandler.h"
+
+#include <apm44/ShmRingLayout.h>
+
+#include <algorithm>
+#include <cstring>
+
+namespace apm44 {
+
+OSStatus ShmIoHandler::OnStartIO() {
+  if (!ring_.create(kDefaultShmCapacityFrames)) {
+    return kAudioHardwareUnspecifiedError;
+  }
+  convertScratch_.resize(kDefaultShmCapacityFrames * kShmChannels);
+  return kAudioHardwareNoError;
+}
+
+void ShmIoHandler::OnStopIO() { ring_.close(); }
+
+void ShmIoHandler::OnWriteMixedOutput(const std::shared_ptr<aspl::Stream>&,
+                                      Float64,
+                                      Float64,
+                                      const void* buff,
+                                      UInt32 buffBytesSize) {
+  if (buff == nullptr || buffBytesSize == 0 || !ring_.isMapped()) {
+    return;
+  }
+
+  const UInt32 bytesPerFrame = sizeof(SInt16) * kShmChannels;
+  if (buffBytesSize % bytesPerFrame != 0) {
+    return;
+  }
+  const std::size_t frames = buffBytesSize / bytesPerFrame;
+  if (frames > convertScratch_.size() / kShmChannels) {
+    return;
+  }
+
+  const auto* samples = static_cast<const SInt16*>(buff);
+  for (std::size_t i = 0; i < frames; ++i) {
+    convertScratch_[i * 2 + 0] = static_cast<float>(samples[i * 2 + 0]) / 32768.0f;
+    convertScratch_[i * 2 + 1] = static_cast<float>(samples[i * 2 + 1]) / 32768.0f;
+  }
+
+  const std::size_t pushed = ring_.pushInterleaved(convertScratch_.data(), frames);
+  if (pushed < frames) {
+    // Drop policy: bounded ring; oldest implicitly skipped when full (SPSC reserve slot).
+  }
+}
+
+}  // namespace apm44

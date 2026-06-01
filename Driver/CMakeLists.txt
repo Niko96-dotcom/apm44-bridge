@@ -1,0 +1,47 @@
+cmake_minimum_required(VERSION 3.28)
+
+project(APM44BridgeDriver CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(DRIVER_NAME "APM44Bridge")
+set(DRIVER_VERSION "0.1.0")
+set(DRIVER_COPYRIGHT "APM44 Bridge")
+set(DRIVER_IDENTIFIER "com.niko.apm44.bridge")
+set(DRIVER_UID "B44F4410-0000-4000-8000-000000000441")
+set(DRIVER_ENTRYPOINT "APM44EntryPoint")
+
+add_library(${DRIVER_NAME} MODULE
+  src/Driver.cpp
+  src/ShmIoHandler.cpp
+)
+
+add_dependencies(${DRIVER_NAME} libASPL)
+
+target_include_directories(${DRIVER_NAME} PRIVATE
+  ${CMAKE_SOURCE_DIR}/third_party/libASPL/include
+  ${CMAKE_SOURCE_DIR}/Shared/include
+)
+
+target_link_libraries(${DRIVER_NAME} PRIVATE
+  libASPL
+  apm44_shared
+  "-framework CoreFoundation"
+)
+
+set_target_properties(${DRIVER_NAME} PROPERTIES
+  OUTPUT_NAME "${DRIVER_NAME}"
+  BUNDLE true
+  BUNDLE_EXTENSION "driver"
+  PREFIX ""
+  SUFFIX ""
+  MACOSX_BUNDLE ON
+  MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
+  MACOSX_BUNDLE_BUNDLE_NAME "${DRIVER_NAME}"
+  MACOSX_BUNDLE_BUNDLE_VERSION "${DRIVER_VERSION}"
+  MACOSX_BUNDLE_COPYRIGHT "${DRIVER_COPYRIGHT}"
+  MACOSX_BUNDLE_GUI_IDENTIFIER "${DRIVER_IDENTIFIER}"
+  MACOSX_BUNDLE_SHORT_VERSION_STRING "${DRIVER_VERSION}"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Driver"
+)
