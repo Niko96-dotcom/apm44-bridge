@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-01 — milestone v1.1)
 Phase: 9 of 10 (Cubase Sign-Off & Soak)
 Plan: 1 of 1 (docs/templates complete; human soak pending)
 Status: Awaiting operator sign-off on sign-off Mac
-Last activity: 2026-06-01 — Phases 6–8 and 10 implemented; Phase 9 templates ready
+Last activity: 2026-06-01 — Quick task 260601-r4p: menu bar popover visual refresh (Phase 9 soak still pending)
 
 Progress: [████████░░] 80% (v1.1)
 
@@ -63,6 +63,12 @@ Progress: [████████░░] 80% (v1.1)
 - **Phase 9 human soak** — operator must run 30+ min Cubase session on sign-off Mac
 - **SHIP-03 / DEV-01** — require signed+stapled HAL install verification on sign-off Mac
 - **Xcode required** — app build/tests need full Xcode (not CLT-only) on dev machine
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260601-r4p | Menu bar popover visual refresh (view-layer redesign) | 2026-06-01 | cd29a15 | [260601-r4p-menu-bar-popover-refresh](./quick/260601-r4p-menu-bar-popover-refresh/) |
 
 ## Session Continuity
 
