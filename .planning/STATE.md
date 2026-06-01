@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: APM44 Bridge MVP
-status: Awaiting next milestone
-stopped_at: Milestone v1.0 complete — run /gsd-new-milestone to plan v1.1
-last_updated: "2026-06-01T08:55:00.000Z"
-last_activity: 2026-06-01 — Milestone v1.0 completed and archived
+milestone: v1.1
+milestone_name: Production Sign-Off
+status: planning
+last_updated: "2026-06-01T10:19:16.478Z"
+last_activity: 2026-06-01
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 23
-  completed_plans: 23
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-01 after v1.0 milestone)
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-01 — Milestone v1.0 completed and archived
-
-Progress: [██████████] 100%
+Status: Defining requirements
+Last activity: 2026-06-01 — Milestone v1.1 started
 
 ## Performance Metrics
 

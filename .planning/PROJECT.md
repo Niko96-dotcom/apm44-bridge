@@ -8,6 +8,20 @@ APM44 Bridge is a macOS audio product that lets DAW users (Logic, Ableton, Pro T
 
 A producer can set session/project rate to **44.1 kHz**, select **APM44 Bridge** as output, and hear stable, low-glitch monitoring on AirPods Max USB-C at **48 kHz** for long sessions—without changing exports, stems, plug-in oversampling assumptions, or project metadata.
 
+## Current Milestone: v1.1 Production Sign-Off
+
+**Goal:** Close v1.0 audit gaps so a producer can run **Cubase 15** @ 44.1 kHz → **APM44 Bridge** (HAL) → AirPods Max USB-C @ 48 kHz with signed/notarized binaries and documented human QA.
+
+**Target features:**
+- AMS + Cubase 15 enumerate and route to APM44 Bridge @ 44.1 kHz (DEV-01, DEV-03)
+- Menu bar spawns `--virtual-device` when HAL driver is installed; BlackHole path remains supported fallback
+- DRV-02: Harden driver to **44100 Hz only** in available nominal rates
+- QA-02: Cubase export/bounce remains 44.1 kHz (`validate-export-rate.sh`)
+- Developer ID sign + notarytool dry-run; signed HAL loads on a real Mac (hard gate for milestone done)
+- **30+ minute** live monitoring soak on the HAL path (required)
+
+**Key context:** Primary DAW sign-off matrix is **Cubase 15** (operator does not have Logic/Ableton). Signing is required for v1.1 complete—not docs-only.
+
 ## Current State (v1.0 shipped 2026-06-01)
 
 **Shipped:** Five-phase vertical MVP — CMake monorepo, `apm44-bridge` daemon (BlackHole + `--virtual-device` paths), SwiftUI menu bar app, `APM44Bridge.driver` HAL plug-in with POSIX shm ring, integration docs/scripts.
@@ -37,15 +51,9 @@ A producer can set session/project rate to **44.1 kHz**, select **APM44 Bridge**
 - ✓ Shm IPC ring transport driver → daemon — v1.0 (DRV-03)
 - ✓ Virtual device 2ch Float32 format — v1.0 (DEV-02, build evidence)
 
-### Active (v1.1+)
+### Active (v1.1 — see Current Milestone)
 
-- [ ] DEV-01: AMS/DAW enumeration of APM44 Bridge @ 44.1 kHz (signed install + manual QA)
-- [ ] DEV-03: DAW @ 44100 → APM44 Bridge end-to-end verified (Logic/Ableton)
-- [ ] DRV-02: Harden GetAvailableNominalSampleRates to 44100-only
-- [ ] QA-02: Export/stem bounce remains 44.1 kHz (human bounce + validate-export-rate.sh)
-- [ ] Wire menu bar app to spawn `--virtual-device` when HAL driver installed
-- [ ] Developer ID sign + notarytool dry-run for driver and app
-- [ ] Full 30+ min live DAW soak sign-off (documented procedure exists)
+Tracked in `.planning/REQUIREMENTS.md` (DEV-01, DEV-03, DRV-02, QA-02, APP integration, SHIP signing, QA soak).
 
 ### Out of Scope
 
@@ -120,4 +128,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-01 after v1.0 milestone*
+*Last updated: 2026-06-01 — milestone v1.1 Production Sign-Off started*
