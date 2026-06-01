@@ -14,7 +14,7 @@ Deliver a macOS audio bridge that lets DAW users monitor 44.1 kHz sessions on Ai
 - [ ] **Phase 2: Production SRC & Drift Engine** - libsamplerate, lock-free ring, drift controller, soak validation
 - [ ] **Phase 3: Menu Bar Application** - SwiftUI shell with latency modes, hotplug, meters, honest latency reporting
 - [ ] **Phase 4: HAL Virtual Device** - libASPL `APM44Bridge.driver` @ 44100 with IPC ring transport
-- [ ] **Phase 5: Integration & Ship Readiness** - Full-stack DAW validation, signing, export-path verification
+- [x] **Phase 5: Integration & Ship Readiness** - Full-stack DAW validation, signing, export-path verification (completed 2026-06-01)
 
 ## Phase Details
 
@@ -111,7 +111,7 @@ Plans:
   2. End-to-end workflow validated: DAW @ 44.1 → APM44 Bridge → daemon → AirPods @ 48 with 30+ minute stability
   3. DAW validation matrix passes for Logic and Ableton (minimum); Audio MIDI Setup confirms 44.1 on bridge, 48 kHz on AirPods
   4. HAL driver bundle and menu bar app are Developer ID signed and ready for notarization/distribution testing
-**Plans**: TBD
+**Plans**: 1/1 complete (docs/scripts; hardware sign-off pending)
 
 ## Progress
 
@@ -124,4 +124,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Production SRC & Drift Engine | 0/TBD | Not started | - |
 | 3. Menu Bar Application | 0/7 | Planned | - |
 | 4. HAL Virtual Device | 0/TBD | Not started | - |
-| 5. Integration & Ship Readiness | 0/TBD | Not started | - |
+| 5. Integration & Ship Readiness | 1/1 | Complete   | 2026-06-01 |

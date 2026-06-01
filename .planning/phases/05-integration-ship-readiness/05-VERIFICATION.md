@@ -47,9 +47,9 @@
 
 | Plan | Commit |
 |------|--------|
-| 05-01 Task 1 | (pending) |
-| 05-01 Task 2 | (pending) |
-| 05-01 Task 3 | (pending) |
+| 05-01 Task 1 | `fc7f08e` |
+| 05-01 Task 2 | `7269ee0` |
+| 05-01 Task 3 | `c4c49d9` |
 
 ## Gaps / deferred
 
