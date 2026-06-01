@@ -12,6 +12,8 @@ endif()
 
 enable_testing()
 
+include(cmake/Libsamplerate.cmake)
+
 add_subdirectory(Shared)
 add_subdirectory(BridgeDaemon)
 add_subdirectory(tests)
