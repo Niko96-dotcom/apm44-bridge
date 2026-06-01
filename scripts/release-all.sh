@@ -3,7 +3,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-export SIGN_ID="${SIGN_ID:-Developer ID Application: Nikolay Mohr (4H5447ZWS3)}"
 
 cd "$ROOT"
 (cd App && xcodegen generate)

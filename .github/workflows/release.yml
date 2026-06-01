@@ -5,6 +5,13 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-macos:
     runs-on: macos-15
@@ -15,6 +22,9 @@ jobs:
 
       - name: Install tools
         run: brew install xcodegen
+
+      - name: Secret scan
+        run: bash scripts/check-secrets.sh
 
       - name: Build Release (unsigned on CI)
         run: |

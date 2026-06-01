@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an improvement to APM44 Bridge
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow or limitation are you trying to improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the user-facing behavior you want.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: DAW, macOS, hardware, latency, or release constraints that matter.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: This does not require changing AirPods Max USB-C away from 48 kHz.
+        - label: This does not require audio callback allocations, locks, or logging.

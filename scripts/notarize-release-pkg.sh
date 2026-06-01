@@ -12,10 +12,14 @@ if [[ ! -f "$PKG" ]]; then
   exit 1
 fi
 
-INSTALLER_ID="${INSTALLER_SIGN_ID:-Developer ID Installer: Nikolay Mohr (4H5447ZWS3)}"
-if ! security find-identity -v | grep -qF "$INSTALLER_ID"; then
+INSTALLER_ID="${INSTALLER_SIGN_ID:-}"
+if [[ -z "$INSTALLER_ID" ]]; then
+  INSTALLER_ID="$(security find-identity -v -p basic 2>/dev/null | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' | head -1 || true)"
+fi
+
+if [[ -z "$INSTALLER_ID" ]] || ! security find-identity -v | grep -qF "$INSTALLER_ID"; then
   echo "error: pkg is unsigned — create a Developer ID Installer cert in Apple Developer," >&2
-  echo "  then: productsign --sign \"$INSTALLER_ID\" ... before notarizing." >&2
+  echo "  then set INSTALLER_SIGN_ID and run scripts/build-release-pkg.sh before notarizing." >&2
   echo "  Or ship the notarized DMG: bash scripts/notarize-release-dmg.sh" >&2
   exit 1
 fi

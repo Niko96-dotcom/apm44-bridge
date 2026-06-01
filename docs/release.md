@@ -27,10 +27,12 @@ bash scripts/verify-app-build.sh   # generates Release .app when configured
 
 ## Developer ID signing (release)
 
-Set your signing identity (sign-off Mac defaults):
+Set your signing identity. If `SIGN_ID` is unset, `scripts/sign-release.sh`
+auto-detects a single local Developer ID Application identity.
 
 ```bash
-export SIGN_ID="Developer ID Application: Nikolay Mohr (4H5447ZWS3)"
+export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
+export INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"
 export NOTARY_PROFILE="AC_NOTARY"
 ```
 
@@ -144,7 +146,7 @@ Store credentials once:
 xcrun notarytool store-credentials "AC_NOTARY" \
   --apple-id "you@example.com" \
   --team-id "TEAMID" \
-  --password "app-specific-password"
+  --password "<notarytool-password>"
 ```
 
 ### 3. Staple

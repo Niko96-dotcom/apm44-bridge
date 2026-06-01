@@ -1,0 +1,71 @@
+name: Bug report
+description: Report a reproducible APM44 Bridge problem
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do not paste Apple Developer credentials, private keys, or notary logs containing account details.
+  - type: input
+    id: version
+    attributes:
+      label: APM44 Bridge version
+      placeholder: "0.1.0, release tag, or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "14.6.1, 15.5, ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: route
+    attributes:
+      label: Route
+      options:
+        - HAL virtual device
+        - BlackHole fallback
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: daw
+    attributes:
+      label: DAW and version
+      placeholder: "Cubase 15, Logic Pro, Ableton Live, Pro Tools, ..."
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include exact commands or DAW routing steps.
+      placeholder: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste relevant output with secrets removed.
+      render: shell
+      placeholder: |
+        bash scripts/verify-devices.sh
+        bash scripts/verify-hal-driver.sh
+        build/BridgeDaemon/apm44-bridge --list-devices

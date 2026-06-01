@@ -9,7 +9,7 @@ title: HAL Signing & Load Verification
 Developer ID sign all binaries; notarize workflow; verify HAL loads on sign-off Mac.
 
 ## Decisions (autonomous)
-- Use `Developer ID Application: Nikolay Mohr (4H5447ZWS3)` as default SIGN_ID
+- Use maintainer-provided `SIGN_ID` / `INSTALLER_SIGN_ID` environment variables; do not commit personal Apple Developer identifiers
 - Notary profile `AC_NOTARY` on sign-off Mac; CI uses workflow_dispatch stub without secrets
 - Local scripts are primary path; GitHub Actions optional when secrets exist
 

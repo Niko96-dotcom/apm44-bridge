@@ -8,8 +8,7 @@ VERSION="${APM44_VERSION:-0.1.0}"
 PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 UNSIGNED_PKG="${PKG%.pkg}-unsigned.pkg"
 PAYLOAD="$ROOT/build/signing/pkg-root"
-SIGN_ID="${SIGN_ID:-Developer ID Application: Nikolay Mohr (4H5447ZWS3)}"
-INSTALLER_ID="${INSTALLER_SIGN_ID:-Developer ID Installer: Nikolay Mohr (4H5447ZWS3)}"
+INSTALLER_ID="${INSTALLER_SIGN_ID:-}"
 G2_CA_URL="https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer"
 G2_CA="${APM44_DEVID_G2_CA:-/tmp/DeveloperIDG2CA.cer}"
 
@@ -26,6 +25,21 @@ Output: build/signing/APM44Bridge-<version>.pkg
 EOF
   exit 0
 fi
+
+resolve_installer_id() {
+  if [[ -n "$INSTALLER_ID" ]]; then
+    printf '%s\n' "$INSTALLER_ID"
+    return
+  fi
+
+  local identities
+  identities="$(security find-identity -v -p basic 2>/dev/null | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' || true)"
+  local count
+  count="$(printf '%s\n' "$identities" | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [[ "$count" == "1" ]]; then
+    printf '%s\n' "$identities"
+  fi
+}
 
 APP="$ROOT/build/$CONFIG/APM44 Bridge.app"
 DRIVER="${APM44_DRIVER_PATH:-$ROOT/build/Driver/APM44Bridge.driver}"
@@ -67,13 +81,14 @@ pkgbuild --root "$PAYLOAD" --scripts "$SCRIPTS" \
 curl -fsSL -o "$G2_CA" "$G2_CA_URL"
 security import "$G2_CA" -k ~/Library/Keychains/login.keychain-db 2>/dev/null || true
 
-if security find-identity -v -p basic 2>/dev/null | grep -qF "$INSTALLER_ID"; then
+INSTALLER_ID="$(resolve_installer_id)"
+if [[ -n "$INSTALLER_ID" ]] && security find-identity -v -p basic 2>/dev/null | grep -qF "$INSTALLER_ID"; then
   productsign --sign "$INSTALLER_ID" "$UNSIGNED_PKG" "$PKG"
   rm -f "$UNSIGNED_PKG"
   echo "Signed pkg: $PKG"
 else
   mv "$UNSIGNED_PKG" "$PKG"
-  echo "WARN: no Developer ID Installer identity — run scripts/install-installer-cert.sh first"
+  echo "WARN: no Developer ID Installer identity — set INSTALLER_SIGN_ID or run scripts/install-installer-cert.sh first"
 fi
 
 echo ""

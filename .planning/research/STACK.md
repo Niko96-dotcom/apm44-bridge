@@ -114,7 +114,7 @@ security find-identity -v -p codesigning
 xcrun notarytool store-credentials "AC_NOTARY" \
   --apple-id "you@example.com" \
   --team-id "TEAMID" \
-  --password "app-specific-password"
+  --password "<notarytool-password>"
 
 # --- Release build + sign (see docs/release.md) ---
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

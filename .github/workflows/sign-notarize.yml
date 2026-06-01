@@ -14,11 +14,27 @@ on:
           - "false"
           - "true"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: sign-notarize-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   sign-notarize:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install tools
+        run: brew install xcodegen
+
+      - name: Secret scan
+        run: bash scripts/check-secrets.sh
 
       - name: Build Release artifacts
         run: |

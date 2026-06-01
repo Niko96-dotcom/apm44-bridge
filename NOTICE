@@ -1,0 +1,23 @@
+APM44 Bridge third-party notices
+================================
+
+APM44 Bridge is licensed under the MIT License. See LICENSE.
+
+This repository uses these third-party components:
+
+- libsamplerate, pinned to 0.2.2
+  License: BSD-2-Clause
+  Source: https://github.com/libsndfile/libsamplerate
+  License text: third_party/libsamplerate/COPYING
+
+- libASPL, pinned to v3.1.2
+  License: MIT
+  Source: https://github.com/gavv/libASPL
+  License text: third_party/libASPL/LICENSE
+
+- Catch2, fetched at configure time for tests
+  License: BSL-1.0
+  Source: https://github.com/catchorg/Catch2
+
+BlackHole is documented as an optional external fallback device only. It is
+not vendored, linked, or redistributed by this repository.

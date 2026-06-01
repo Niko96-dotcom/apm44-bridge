@@ -3,7 +3,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SIGN_ID="${SIGN_ID:-Developer ID Application: Nikolay Mohr (4H5447ZWS3)}"
 CONFIG="${APM44_BUILD_CONFIG:-Release}"
 
 DAEMON="${APM44_DAEMON_PATH:-$ROOT/build/BridgeDaemon/apm44-bridge}"
@@ -17,7 +16,8 @@ Usage: sign-release.sh [--help]
 Sign apm44-bridge, APM44 Bridge.app, and APM44Bridge.driver for release.
 
 Environment:
-  SIGN_ID              codesign identity (default: Developer ID Application: Nikolay Mohr)
+  SIGN_ID              codesign identity. If unset, the script auto-detects
+                       a single Developer ID Application identity.
   APM44_DAEMON_PATH    path to apm44-bridge binary
   APM44_APP_PATH       path to .app bundle
   APM44_DRIVER_PATH    path to .driver bundle
@@ -30,6 +30,28 @@ Build first:
 EOF
   exit 0
 fi
+
+resolve_sign_id() {
+  if [[ -n "${SIGN_ID:-}" ]]; then
+    printf '%s\n' "$SIGN_ID"
+    return
+  fi
+
+  local identities
+  identities="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: .*\)".*/\1/p' || true)"
+  local count
+  count="$(printf '%s\n' "$identities" | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [[ "$count" == "1" ]]; then
+    printf '%s\n' "$identities"
+    return
+  fi
+
+  echo "error: set SIGN_ID to your Developer ID Application identity" >&2
+  echo "hint: security find-identity -v -p codesigning" >&2
+  exit 1
+}
+
+SIGN_ID="$(resolve_sign_id)"
 
 sign_one() {
   local path="$1"

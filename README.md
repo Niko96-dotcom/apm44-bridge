@@ -1,69 +1,115 @@
 # APM44 Bridge
 
-macOS audio bridge: DAW sessions stay at **44.1 kHz** while monitoring through **AirPods Max USB-C at 48 kHz**.
+[![CI](https://github.com/Niko96-dotcom/apm44-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Niko96-dotcom/apm44-bridge/actions/workflows/ci.yml)
+[![Secret Scan](https://github.com/Niko96-dotcom/apm44-bridge/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/Niko96-dotcom/apm44-bridge/actions/workflows/secret-scan.yml)
+[![CodeQL](https://github.com/Niko96-dotcom/apm44-bridge/actions/workflows/codeql.yml/badge.svg)](https://github.com/Niko96-dotcom/apm44-bridge/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Production path:** Cubase/DAW → **APM44 Bridge** (HAL virtual device) → `apm44-bridge` → **AirPods @ 48 kHz**.
+APM44 Bridge is a macOS audio bridge for producers who want to keep DAW
+sessions at **44.1 kHz** while monitoring through **AirPods Max USB-C at
+48 kHz**.
+
+Production path:
+
+```text
+DAW / Cubase / Logic / Ableton
+  -> APM44 Bridge HAL output device at 44.1 kHz
+  -> apm44-bridge user-space daemon
+  -> AirPods Max USB-C at 48 kHz
+```
+
+The headphones are not retuned to 44.1 kHz. APM44 Bridge presents a virtual
+44.1 kHz Core Audio output device upstream, resamples in user space, handles
+clock drift, and plays to the physical 48 kHz endpoint.
+
+## Status
 
 | Component | Status |
 |-----------|--------|
-| HAL driver `APM44Bridge.driver` | ✓ 44.1 kHz only, signed + notarized |
-| Bridge daemon `apm44-bridge` | ✓ libsamplerate + drift controller |
-| Menu bar app **APM44 Bridge** | ✓ `--virtual-device`, latency presets, open at login |
-| Release pkg/DMG | ✓ `scripts/build-release-pkg.sh` |
+| HAL driver `APM44Bridge.driver` | 44.1 kHz virtual output device |
+| Bridge daemon `apm44-bridge` | libsamplerate conversion and drift control |
+| Menu bar app `APM44 Bridge` | virtual-device mode, latency presets, first-run checks |
+| Release packaging | Developer ID signing, notarization, DMG, and PKG scripts |
 
-## Install (end users)
+## Install
 
-Download **`APM44Bridge-0.1.0.pkg`** from [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases), double-click, enter your password, reboot once if the device is missing in Audio MIDI Setup.
+Download the latest release from
+[GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases).
 
-Then every session: open **APM44 Bridge** from Applications → menu bar **headphones** icon → **Start** → play in Cubase.
+Start with:
 
-Full guide: **[docs/install.md](docs/install.md)** · Cubase: **[docs/first-run-cubase.md](docs/first-run-cubase.md)**
+- [End-user install guide](docs/install.md)
+- [Cubase first-run guide](docs/first-run-cubase.md)
+- [30+ minute soak checklist](docs/cubase-soak.md)
 
-## Maintainer release (signed + notarized)
-
-On a Mac with **Developer ID Application**, **Developer ID Installer**, and **`AC_NOTARY`** profile:
+## Development
 
 ```bash
-bash scripts/release-all.sh
+git clone --recurse-submodules https://github.com/Niko96-dotcom/apm44-bridge.git
+cd apm44-bridge
+bash scripts/ci.sh
 ```
 
-Artifacts: `build/signing/APM44Bridge-0.1.0.pkg`, `build/signing/APM44Bridge-0.1.0.dmg`
-
-See **[docs/release.md](docs/release.md)** for manual steps.
-
-## Developer build
+Useful focused checks:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-(cd App && xcodegen generate)
+bash scripts/check-secrets.sh
 bash scripts/verify-app-build.sh
-bash scripts/embed-daemon-in-app.sh
+bash scripts/verify-menu-bar.sh
+bash scripts/ci-soak.sh
 ```
 
-Pre-flight:
+Hardware pre-flight checks:
 
 ```bash
 bash scripts/verify-devices.sh
 bash scripts/verify-hal-driver.sh
 ```
 
+## Release
+
+On a maintainer Mac with Developer ID certificates and a configured notarytool
+profile:
+
+```bash
+export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
+export INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"
+export NOTARY_PROFILE="AC_NOTARY"
+bash scripts/release-all.sh
+```
+
+See [docs/release.md](docs/release.md) for manual signing, notarization,
+stapling, and troubleshooting steps.
+
 ## Documentation
 
 | Doc | Purpose |
 |-----|---------|
-| [install.md](docs/install.md) | End-user install & daily use |
-| [first-run-cubase.md](docs/first-run-cubase.md) | Cubase 15 Control Room |
-| [cubase-soak.md](docs/cubase-soak.md) | 30+ min QA soak |
-| [release.md](docs/release.md) | Signing & notarization |
-| [hal-driver.md](docs/hal-driver.md) | HAL + shm IPC |
-| [menu-bar-app.md](docs/menu-bar-app.md) | App architecture |
+| [install.md](docs/install.md) | End-user install and daily use |
+| [first-run-cubase.md](docs/first-run-cubase.md) | Cubase 15 Control Room setup |
+| [cubase-soak.md](docs/cubase-soak.md) | 30+ minute QA soak |
+| [daw-matrix.md](docs/daw-matrix.md) | DAW validation matrix |
+| [release.md](docs/release.md) | Signing and notarization |
+| [hal-driver.md](docs/hal-driver.md) | HAL driver and shared memory IPC |
+| [menu-bar-app.md](docs/menu-bar-app.md) | Menu bar app architecture |
 | [mvp-routing.md](docs/mvp-routing.md) | BlackHole fallback path |
 
-## MVP fallback (BlackHole)
+## BlackHole Fallback
 
-DAW → **BlackHole 2ch @ 44100** → `apm44-bridge` → AirPods. Used when HAL is not installed. [BlackHole](https://github.com/ExistentialAudio/BlackHole/releases) is GPL-3.0 — not bundled.
+The fallback route is:
+
+```text
+DAW -> BlackHole 2ch at 44.1 kHz -> apm44-bridge -> AirPods at 48 kHz
+```
+
+BlackHole is optional, external, and not bundled. See
+[docs/blackhole-prerequisite.md](docs/blackhole-prerequisite.md).
+
+## Security
+
+Please report suspected vulnerabilities privately. See [SECURITY.md](SECURITY.md).
 
 ## License
 
-See repository license. HAL/driver and application are proprietary unless otherwise noted.
+APM44 Bridge is open source under the [MIT License](LICENSE). Third-party
+notices are in [NOTICE](NOTICE) and [third_party/README.md](third_party/README.md).

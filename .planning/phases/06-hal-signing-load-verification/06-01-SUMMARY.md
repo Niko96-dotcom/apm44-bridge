@@ -19,7 +19,7 @@ key-files:
   created: [scripts/sign-release.sh, scripts/notary-dry-run.sh, scripts/codesign-verify-release.sh, .github/workflows/sign-notarize.yml]
   modified: [scripts/verify-hal-driver.sh, docs/release.md]
 key-decisions:
-  - "Default SIGN_ID to Nikolay Mohr Developer ID on sign-off Mac"
+  - "Signing identity is supplied by maintainer environment on the sign-off Mac"
   - "CI sign-notarize is workflow_dispatch only until APPLE_SIGN_ID secret exists"
 requirements-completed: [SHIP-01, SHIP-02, SHIP-03, DEV-01]
 duration: 15min

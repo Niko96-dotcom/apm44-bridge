@@ -53,7 +53,7 @@ Progress: [████████░░] 80% (v1.1)
 
 ### Decisions
 
-- **Default SIGN_ID** — Developer ID Application: Nikolay Mohr (4H5447ZWS3)
+- **Signing identity** — set `SIGN_ID` / `INSTALLER_SIGN_ID` in the maintainer environment; no identities are committed as defaults
 - **Notary profile** — AC_NOTARY on sign-off Mac; CI workflow_dispatch stub without secrets
 - **BlackHole fallback retained** — menu bar uses BlackHole when HAL absent
 - **Connection phases** — Waiting for DAW / Connected / Running derived from buffer fill metrics
