@@ -1,0 +1,169 @@
+#include "engine/BridgeEngine.h"
+
+#include "engine/IoProcHandlers.h"
+
+#include <cmath>
+#include <csignal>
+#include <cstring>
+#include <iostream>
+
+namespace apm44 {
+
+namespace {
+
+volatile std::sig_atomic_t gStopRequested = 0;
+
+void SignalHandler(int) { gStopRequested = 1; }
+
+bool TrySetBufferFrameSize(AudioDeviceID deviceId, UInt32 frames) {
+  AudioObjectPropertyAddress address{kAudioDevicePropertyBufferFrameSize,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+  return AudioObjectSetPropertyData(deviceId, &address, 0, nullptr, sizeof(frames), &frames) ==
+         noErr;
+}
+
+UInt32 ReadBufferFrameSize(AudioDeviceID deviceId) {
+  AudioObjectPropertyAddress address{kAudioDevicePropertyBufferFrameSize,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+  UInt32 frames = 0;
+  UInt32 size = sizeof(frames);
+  if (AudioObjectGetPropertyData(deviceId, &address, 0, nullptr, &size, &frames) != noErr) {
+    return 0;
+  }
+  return frames;
+}
+
+}  // namespace
+
+bool BridgeEngine::prepare(const BridgeDevicePair& devices) {
+  devices_ = devices;
+  constexpr std::size_t kRingCapacity = 2048;
+  ring_.prepare(kRingCapacity);
+
+  if (!converter_.prepare(devices_.inputAsbd, devices_.outputAsbd)) {
+    return false;
+  }
+
+  channel0Scratch_.resize(1024);
+  channel1Scratch_.resize(1024);
+  convertOut0_.resize(1024);
+  convertOut1_.resize(1024);
+  return true;
+}
+
+void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
+  // MVP drop policy: if ring is full, drop oldest by popping then pushing (approximation via push limit).
+  std::size_t pushed = ring_.push(channels, frames);
+  if (pushed < frames) {
+    // Ring full — drop oldest frames to make room for newest (live monitoring preference).
+    float* dropCh[2] = {channel0Scratch_.data(), channel1Scratch_.data()};
+    const std::size_t toDrop = frames - pushed;
+    ring_.pop(dropCh, toDrop);
+    ring_.push(channels, frames);
+  }
+}
+
+void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
+  std::memset(channels[0], 0, frames * sizeof(float));
+  std::memset(channels[1], 0, frames * sizeof(float));
+
+  float* popCh[2] = {channel0Scratch_.data(), channel1Scratch_.data()};
+  const std::size_t maxPop = std::min(frames, channel0Scratch_.size());
+  const std::size_t popped = ring_.pop(popCh, maxPop);
+  if (popped == 0) {
+    xruns_.fetch_add(1, std::memory_order_relaxed);
+    return;
+  }
+
+  std::size_t converted = 0;
+  const float* inCh[2] = {popCh[0], popCh[1]};
+  if (!converter_.convert(inCh, popped, channels, frames, converted) || converted == 0) {
+    std::memset(channels[0], 0, frames * sizeof(float));
+    std::memset(channels[1], 0, frames * sizeof(float));
+    xruns_.fetch_add(1, std::memory_order_relaxed);
+    return;
+  }
+
+  if (converted < frames) {
+    std::memset(channels[0] + converted, 0, (frames - converted) * sizeof(float));
+    std::memset(channels[1] + converted, 0, (frames - converted) * sizeof(float));
+  }
+}
+
+bool BridgeEngine::start() {
+  if (running_) {
+    return true;
+  }
+
+  if (!TrySetBufferFrameSize(devices_.input.deviceId, 512)) {
+    std::cerr << "note: could not set 512-frame input buffer; using device default\n";
+  }
+  if (!TrySetBufferFrameSize(devices_.output.deviceId, 512)) {
+    std::cerr << "note: could not set 512-frame output buffer; using device default\n";
+  }
+
+  const UInt32 inBuf = ReadBufferFrameSize(devices_.input.deviceId);
+  const UInt32 outBuf = ReadBufferFrameSize(devices_.output.deviceId);
+  std::cerr << "apm44-bridge: input='" << devices_.input.name << "' uid=" << devices_.input.uid
+            << " rate=" << devices_.input.nominalRate << " buffer_frames=" << inBuf << "\n";
+  std::cerr << "apm44-bridge: output='" << devices_.output.name << "' uid=" << devices_.output.uid
+            << " rate=" << devices_.output.nominalRate << " buffer_frames=" << outBuf << "\n";
+  std::cerr << "apm44-bridge: ring_capacity=" << ring_.capacityFrames()
+            << " converter_ratio=" << converter_.nominalRatio() << "\n";
+
+  OSStatus status =
+      AudioDeviceCreateIOProcID(devices_.input.deviceId, InputIoProc, this, &inputProc_);
+  if (status != noErr) {
+    return false;
+  }
+  status = AudioDeviceCreateIOProcID(devices_.output.deviceId, OutputIoProc, this, &outputProc_);
+  if (status != noErr) {
+    AudioDeviceDestroyIOProcID(devices_.input.deviceId, inputProc_);
+    inputProc_ = nullptr;
+    return false;
+  }
+
+  status = AudioDeviceStart(devices_.input.deviceId, inputProc_);
+  if (status != noErr) {
+    stop();
+    return false;
+  }
+  status = AudioDeviceStart(devices_.output.deviceId, outputProc_);
+  if (status != noErr) {
+    AudioDeviceStop(devices_.input.deviceId, inputProc_);
+    stop();
+    return false;
+  }
+
+  running_ = true;
+  return true;
+}
+
+void BridgeEngine::stop() {
+  if (outputProc_ != nullptr) {
+    AudioDeviceStop(devices_.output.deviceId, outputProc_);
+    AudioDeviceDestroyIOProcID(devices_.output.deviceId, outputProc_);
+    outputProc_ = nullptr;
+  }
+  if (inputProc_ != nullptr) {
+    AudioDeviceStop(devices_.input.deviceId, inputProc_);
+    AudioDeviceDestroyIOProcID(devices_.input.deviceId, inputProc_);
+    inputProc_ = nullptr;
+  }
+  running_ = false;
+}
+
+void BridgeEngine::runUntilSignal() {
+  std::signal(SIGINT, SignalHandler);
+  std::signal(SIGTERM, SignalHandler);
+  std::cerr << "apm44-bridge: running (Ctrl+C to stop)\n";
+  while (gStopRequested == 0) {
+    // Main thread idle — stats on exit only (no periodic logging).
+  }
+  stop();
+  std::cerr << "apm44-bridge: stopped. xruns=" << xrunCount() << "\n";
+}
+
+}  // namespace apm44
