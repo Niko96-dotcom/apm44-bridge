@@ -22,6 +22,11 @@ std::shared_ptr<aspl::Driver> CreateAPM44Driver() {
 
   auto device = std::make_shared<aspl::Device>(context, deviceParams);
 
+  AudioValueRange rateOnly{};
+  rateOnly.mMinimum = static_cast<Float64>(kSampleRate);
+  rateOnly.mMaximum = static_cast<Float64>(kSampleRate);
+  device->SetAvailableSampleRatesAsync({rateOnly});
+
   aspl::StreamParameters streamParams;
   streamParams.Direction = aspl::Direction::Output;
   streamParams.Format.mSampleRate = kSampleRate;

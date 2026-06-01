@@ -24,28 +24,35 @@ Artifacts:
 ./scripts/verify-hal-driver.sh
 ```
 
-Install copies the bundle to `/Library/Audio/Plug-Ins/HAL/`. **Developer ID signing and notarization are Phase 5.** On macOS 15+, unsigned HAL plug-ins may fail to load until signed.
+Install copies the bundle to `/Library/Audio/Plug-Ins/HAL/`. **Production:** use signed + notarized driver (`scripts/sign-release.sh`, `scripts/notarize-hal-driver.sh`). On macOS 15+, unsigned HAL plug-ins fail to load.
+
+## Sample rate contract (44100 only)
+
+The driver calls `SetAvailableSampleRatesAsync({44100, 44100})` so Audio MIDI Setup offers **only 44,100 Hz** as a nominal rate. DAWs cannot negotiate 48 kHz on the virtual device.
 
 ## Runtime routing
 
 1. **Audio MIDI Setup** — confirm **APM44 Bridge** at 44,100 Hz; AirPods Max USB-C at 48,000 Hz.
-2. **DAW** — project/session **44.1 kHz**, output device **APM44 Bridge**.
-3. **Daemon** — start the bridge in virtual-device mode (no BlackHole input HAL client):
+2. **Menu bar app** — start bridge; when HAL is detected, spawns `apm44-bridge --virtual-device` automatically.
+3. **DAW (Cubase 15)** — project **44.1 kHz**, output **APM44 Bridge**, Control Room L/R ports assigned ([first-run-cubase.md](first-run-cubase.md)).
+
+CLI equivalent:
 
 ```bash
 build/BridgeDaemon/apm44-bridge --virtual-device --output-device "<AirPods UID>"
 ```
 
-Use `--list-devices` to find the AirPods UID. The menu bar app still defaults to BlackHole until Phase 5 wires `--virtual-device`.
+Or: `bash scripts/start-virtual-bridge.sh`
 
 ## IPC
 
 - Shm name: `/apm44_bridge_ring` (see `Shared/include/apm44/ShmRingLayout.h`)
-- Driver: producer (`OnWriteMixedOutput` → `MmapShmRing::pushInterleaved`)
-- Daemon: consumer (`--virtual-device` → `VirtualDeviceFeed::drainTo`)
+- Driver: producer (ring created at driver load in `ShmIoHandler` constructor)
+- Daemon: consumer (`--virtual-device` → ring drain)
+- Shm mode **0666** so coreaudiod (driver) and user daemon can share the ring
 
-## Known gaps (Phase 4 skeleton)
+## Related
 
-- Nominal-rate list may not be restricted to 44100-only in all hosts until driver properties are hardened
-- End-to-end DAW + HAL load requires manual QA and often a reboot on first install
-- Menu bar app does not pass `--virtual-device` yet
+- [Release signing](release.md)
+- [Cubase first-run](first-run-cubase.md)
+- [verify-hal-driver.sh](../scripts/verify-hal-driver.sh)
