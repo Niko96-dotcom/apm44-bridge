@@ -32,6 +32,7 @@ Full phase details: [.planning/milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADM
 - [ ] **Phase 7: Driver 44100-Only Hardening** — Virtual device advertises 44100 Hz only in available nominal rates
 - [ ] **Phase 8: App Virtual-Device Integration** — Menu bar spawns `--virtual-device` when HAL present; UI shows routing mode
 - [ ] **Phase 9: Cubase Sign-Off & Soak** — Cubase 15 matrix, 30+ min HAL soak, export @ 44.1 kHz, AirPods @ 48 kHz regression
+- [ ] **Phase 10: Product Distribution & First-Run** — Notarized DMG/pkg, embedded daemon, install driver from app, Cubase setup wizard, no Terminal path
 
 ## Phase Details
 
@@ -79,9 +80,21 @@ Full phase details: [.planning/milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADM
   4. **Cubase 15** export or bounce of a 44.1 kHz project produces files verified at **44,100 Hz** by `scripts/validate-export-rate.sh` and `afinfo`
 **Plans**: TBD
 
+### Phase 10: Product Distribution & First-Run
+**Goal**: A producer installs one notarized artifact, uses the menu bar app only (no Terminal), and completes a short first-run wizard before Cubase playback
+**Depends on**: Phase 6 (signed/notarized binaries); Phase 8 (`--virtual-device` + routing UI)
+**Requirements**: POL-01, SHIP-02
+**Success Criteria** (what must be TRUE):
+  1. **Notarized DMG or pkg** installs `APM44 Bridge.app` and `APM44Bridge.driver` with a single documented admin step; postinstall reloads Core Audio
+  2. **`apm44-bridge` is embedded** in the app bundle; `BridgeBinaryLocator` resolves it with no `APM44_BRIDGE_PATH` required for release builds
+  3. **First-run / preflight UI** in the menu bar app checks: driver loaded, APM44 @ 44.1 kHz, AirPods USB @ 48 kHz, and links to **Cubase 15** Control Room port checklist
+  4. **Release signing scripts** (`sign-release.sh` or Xcode copy phase) produce stapled driver + app in one CI/local command documented in `docs/release.md`
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
-**Execution order (v1.1):** 6 → 7 → 8 → 9 (Phase 7 may start in parallel with Phase 6 on dev machines; Phases 8–9 require signed HAL on sign-off Mac)
+**Execution order (v1.1):** 6 → 7 → 8 → 9 → 10 (Phase 7 may parallel Phase 6 on dev machines; Phases 8–10 require signed HAL on sign-off Mac)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -94,6 +107,7 @@ Full phase details: [.planning/milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADM
 | 7. Driver 44100-Only Hardening | v1.1 | 0/TBD | Not started | - |
 | 8. App Virtual-Device Integration | v1.1 | 0/TBD | Not started | - |
 | 9. Cubase Sign-Off & Soak | v1.1 | 0/TBD | Not started | - |
+| 10. Product Distribution & First-Run | v1.1 | 0/TBD | Not started | - |
 
 ---
-*Roadmap updated: 2026-06-01 — milestone v1.1 Production Sign-Off (Phases 6–9)*
+*Roadmap updated: 2026-06-01 — milestone v1.1 Production Sign-Off (Phases 6–10)*

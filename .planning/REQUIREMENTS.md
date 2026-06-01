@@ -33,6 +33,10 @@ Production sign-off — close v1.0 audit gaps with **Cubase 15** as the primary 
 - [ ] **QA-01**: Operator completes **30+ minutes** continuous playback on the **HAL path** (Cubase → APM44 Bridge → daemon → AirPods) without crackle, unbounded latency growth, or drift-induced dropouts
 - [ ] **QA-02**: **Cubase 15** export or bounce of a 44.1 kHz project produces audio files verified @ **44,100 Hz** by `scripts/validate-export-rate.sh` (and `afinfo`)
 
+### Product distribution (POL)
+
+- [ ] **POL-01**: Notarized **DMG or pkg** installs app + HAL driver; embedded `apm44-bridge`; first-run preflight and Cubase setup guide in app (no Terminal)
+
 ## Future Requirements
 
 Deferred beyond v1.1 — acknowledged for roadmap hygiene.
@@ -43,7 +47,6 @@ Deferred beyond v1.1 — acknowledged for roadmap hygiene.
 
 ### Product polish
 
-- **POL-01**: Full installer/pkg automation and staple-in-CI
 - **POL-02**: HAL stream format hardening (Float32 end-to-end vs SInt16 in driver) if listen tests expose issues
 - **POL-03**: XPC daemon control (replace subprocess spawn)
 
@@ -77,10 +80,11 @@ Deferred beyond v1.1 — acknowledged for roadmap hygiene.
 | DEV-04 | Phase 9 | Pending |
 | QA-01 | Phase 9 | Pending |
 | QA-02 | Phase 9 | Pending |
+| POL-01 | Phase 10 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 11 total
-- Mapped to phases: 11 ✓
+- v1.1 requirements: 12 total
+- Mapped to phases: 12 ✓
 - Unmapped: 0
 
 ---
