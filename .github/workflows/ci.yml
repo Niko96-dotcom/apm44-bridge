@@ -14,6 +14,7 @@ jobs:
   native:
     name: macOS build and tests
     runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - name: Check out
         uses: actions/checkout@v6
@@ -22,10 +23,41 @@ jobs:
           submodules: recursive
 
       - name: Install tools
+        timeout-minutes: 10
         run: brew install xcodegen
 
-      - name: Verify
-        run: bash scripts/ci.sh
+      - name: Secret scan
+        timeout-minutes: 5
+        run: bash scripts/check-secrets.sh
+
+      - name: Prepare submodules
+        timeout-minutes: 5
+        run: bash scripts/prepare-submodules.sh
+
+      - name: Configure CMake
+        timeout-minutes: 10
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native targets
+        timeout-minutes: 15
+        run: cmake --build build --parallel
+
+      - name: Native tests
+        timeout-minutes: 10
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Swift app build
+        timeout-minutes: 15
+        run: bash scripts/verify-app-build.sh
+
+      - name: Swift unit tests
+        timeout-minutes: 15
+        run: |
+          xcodebuild -project App/APM44Bridge.xcodeproj \
+            -scheme APM44Bridge \
+            -destination 'platform=macOS' \
+            test -only-testing:APM44BridgeTests \
+            CODE_SIGNING_ALLOWED=NO
 
   dependency-review:
     name: Dependency review
