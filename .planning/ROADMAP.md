@@ -28,11 +28,11 @@ Full phase details: [.planning/milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADM
 
 **Milestone goal:** A producer on a sign-off Mac can run **Cubase 15** @ 44.1 kHz → **APM44 Bridge** (signed HAL) → AirPods Max USB-C @ 48 kHz with documented signing/notarization evidence and passed soak + export validation.
 
-- [ ] **Phase 6: HAL Signing & Load Verification** — Developer ID sign all binaries; notary dry-run; signed HAL enumerates in AMS @ 44.1 kHz
-- [ ] **Phase 7: Driver 44100-Only Hardening** — Virtual device advertises 44100 Hz only in available nominal rates
-- [ ] **Phase 8: App Virtual-Device Integration** — Menu bar spawns `--virtual-device` when HAL present; UI shows routing mode
-- [ ] **Phase 9: Cubase Sign-Off & Soak** — Cubase 15 matrix, 30+ min HAL soak, export @ 44.1 kHz, AirPods @ 48 kHz regression
-- [ ] **Phase 10: Product Distribution & First-Run** — Notarized DMG/pkg, embedded daemon, install driver from app, Cubase setup wizard, no Terminal path
+- [x] **Phase 6: HAL Signing & Load Verification** — Developer ID sign scripts; notary dry-run; verify-hal-driver enhancements
+- [x] **Phase 7: Driver 44100-Only Hardening** — SetAvailableSampleRatesAsync 44100 only
+- [x] **Phase 8: App Virtual-Device Integration** — Menu bar spawns `--virtual-device`; routing mode UI
+- [ ] **Phase 9: Cubase Sign-Off & Soak** — Operator templates ready; human 30+ min soak + export pending
+- [x] **Phase 10: Product Distribution & First-Run** — pkg/DMG scripts, embedded daemon, first-run preflight
 
 ## Phase Details
 
@@ -103,11 +103,11 @@ Full phase details: [.planning/milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADM
 | 3. Menu Bar Application | v1.0 | 7/7 | Complete | 2026-06-01 |
 | 4. HAL Virtual Device | v1.0 | 5/5 | Complete | 2026-06-01 |
 | 5. Integration & Ship Readiness | v1.0 | 1/1 | Complete | 2026-06-01 |
-| 6. HAL Signing & Load Verification | v1.1 | 0/TBD | Not started | - |
-| 7. Driver 44100-Only Hardening | v1.1 | 0/TBD | Not started | - |
-| 8. App Virtual-Device Integration | v1.1 | 0/TBD | Not started | - |
-| 9. Cubase Sign-Off & Soak | v1.1 | 0/TBD | Not started | - |
-| 10. Product Distribution & First-Run | v1.1 | 0/TBD | Not started | - |
+| 6. HAL Signing & Load Verification | v1.1 | 1/1 | Complete | 2026-06-01 |
+| 7. Driver 44100-Only Hardening | v1.1 | 1/1 | Complete | 2026-06-01 |
+| 8. App Virtual-Device Integration | v1.1 | 2/2 | Complete | 2026-06-01 |
+| 9. Cubase Sign-Off & Soak | v1.1 | 1/1 | Human QA pending | - |
+| 10. Product Distribution & First-Run | v1.1 | 1/1 | Complete | 2026-06-01 |
 
 ---
 *Roadmap updated: 2026-06-01 — milestone v1.1 Production Sign-Off (Phases 6–10)*

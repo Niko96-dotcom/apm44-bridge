@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Production Sign-Off
-status: ready_to_plan
+status: phase_9_human_qa_pending
 last_updated: "2026-06-01"
 last_activity: 2026-06-01
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 4
+  total_plans: 5
+  completed_plans: 5
+  percent: 80
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01 — milestone v1.1)
 
 **Core value:** DAW sessions stay at 44.1 kHz while monitoring stably on AirPods Max USB-C at 48 kHz via a virtual bridge endpoint.
-**Current focus:** Phase 6 — HAL Signing & Load Verification
+**Current focus:** Phase 9 — Cubase Sign-Off & Soak (operator QA)
 
 ## Current Position
 
-Phase: 6 of 9 (HAL Signing & Load Verification)
-Plan: —
-Status: Ready to plan
-Last activity: 2026-06-01 — v1.1 roadmap created (Phases 6–9)
+Phase: 9 of 10 (Cubase Sign-Off & Soak)
+Plan: 1 of 1 (docs/templates complete; human soak pending)
+Status: Awaiting operator sign-off on sign-off Mac
+Last activity: 2026-06-01 — Phases 6–8 and 10 implemented; Phase 9 templates ready
 
-Progress: [░░░░░░░░░░] 0% (v1.1)
+Progress: [████████░░] 80% (v1.1)
 
 ## Performance Metrics
 
@@ -37,57 +37,42 @@ Progress: [░░░░░░░░░░] 0% (v1.1)
 
 - v1.0 plans completed: 23
 - v1.0 phases completed: 5 (shipped 2026-06-01)
-- v1.1 phases: 5 (0 complete)
+- v1.1 plans completed: 5 (Phases 6–8, 10 code; Phase 9 docs)
 
 **By Phase (v1.1):**
 
 | Phase | Plans | Status |
 |-------|-------|--------|
-| 6. HAL Signing & Load Verification | 0/TBD | Not started |
-| 7. Driver 44100-Only Hardening | 0/TBD | Not started |
-| 8. App Virtual-Device Integration | 0/TBD | Not started |
-| 9. Cubase Sign-Off & Soak | 0/TBD | Not started |
-| 10. Product Distribution & First-Run | 0/TBD | Not started |
+| 6. HAL Signing & Load Verification | 1/1 | Complete (scripts; human notary on sign-off Mac) |
+| 7. Driver 44100-Only Hardening | 1/1 | Complete |
+| 8. App Virtual-Device Integration | 2/2 | Complete |
+| 9. Cubase Sign-Off & Soak | 1/1 | Templates done — **human QA pending** |
+| 10. Product Distribution & First-Run | 1/1 | Complete (build scripts + first-run UI) |
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting v1.1:
-
-- **Sign first, then host QA** — macOS 15+ rejects ad-hoc HAL; Cubase matrix not valid until SHIP-03 passes
-- **Cubase 15 only** for v1.1 DAW sign-off (operator machine); Logic/Ableton deferred
-- **BlackHole fallback retained** — v1.1 adds HAL path wiring, does not remove MVP path
-- **Phase 7 may parallel Phase 6** on dev machines; Phases 8–9 need signed HAL on sign-off Mac
-
-### Pending Todos
-
-None.
+- **Default SIGN_ID** — Developer ID Application: Nikolay Mohr (4H5447ZWS3)
+- **Notary profile** — AC_NOTARY on sign-off Mac; CI workflow_dispatch stub without secrets
+- **BlackHole fallback retained** — menu bar uses BlackHole when HAL absent
+- **Connection phases** — Waiting for DAW / Connected / Running derived from buffer fill metrics
 
 ### Blockers/Concerns
 
-- **Apple Developer credentials** required for Phase 6 — CI sign-notarize may stay `workflow_dispatch` until secrets exist
-- **SInt16 HAL vs float shm** — if listen tests fail in Phase 9, may need format hardening beyond v1.1 minimum (see research flags)
-
-## Deferred Items
-
-From v1.0 milestone close (carried in REQUIREMENTS.md Future):
-
-| Category | Item | Notes |
-|----------|------|-------|
-| DAW | DEV-05 Logic/Ableton matrix | v1.1.x |
-| Product | POL-01 installer/pkg automation | v1.1.x |
-| Product | POL-02 Float32 HAL stream E2E | if Phase 9 tone test fails |
-| Product | POL-03 XPC daemon control | v1.2+ |
+- **Phase 9 human soak** — operator must run 30+ min Cubase session on sign-off Mac
+- **SHIP-03 / DEV-01** — require signed+stapled HAL install verification on sign-off Mac
+- **Xcode required** — app build/tests need full Xcode (not CLT-only) on dev machine
 
 ## Session Continuity
 
 Last session: 2026-06-01
-Stopped at: v1.1 ROADMAP.md written — next `/gsd-plan-phase 6`
+Stopped at: Phase 9 operator verification — `.planning/phases/09-cubase-sign-off-soak/09-VERIFICATION.md`
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 6: `/gsd-plan-phase 6`
-- Ensure Apple Developer ID cert available before executing SHIP requirements
+1. `bash scripts/build-release-pkg.sh` (on sign-off Mac with Xcode + Developer ID)
+2. `bash scripts/sign-release.sh && bash scripts/notary-dry-run.sh`
+3. Install pkg; complete Cubase soak per `docs/cubase-soak.md`
+4. Fill `09-VERIFICATION.md` and mark DEV-03/04, QA-01/02, SHIP-03 complete

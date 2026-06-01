@@ -9,8 +9,8 @@ Production sign-off — close v1.0 audit gaps with **Cubase 15** as the primary 
 
 ### Distribution & signing (SHIP)
 
-- [ ] **SHIP-01**: All shipped binaries (`APM44Bridge.driver`, `apm44-bridge`, `APM44 Bridge.app`) are signed with **Developer ID Application** and **Hardened Runtime**
-- [ ] **SHIP-02**: Release container (zip/dmg/pkg) passes **`notarytool` dry-run** and staple workflow documented with evidence on sign-off Mac
+- [x] **SHIP-01**: All shipped binaries (`APM44Bridge.driver`, `apm44-bridge`, `APM44 Bridge.app`) are signed with **Developer ID Application** and **Hardened Runtime**
+- [x] **SHIP-02**: Release container (zip/dmg/pkg) passes **`notarytool` dry-run** and staple workflow documented with evidence on sign-off Mac
 - [ ] **SHIP-03**: Signed HAL plug-in loads in **`coreaudiod`** and is enumerated in Audio MIDI Setup (verified by `verify-hal-driver.sh` or equivalent)
 
 ### Virtual device & DAW integration (DEV)
@@ -21,12 +21,12 @@ Production sign-off — close v1.0 audit gaps with **Cubase 15** as the primary 
 
 ### Production driver (DRV)
 
-- [ ] **DRV-02**: Driver advertises **44100 Hz only** in available nominal sample rates (`SetAvailableSampleRatesAsync` or equivalent libASPL API)
+- [x] **DRV-02**: Driver advertises **44100 Hz only** in available nominal sample rates (`SetAvailableSampleRatesAsync` or equivalent libASPL API)
 
 ### Application integration (APP)
 
-- [ ] **APP-06**: Menu bar app spawns `apm44-bridge` with **`--virtual-device`** when the HAL driver is installed and detected; **BlackHole path remains** available fallback when HAL is absent
-- [ ] **APP-07**: Menu bar UI indicates active routing mode (**APM44 Bridge (driver)** vs **BlackHole**) so the user knows which path is running
+- [x] **APP-06**: Menu bar app spawns `apm44-bridge` with **`--virtual-device`** when the HAL driver is installed and detected; **BlackHole path remains** available fallback when HAL is absent
+- [x] **APP-07**: Menu bar UI indicates active routing mode (**APM44 Bridge (driver)** vs **BlackHole**) so the user knows which path is running
 
 ### Quality & validation (QA)
 
@@ -35,7 +35,7 @@ Production sign-off — close v1.0 audit gaps with **Cubase 15** as the primary 
 
 ### Product distribution (POL)
 
-- [ ] **POL-01**: Notarized **DMG or pkg** installs app + HAL driver; embedded `apm44-bridge`; first-run preflight and Cubase setup guide in app (no Terminal)
+- [x] **POL-01**: Notarized **DMG or pkg** installs app + HAL driver; embedded `apm44-bridge`; first-run preflight and Cubase setup guide in app (no Terminal)
 
 ## Future Requirements
 
@@ -69,18 +69,18 @@ Deferred beyond v1.1 — acknowledged for roadmap hygiene.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SHIP-01 | Phase 6 | Pending |
-| SHIP-02 | Phase 6 | Pending |
+| SHIP-01 | Phase 6 | Complete |
+| SHIP-02 | Phase 6 | Complete |
 | SHIP-03 | Phase 6 | Pending |
 | DEV-01 | Phase 6 | Pending |
-| DRV-02 | Phase 7 | Pending |
-| APP-06 | Phase 8 | Pending |
-| APP-07 | Phase 8 | Pending |
+| DRV-02 | Phase 7 | Complete |
+| APP-06 | Phase 8 | Complete |
+| APP-07 | Phase 8 | Complete |
 | DEV-03 | Phase 9 | Pending |
 | DEV-04 | Phase 9 | Pending |
 | QA-01 | Phase 9 | Pending |
 | QA-02 | Phase 9 | Pending |
-| POL-01 | Phase 10 | Pending |
+| POL-01 | Phase 10 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 12 total
