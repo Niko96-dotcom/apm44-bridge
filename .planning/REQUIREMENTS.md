@@ -66,23 +66,23 @@ Deferred beyond v1.1 — acknowledged for roadmap hygiene.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SHIP-01 | — | Pending |
-| SHIP-02 | — | Pending |
-| SHIP-03 | — | Pending |
-| DEV-01 | — | Pending |
-| DEV-03 | — | Pending |
-| DEV-04 | — | Pending |
-| DRV-02 | — | Pending |
-| APP-06 | — | Pending |
-| APP-07 | — | Pending |
-| QA-01 | — | Pending |
-| QA-02 | — | Pending |
+| SHIP-01 | Phase 6 | Pending |
+| SHIP-02 | Phase 6 | Pending |
+| SHIP-03 | Phase 6 | Pending |
+| DEV-01 | Phase 6 | Pending |
+| DRV-02 | Phase 7 | Pending |
+| APP-06 | Phase 8 | Pending |
+| APP-07 | Phase 8 | Pending |
+| DEV-03 | Phase 9 | Pending |
+| DEV-04 | Phase 9 | Pending |
+| QA-01 | Phase 9 | Pending |
+| QA-02 | Phase 9 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 11 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 11 ⚠️
+- Mapped to phases: 11 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-01 — milestone v1.1 Production Sign-Off*
-*Last updated: 2026-06-01 after initial v1.1 definition*
+*Last updated: 2026-06-01 — traceability synced to ROADMAP.md (Phases 6–9)*
