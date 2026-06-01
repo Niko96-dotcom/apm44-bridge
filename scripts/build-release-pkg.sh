@@ -10,6 +10,8 @@ UNSIGNED_PKG="${PKG%.pkg}-unsigned.pkg"
 PAYLOAD="$ROOT/build/signing/pkg-root"
 SIGN_ID="${SIGN_ID:-Developer ID Application: Nikolay Mohr (4H5447ZWS3)}"
 INSTALLER_ID="${INSTALLER_SIGN_ID:-Developer ID Installer: Nikolay Mohr (4H5447ZWS3)}"
+G2_CA_URL="https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer"
+G2_CA="${APM44_DEVID_G2_CA:-/tmp/DeveloperIDG2CA.cer}"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<EOF
@@ -62,13 +64,16 @@ pkgbuild --root "$PAYLOAD" --scripts "$SCRIPTS" \
   --identifier com.niko.apm44.pkg --version "$VERSION" \
   "$UNSIGNED_PKG"
 
-if security find-identity -v | grep -qF "$INSTALLER_ID"; then
+curl -fsSL -o "$G2_CA" "$G2_CA_URL"
+security import "$G2_CA" -k ~/Library/Keychains/login.keychain-db 2>/dev/null || true
+
+if security find-identity -v -p basic 2>/dev/null | grep -qF "$INSTALLER_ID"; then
   productsign --sign "$INSTALLER_ID" "$UNSIGNED_PKG" "$PKG"
   rm -f "$UNSIGNED_PKG"
   echo "Signed pkg: $PKG"
 else
   mv "$UNSIGNED_PKG" "$PKG"
-  echo "WARN: no Developer ID Installer cert — pkg unsigned (notarize may still work for ad-hoc testing)"
+  echo "WARN: no Developer ID Installer identity — run scripts/install-installer-cert.sh first"
 fi
 
 echo ""
