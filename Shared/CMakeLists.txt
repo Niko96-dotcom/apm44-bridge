@@ -2,6 +2,7 @@ add_library(apm44_shared STATIC
   src/AudioFormats.cpp
   src/PlanarRingBuffer.cpp
   src/DriftController.cpp
+  src/MmapShmRing.cpp
 )
 
 target_include_directories(apm44_shared

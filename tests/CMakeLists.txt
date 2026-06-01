@@ -26,6 +26,8 @@ apm44_add_test(test_drift_controller test_drift_controller.cpp)
 apm44_add_test(test_lib_samplerate_src test_lib_samplerate_src.cpp)
 apm44_add_test(test_soak_offline test_soak_offline.cpp)
 apm44_add_test(test_bridge_metrics_json test_bridge_metrics_json.cpp)
+apm44_add_test(test_mmap_shm_ring test_mmap_shm_ring.cpp)
+apm44_add_test(test_virtual_device_feed test_virtual_device_feed.cpp)
 
 target_sources(test_bridge_metrics_json PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/BridgeMetrics.cpp
@@ -33,6 +35,10 @@ target_sources(test_bridge_metrics_json PRIVATE
 
 target_link_libraries(test_libsamplerate_smoke PRIVATE samplerate::samplerate)
 target_link_libraries(test_lib_samplerate_src PRIVATE samplerate::samplerate)
+
+target_sources(test_virtual_device_feed PRIVATE
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/VirtualDeviceFeed.cpp
+)
 
 target_sources(test_device_enumerator PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/hal/DeviceEnumerator.cpp
