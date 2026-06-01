@@ -68,8 +68,18 @@ Plans:
   3. User can pick SRC quality tier aligned with the selected latency mode (medium/high/best)
   4. AirPods connect/disconnect is handled without requiring DAW restart when feasible
   5. Status meter shows buffer fill and glitch indicators; round-trip monitoring latency is reported honestly (no zero-latency claim)
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 7 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Xcode MenuBarExtra shell + subprocess start/stop (APP-01 core)
+- [ ] 03-02-PLAN.md — Daemon `--metrics-json` + fill-ms clamp 6–40
+- [ ] 03-03-PLAN.md — Parse metrics, meters, honest latency label (APP-05, QA-03)
+- [ ] 03-04-PLAN.md — Output device picker via `--list-devices`
+- [ ] 03-05-PLAN.md — Latency presets + SRC quality override (APP-02, APP-03)
+- [ ] 03-06-PLAN.md — Core Audio hotplug debounced restart (APP-04)
+- [ ] 03-07-PLAN.md — verify-menu-bar.sh + hardware UAT checkpoint
+
+**UI hint**: yes (03-UI-SPEC.md not present — plans follow 03-CONTEXT.md; align to UI-SPEC when added)
 
 ### Phase 4: HAL Virtual Device
 **Goal**: DAW sees a native **APM44 Bridge** virtual output at 44.1 kHz that hands buffers to the user-space daemon via IPC
@@ -105,6 +115,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. BlackHole Console Bridge | 0/4 | Not started | - |
 | 2. Production SRC & Drift Engine | 0/TBD | Not started | - |
-| 3. Menu Bar Application | 0/TBD | Not started | - |
+| 3. Menu Bar Application | 0/7 | Planned | - |
 | 4. HAL Virtual Device | 0/TBD | Not started | - |
 | 5. Integration & Ship Readiness | 0/TBD | Not started | - |
