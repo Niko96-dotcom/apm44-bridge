@@ -15,9 +15,9 @@
 ### Bridge engine (audio path)
 
 - [x] **ENG-01**: Bridge captures 44.1 kHz float audio from the virtual/loopback input path and plays 48 kHz float to AirPods Max USB-C output
-- [ ] **ENG-02**: Sample-rate conversion supports the **160/147** nominal ratio with **variable-ratio** streaming SRC for clock drift
-- [ ] **ENG-03**: Lock-free ring buffer sits between input and output callbacks with a configurable target fill level (~10–20 ms default)
-- [ ] **ENG-04**: Drift controller adjusts effective SRC ratio within bounded PPM (e.g. ±500 ppm) to prevent long-run underrun, overflow, or latency creep
+- [x] **ENG-02**: Sample-rate conversion supports the **160/147** nominal ratio with **variable-ratio** streaming SRC for clock drift
+- [x] **ENG-03**: Lock-free ring buffer sits between input and output callbacks with a configurable target fill level (~10–20 ms default)
+- [x] **ENG-04**: Drift controller adjusts effective SRC ratio within bounded PPM (e.g. ±500 ppm) to prevent long-run underrun, overflow, or latency creep
 - [x] **ENG-05**: Real-time callbacks avoid malloc, locks, logging, file I/O, device enumeration, and UI mutation
 
 ### MVP (BlackHole proof)
@@ -42,7 +42,7 @@
 
 ### Quality & validation
 
-- [ ] **QA-01**: **30+ minute** continuous playback at 44.1 → 48 without crackle, drift-induced underrun, or unbounded latency growth
+- [x] **QA-01**: **30+ minute** continuous playback at 44.1 → 48 without crackle, drift-induced underrun, or unbounded latency growth
 - [ ] **QA-02**: DAW **export/stem** remains **44.1 kHz** when project rate is 44.1 (monitoring path does not alter bounce sample rate)
 - [ ] **QA-03**: Measured/reportable **round-trip monitoring latency** is surfaced honestly (no “zero latency” claim)
 
@@ -78,9 +78,9 @@
 | DEV-03 | Phase 4 | Pending |
 | DEV-04 | Phase 1 | Complete |
 | ENG-01 | Phase 1 | Complete |
-| ENG-02 | Phase 2 | Pending |
-| ENG-03 | Phase 2 | Pending |
-| ENG-04 | Phase 2 | Pending |
+| ENG-02 | Phase 2 | Complete |
+| ENG-03 | Phase 2 | Complete |
+| ENG-04 | Phase 2 | Complete |
 | ENG-05 | Phase 1 | Complete |
 | MVP-01 | Phase 1 | Complete |
 | MVP-02 | Phase 1 | Complete |
@@ -93,7 +93,7 @@
 | APP-03 | Phase 3 | Pending |
 | APP-04 | Phase 3 | Pending |
 | APP-05 | Phase 3 | Pending |
-| QA-01 | Phase 2 | Pending |
+| QA-01 | Phase 2 | Complete |
 | QA-02 | Phase 5 | Pending |
 | QA-03 | Phase 3 | Pending |
 

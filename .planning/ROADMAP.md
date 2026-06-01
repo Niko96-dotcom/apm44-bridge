@@ -50,12 +50,12 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Vendor libsamplerate 0.2.2 + CMake static link + smoke test
-- [ ] 02-02-PLAN.md — Power-of-two SPSC ring + fill metrics (ENG-03)
-- [ ] 02-03-PLAN.md — DriftController PI + ppm clamp (TDD, ENG-04)
-- [ ] 02-04-PLAN.md — LibSamplerateSrc streaming wrapper (ENG-02)
-- [ ] 02-05-PLAN.md — BridgeEngine integration + CLI flags
-- [ ] 02-06-PLAN.md — Offline soak harness, apm44-soak, QA-01 docs + CI
+- [x] 02-01-PLAN.md — Vendor libsamplerate 0.2.2 + CMake static link + smoke test
+- [x] 02-02-PLAN.md — Power-of-two SPSC ring + fill metrics (ENG-03)
+- [x] 02-03-PLAN.md — DriftController PI + ppm clamp (TDD, ENG-04)
+- [x] 02-04-PLAN.md — LibSamplerateSrc streaming wrapper (ENG-02)
+- [x] 02-05-PLAN.md — BridgeEngine integration + CLI flags
+- [x] 02-06-PLAN.md — Offline soak harness, apm44-soak, QA-01 docs + CI
 
 ### Phase 3: Menu Bar Application
 **Goal**: User controls and monitors the bridge from a menu bar app with latency presets, device selection, and hotplug resilience
