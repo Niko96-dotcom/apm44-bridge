@@ -13,7 +13,11 @@ endif()
 enable_testing()
 
 include(cmake/Libsamplerate.cmake)
+include(cmake/LibASPL.cmake)
 
 add_subdirectory(Shared)
 add_subdirectory(BridgeDaemon)
+if(APPLE)
+  add_subdirectory(Driver)
+endif()
 add_subdirectory(tests)
