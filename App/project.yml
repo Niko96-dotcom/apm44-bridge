@@ -1,0 +1,52 @@
+name: APM44Bridge
+options:
+  bundleIdPrefix: com.niko.apm44
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "5.10"
+targets:
+  APM44Bridge:
+    type: application
+    platform: macOS
+    sources:
+      - path: APM44Bridge
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.niko.apm44.menu
+      PRODUCT_NAME: APM44Bridge
+      GENERATE_INFOPLIST_FILE: YES
+      INFOPLIST_KEY_LSUIElement: YES
+      INFOPLIST_KEY_NSHumanReadableCopyright: "APM44 Bridge"
+    entitlements:
+      path: APM44Bridge/APM44Bridge.entitlements
+  APM44BridgeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ../tests
+        includes:
+          - "test_*.swift"
+    dependencies:
+      - target: APM44Bridge
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.niko.apm44.menu.tests
+
+schemes:
+  APM44Bridge:
+    build:
+      targets:
+        APM44Bridge: all
+    test:
+      targets:
+        - APM44BridgeTests
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
