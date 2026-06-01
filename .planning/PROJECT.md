@@ -8,23 +8,44 @@ APM44 Bridge is a macOS audio product that lets DAW users (Logic, Ableton, Pro T
 
 A producer can set session/project rate to **44.1 kHz**, select **APM44 Bridge** as output, and hear stable, low-glitch monitoring on AirPods Max USB-C at **48 kHz** for long sessions—without changing exports, stems, plug-in oversampling assumptions, or project metadata.
 
+## Current State (v1.0 shipped 2026-06-01)
+
+**Shipped:** Five-phase vertical MVP — CMake monorepo, `apm44-bridge` daemon (BlackHole + `--virtual-device` paths), SwiftUI menu bar app, `APM44Bridge.driver` HAL plug-in with POSIX shm ring, integration docs/scripts.
+
+**Code-complete paths:**
+- MVP: DAW → BlackHole @ 44.1 → bridge → AirPods @ 48 (libsamplerate + drift PI)
+- Production HAL: DAW → APM44 Bridge @ 44.1 → driver → shm → daemon → AirPods @ 48 (CLI `--virtual-device`)
+
+**Human sign-off deferred:** DAW matrix, export bounce (QA-02), signed driver load, 30+ min live soak, notarization dry-run. See `.planning/milestones/v1.0-MILESTONE-AUDIT.md`.
+
+**Scale:** ~164 files, ~12k LOC added in milestone window (2026-06-01).
+
 ## Requirements
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Bridge reads 44.1 kHz float and outputs 48 kHz to AirPods Max USB-C — v1.0 (ENG-01)
+- ✓ Variable-ratio streaming SRC (160/147 nominal) with libsamplerate — v1.0 (ENG-02)
+- ✓ Lock-free SPSC ring with configurable target fill — v1.0 (ENG-03)
+- ✓ Drift controller with ±500 ppm bounds — v1.0 (ENG-04)
+- ✓ RT callbacks free of malloc/locks/logging — v1.0 (ENG-05)
+- ✓ BlackHole MVP routing path — v1.0 (MVP-01, MVP-02, MVP-03)
+- ✓ AirPods remain @ 48 kHz in AMS while bridge active — v1.0 (DEV-04)
+- ✓ Menu bar app: state, presets, device picker, hotplug, meters, honest latency — v1.0 (APP-01–APP-05, QA-03)
+- ✓ Automated soak harness + 60 s offline validation — v1.0 (QA-01 auto layer)
+- ✓ HAL driver bundle builds with UID `com.niko.apm44.bridge.device` — v1.0 (DRV-01)
+- ✓ Shm IPC ring transport driver → daemon — v1.0 (DRV-03)
+- ✓ Virtual device 2ch Float32 format — v1.0 (DEV-02, build evidence)
 
-### Active
+### Active (v1.1+)
 
-- [ ] Virtual 44.1 kHz stereo output visible to Core Audio / DAW as **APM44 Bridge**
-- [ ] Bridge reads 44.1 kHz float audio and outputs 48 kHz to AirPods Max USB-C
-- [ ] Asynchronous SRC with drift correction (no long-run crackle/underrun/latency creep)
-- [ ] MVP path: BlackHole 2ch @ 44.1 in → AirPods @ 48 out (prove routing before custom driver)
-- [ ] Production path: HAL Audio Server Plug-in (`APM44Bridge.driver`) + separate bridge daemon
-- [ ] Real-time audio path: no malloc/locks/logging in callbacks; C++ engine + Swift menu app shell
-- [ ] Latency modes: Low / Balanced / Safe mixing with honest latency reporting
-- [ ] Device hotplug handling and status UI (menu bar app)
-- [ ] Success validation: DAW + Audio MIDI Setup show 44.1 on bridge, 48 kHz on AirPods; long playback stable
+- [ ] DEV-01: AMS/DAW enumeration of APM44 Bridge @ 44.1 kHz (signed install + manual QA)
+- [ ] DEV-03: DAW @ 44100 → APM44 Bridge end-to-end verified (Logic/Ableton)
+- [ ] DRV-02: Harden GetAvailableNominalSampleRates to 44100-only
+- [ ] QA-02: Export/stem bounce remains 44.1 kHz (human bounce + validate-export-rate.sh)
+- [ ] Wire menu bar app to spawn `--virtual-device` when HAL driver installed
+- [ ] Developer ID sign + notarytool dry-run for driver and app
+- [ ] Full 30+ min live DAW soak sign-off (documented procedure exists)
 
 ### Out of Scope
 
@@ -33,6 +54,8 @@ A producer can set session/project rate to **44.1 kHz**, select **APM44 Bridge**
 - Bundling BlackHole GPL code in a closed-source product without separate licensing — MVP may *use* installed BlackHole; production uses own driver
 - Promising zero added latency — bridge adds buffering + SRC delay by design
 - Pro Tools full virtual playback engine (**APM44 Bridge Pro**) — v2; v1 targets standard output-device workflow
+- Bluetooth-only AirPods path — USB-C wired 48 kHz scope for v1
+- Windows/Linux ports — macOS Core Audio only
 
 ## Context
 
@@ -40,7 +63,7 @@ A producer can set session/project rate to **44.1 kHz**, select **APM44 Bridge**
 
 **Mental model:** APM44 Bridge changes what the **DAW thinks** it is connected to—not what the AirPods are.
 
-**Architecture (target):**
+**Architecture (shipped):**
 
 ```
 DAW @ 44.1 kHz
@@ -49,25 +72,21 @@ DAW @ 44.1 kHz
    → AirPods Max USB-C @ 48 kHz
 ```
 
-**MVP routing (BlackHole):**
+**MVP routing (BlackHole — still supported):**
 
 ```
 DAW → BlackHole 2ch @ 44.1 → Bridge app input @ 44.1
 Bridge app output → AirPods Max USB-C @ 48
 ```
 
-**Nominal block ratio:** 48000/44100 = 160/147 (147 input frames → 160 output frames at nominal rates). Still requires variable-ratio SRC for clock drift.
+**Module layout:**
 
-**Module layout (suggested):**
-
-- `Driver/APM44Bridge.driver/` — boring virtual device, hands buffers to user-space
-- `BridgeDaemon/` — Core Audio clients, `AudioBridge`, `Resampler`, `DriftController`
+- `Driver/APM44Bridge.driver/` — libASPL virtual device, shm producer
+- `BridgeDaemon/` — Core Audio clients, BridgeEngine, LibSamplerateSrc, DriftController
 - `App/` — SwiftUI menu bar: device picker, latency/quality, meters
-- `Shared/` — formats, lock-free ring, logging (non-RT)
+- `Shared/` — ASBD helpers, SPSC ring, shm layout
 
-**Resampler strategy:** MVP `AVAudioConverter` or AudioToolbox; production **libsamplerate** with streaming `src_ratio` adjustment.
-
-**Drift control:** Ring buffer target fill ~10–20 ms; small PPM correction on consumption rate (±500 ppm cap).
+**Tech debt (from v1.0 audit):** Menu bar spawns BlackHole path only; unsigned HAL load not CI-verified; driver stream SInt16 vs float32 hardening; XPC daemon control deferred.
 
 ## Constraints
 
@@ -82,23 +101,17 @@ Bridge app output → AirPods Max USB-C @ 48
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Lie upstream (virtual 44.1) not downstream (force 48 kHz device to 44.1) | AirPods USB-C exposes 48 kHz only; Core Audio correctly refuses unsupported nominal rates | — Pending |
-| MVP: BlackHole loopback before custom HAL driver | Proves SRC + drift + routing without driver development risk | — Pending |
-| Production: `APM44Bridge.driver` + user-space bridge | Driver stays boring; SRC/drift/AirPods I/O in daemon | — Pending |
-| MVP SRC: AVAudioConverter; production: libsamplerate | Apple APIs fine for POC; libsamplerate supports variable `src_ratio` for drift | — Pending |
-| C++ for RT engine, Swift for shell | RT safety vs UI/productivity | — Pending |
-| Vertical MVP phases | End-to-end slices (BlackHole bridge → drift → UI → custom driver) | — Pending |
+| Lie upstream (virtual 44.1) not downstream (force 48 kHz device to 44.1) | AirPods USB-C exposes 48 kHz only; Core Audio correctly refuses unsupported nominal rates | ✓ Good — HAL driver advertises 44100 |
+| MVP: BlackHole loopback before custom HAL driver | Proves SRC + drift + routing without driver development risk | ✓ Good — Phase 1 complete |
+| Production: `APM44Bridge.driver` + user-space bridge | Driver stays boring; SRC/drift/AirPods I/O in daemon | ✓ Good — build complete; manual QA pending |
+| MVP SRC: AVAudioConverter; production: libsamplerate | Apple APIs fine for POC; libsamplerate supports variable `src_ratio` for drift | ✓ Good — default path is libsamplerate |
+| C++ for RT engine, Swift for shell | RT safety vs UI/productivity | ✓ Good |
+| Vertical MVP phases | End-to-end slices (BlackHole bridge → drift → UI → custom driver) | ✓ Good — v1.0 shipped |
+| Subprocess bridge control (not XPC) | Faster MVP; defer IPC hardening | ⚠️ Revisit — wire `--virtual-device` in app |
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
-
-**After each phase transition** (via `/gsd-transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
 
 **After each milestone** (via `/gsd-complete-milestone`):
 1. Full review of all sections
@@ -107,4 +120,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-01 after initialization*
+*Last updated: 2026-06-01 after v1.0 milestone*

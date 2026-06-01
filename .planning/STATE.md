@@ -1,57 +1,54 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: milestone
-status: verifying
-stopped_at: Roadmap and state initialized; ready for `/gsd-plan-phase 1`
-last_updated: "2026-06-01T08:29:18.897Z"
-last_activity: 2026-06-01
+milestone_name: APM44 Bridge MVP
+status: Awaiting next milestone
+stopped_at: Milestone v1.0 complete — run /gsd-new-milestone to plan v1.1
+last_updated: "2026-06-01T08:55:00.000Z"
+last_activity: 2026-06-01 — Milestone v1.0 completed and archived
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 23
-  completed_plans: 18
-  percent: 78
+  completed_plans: 23
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-01)
+See: .planning/PROJECT.md (updated 2026-06-01 after v1.0 milestone)
 
 **Core value:** DAW sessions stay at 44.1 kHz while monitoring stably on AirPods Max USB-C at 48 kHz via a virtual bridge endpoint.
-**Current focus:** Phase 1 — BlackHole Console Bridge
+**Current focus:** Planning next milestone (v1.1 — production sign-off + HAL integration gaps)
 
 ## Current Position
 
-Phase: 1 of 5 (BlackHole Console Bridge)
-Plan: 4 of 4 in current phase
-Status: Phase complete — ready for verification
-Last activity: 2026-06-01
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-01 — Milestone v1.0 completed and archived
 
-Progress: [████████░░] 78%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 23
+- Phases completed: 5
+- Milestone shipped: v1.0 (2026-06-01)
 
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
-
-**Recent Trend:**
-
-- Last 5 plans: —
-- Trend: —
-
-*Updated after each plan completion*
+| Phase | Plans | Status |
+|-------|-------|--------|
+| 1. BlackHole Console Bridge | 4/4 | Complete |
+| 2. Production SRC & Drift Engine | 6/6 | Complete |
+| 3. Menu Bar Application | 7/7 | Complete |
+| 4. HAL Virtual Device | 5/5 | Complete |
+| 5. Integration & Ship Readiness | 1/1 | Complete |
 
 ## Accumulated Context
 
@@ -60,27 +57,28 @@ Progress: [████████░░] 78%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- Roadmap: Vertical MVP slices — BlackHole proof → drift engine → UI → HAL driver → integration
-- MVP SRC: AVAudioConverter (Phase 1); production libsamplerate (Phase 2)
-- Driver pattern: libASPL HAL plug-in + user-space daemon (Phase 4)
+- v1.0 shipped with audit gaps accepted — production HAL path needs manual QA + app wiring
+- MVP BlackHole path remains supported fallback until v1.1 closes integration gaps
 
 ### Pending Todos
 
-None yet.
+None — start `/gsd-new-milestone` for v1.1 backlog.
 
 ### Blockers/Concerns
 
 - GPL BlackHole: MVP dependency only; do not embed in closed-source distribution
-- HAL signing: plan Developer ID workflow before Phase 4 execution
+- HAL signing: Developer ID workflow documented; dry-run pending for Gatekeeper acceptance
 
 ## Deferred Items
 
-| Category | Item | Status | Deferred At |
-|----------|------|--------|-------------|
-| *(none)* | | | |
+All artifact types clear at milestone close (2026-06-01). Audit gaps documented in MILESTONES.md Known Gaps and PROJECT.md Active requirements.
 
 ## Session Continuity
 
-Last session: 2026-06-01T08:29:18.889Z
-Stopped at: Roadmap and state initialized; ready for `/gsd-plan-phase 1`
+Last session: 2026-06-01
+Stopped at: Milestone v1.0 complete — run /gsd-new-milestone to plan v1.1
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with `/gsd-new-milestone`
