@@ -18,6 +18,7 @@ function(apm44_add_test name)
 endfunction()
 
 apm44_add_test(test_audio_formats test_audio_formats.cpp)
+apm44_add_test(test_hal_driver_contract test_hal_driver_contract.cpp)
 apm44_add_test(test_device_enumerator test_device_enumerator.cpp)
 apm44_add_test(test_planar_ring_buffer test_planar_ring_buffer.cpp)
 apm44_add_test(test_audio_converter_src test_audio_converter_src.cpp)
@@ -27,11 +28,27 @@ apm44_add_test(test_lib_samplerate_src test_lib_samplerate_src.cpp)
 apm44_add_test(test_soak_offline test_soak_offline.cpp)
 apm44_add_test(test_bridge_metrics_json test_bridge_metrics_json.cpp)
 apm44_add_test(test_mmap_shm_ring test_mmap_shm_ring.cpp)
+apm44_add_test(test_shm_io_handler test_shm_io_handler.cpp)
 apm44_add_test(test_virtual_device_feed test_virtual_device_feed.cpp)
 
 target_sources(test_bridge_metrics_json PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/BridgeMetrics.cpp
 )
+
+target_include_directories(test_hal_driver_contract PRIVATE
+  ${CMAKE_SOURCE_DIR}/Driver/src
+  ${CMAKE_SOURCE_DIR}/third_party/libASPL/include
+)
+target_link_libraries(test_hal_driver_contract PRIVATE libASPL)
+
+target_include_directories(test_shm_io_handler PRIVATE
+  ${CMAKE_SOURCE_DIR}/Driver/src
+  ${CMAKE_SOURCE_DIR}/third_party/libASPL/include
+)
+target_sources(test_shm_io_handler PRIVATE
+  ${CMAKE_SOURCE_DIR}/Driver/src/ShmIoHandler.cpp
+)
+target_link_libraries(test_shm_io_handler PRIVATE libASPL)
 
 target_link_libraries(test_libsamplerate_smoke PRIVATE samplerate::samplerate)
 target_link_libraries(test_lib_samplerate_src PRIVATE samplerate::samplerate)

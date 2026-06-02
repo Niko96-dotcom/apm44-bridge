@@ -1,13 +1,11 @@
 #include "ShmIoHandler.h"
+#include "DriverFormat.h"
 
 #include <aspl/Driver.hpp>
 
 #include <CoreAudio/AudioServerPlugIn.h>
 
 namespace {
-
-constexpr UInt32 kSampleRate = 44100;
-constexpr UInt32 kChannelCount = 2;
 
 std::shared_ptr<aspl::Driver> CreateAPM44Driver() {
   auto context = std::make_shared<aspl::Context>();
@@ -16,29 +14,26 @@ std::shared_ptr<aspl::Driver> CreateAPM44Driver() {
   deviceParams.Name = "APM44 Bridge";
   deviceParams.DeviceUID = "com.niko.apm44.bridge.device";
   deviceParams.ModelUID = "com.niko.apm44.bridge.model";
-  deviceParams.SampleRate = kSampleRate;
-  deviceParams.ChannelCount = kChannelCount;
+  deviceParams.SampleRate = apm44::kApm44DriverSampleRate;
+  deviceParams.ChannelCount = apm44::kApm44DriverChannelCount;
   deviceParams.EnableMixing = true;
 
   auto device = std::make_shared<aspl::Device>(context, deviceParams);
 
   AudioValueRange rateOnly{};
-  rateOnly.mMinimum = static_cast<Float64>(kSampleRate);
-  rateOnly.mMaximum = static_cast<Float64>(kSampleRate);
+  rateOnly.mMinimum = static_cast<Float64>(apm44::kApm44DriverSampleRate);
+  rateOnly.mMaximum = static_cast<Float64>(apm44::kApm44DriverSampleRate);
   device->SetAvailableSampleRatesAsync({rateOnly});
 
-  aspl::StreamParameters streamParams;
-  streamParams.Direction = aspl::Direction::Output;
-  streamParams.Format.mSampleRate = kSampleRate;
-  streamParams.Format.mChannelsPerFrame = kChannelCount;
-  streamParams.Format.mBytesPerFrame = sizeof(SInt16) * kChannelCount;
-  streamParams.Format.mFramesPerPacket = 1;
-  streamParams.Format.mBytesPerPacket = streamParams.Format.mBytesPerFrame;
-  streamParams.Format.mFormatID = kAudioFormatLinearPCM;
-  streamParams.Format.mFormatFlags =
-      kAudioFormatFlagIsSignedInteger | kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsPacked;
+  auto volumeControl = device->AddVolumeControlAsync(kAudioObjectPropertyScopeOutput);
+  auto muteControl = device->AddMuteControlAsync(kAudioObjectPropertyScopeOutput);
 
-  device->AddStreamWithControlsAsync(streamParams);
+  for (UInt32 channel = 1; channel <= apm44::kApm44DriverStreamCount; ++channel) {
+    auto stream = std::make_shared<apm44::Apm44OutputStream>(context, device, channel);
+    device->AddStreamAsync(stream);
+    stream->AttachVolumeControl(volumeControl);
+    stream->AttachMuteControl(muteControl);
+  }
 
   auto handler = std::make_shared<apm44::ShmIoHandler>();
   device->SetControlHandler(std::static_pointer_cast<aspl::ControlRequestHandler>(handler));

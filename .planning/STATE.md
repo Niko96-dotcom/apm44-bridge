@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Production Sign-Off
 status: phase_9_human_qa_pending
-last_updated: "2026-06-01"
-last_activity: 2026-06-01
+last_updated: "2026-06-02"
+last_activity: 2026-06-02
 progress:
   total_phases: 5
   completed_phases: 4
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-01 — milestone v1.1)
 Phase: 9 of 10 (Cubase Sign-Off & Soak)
 Plan: 1 of 1 (docs/templates complete; human soak pending)
 Status: Awaiting operator sign-off on sign-off Mac
-Last activity: 2026-06-01 — Quick task 260601-r4p: menu bar popover visual refresh (Phase 9 soak still pending)
+Last activity: 2026-06-02 — Quick task 260602-wtj: HAL virtual-device production contract fix (Phase 9 soak still pending)
 
 Progress: [████████░░] 80% (v1.1)
 
@@ -69,6 +69,7 @@ Progress: [████████░░] 80% (v1.1)
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260601-r4p | Menu bar popover visual refresh (view-layer redesign) | 2026-06-01 | cd29a15 | [260601-r4p-menu-bar-popover-refresh](./quick/260601-r4p-menu-bar-popover-refresh/) |
+| 260602-wtj | HAL virtual-device production contract fix | 2026-06-02 | pending | [260602-wtj-fix-hal-virtual-device-production-contra](./quick/260602-wtj-fix-hal-virtual-device-production-contra/) |
 
 ## Session Continuity
 
