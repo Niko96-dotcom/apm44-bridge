@@ -1,10 +1,8 @@
 name: CodeQL
 
 on:
-  pull_request:
-  push:
-    branches:
-      - master
+  # macOS Swift/C++ CodeQL builds are intentionally scheduled/manual so
+  # day-to-day contribution CI stays fast and deterministic.
   schedule:
     - cron: "42 5 * * 2"
   workflow_dispatch:
