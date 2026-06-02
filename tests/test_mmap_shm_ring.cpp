@@ -6,16 +6,29 @@
 
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include <cmath>
+#include <string>
 #include <vector>
 
+namespace {
+
+std::string TestRingName(char suffix) {
+  return "/apm44t" + std::to_string(static_cast<long long>(getpid())) + suffix;
+}
+
+}  // namespace
+
 TEST_CASE("MmapShmRing producer consumer round trip", "[mmap_shm_ring]") {
-  apm44::MmapShmRing producer;
+  const std::string ringName = TestRingName('r');
+  apm44::MmapShmRing producer(ringName);
   REQUIRE(producer.create(1024));
 
-  apm44::MmapShmRing consumer;
+  apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(consumer.header()->version == apm44::kShmVersion);
+  REQUIRE(std::string(consumer.header()->producer_build_id) == apm44::kBuildId);
 
   std::vector<float> interleaved(200);
   for (std::size_t i = 0; i < 100; ++i) {
@@ -37,14 +50,31 @@ TEST_CASE("MmapShmRing producer consumer round trip", "[mmap_shm_ring]") {
 
   producer.close();
   consumer.close();
-  shm_unlink(apm44::kShmRingName);
+  shm_unlink(ringName.c_str());
+}
+
+TEST_CASE("MmapShmRing reports invalid shm header", "[mmap_shm_ring]") {
+  const std::string ringName = TestRingName('i');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(512));
+  producer.header()->version = 99;
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE_FALSE(consumer.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(consumer.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+  REQUIRE(consumer.lastError().find("expected_version") != std::string::npos);
+
+  producer.close();
+  consumer.close();
+  shm_unlink(ringName.c_str());
 }
 
 TEST_CASE("MmapShmRing popToPlanar feeds planar buffer", "[mmap_shm_ring]") {
-  apm44::MmapShmRing producer;
+  const std::string ringName = TestRingName('p');
+  apm44::MmapShmRing producer(ringName);
   REQUIRE(producer.create(512));
 
-  apm44::MmapShmRing consumer;
+  apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
 
   std::vector<float> interleaved(64);
@@ -62,5 +92,5 @@ TEST_CASE("MmapShmRing popToPlanar feeds planar buffer", "[mmap_shm_ring]") {
 
   producer.close();
   consumer.close();
-  shm_unlink(apm44::kShmRingName);
+  shm_unlink(ringName.c_str());
 }

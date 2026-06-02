@@ -3,12 +3,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DRIVER="${APM44_DRIVER_PATH:-$ROOT/build/Driver/APM44Bridge.driver}"
+DAEMON="${APM44_BRIDGE_BIN:-$ROOT/build/BridgeDaemon/apm44-bridge}"
+SMOKE="${APM44_HAL_SMOKE_BIN:-$ROOT/build/BridgeDaemon/apm44-hal-smoke}"
 FAIL=0
 
 note() { printf '  %s\n' "$*"; }
 pass() { note "OK: $*"; }
 warn() { note "WARN: $*"; }
 fail() { note "FAIL: $*"; FAIL=1; }
+sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 
 echo "APM44 HAL driver verification"
 echo "Bundle: $DRIVER"
@@ -37,11 +40,17 @@ if [[ -z "$BIN" ]]; then
   fail "MacOS executable missing"
 else
   pass "executable: $(basename "$BIN")"
-  if strings "$BIN" | grep -q 'com.niko.apm44.bridge.device'; then
+  if strings -a "$BIN" | grep 'com.niko.apm44.bridge.device' >/dev/null; then
     pass "device UID string embedded"
   else
     warn "device UID string not found in binary (check Driver.cpp)"
   fi
+fi
+
+if [[ -x "$DAEMON" ]]; then
+  pass "bridge helper: $("$DAEMON" --version)"
+else
+  warn "bridge helper missing at $DAEMON — build target apm44-bridge for shm-status checks"
 fi
 
 if xattr -l "$DRIVER" 2>/dev/null | grep -q com.apple.quarantine; then
@@ -61,6 +70,21 @@ fi
 
 INSTALLED="/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 if [[ -d "$INSTALLED" ]]; then
+  INSTALLED_BIN=$(find "$INSTALLED/Contents/MacOS" -maxdepth 1 -type f 2>/dev/null | head -1)
+  if [[ -n "$BIN" && -n "$INSTALLED_BIN" ]]; then
+    BUILD_SHA="$(sha256 "$BIN")"
+    INSTALLED_SHA="$(sha256 "$INSTALLED_BIN")"
+    if [[ "$BUILD_SHA" == "$INSTALLED_SHA" ]]; then
+      pass "installed HAL executable matches build ($BUILD_SHA)"
+    elif [[ "${APM44_ALLOW_STALE_INSTALLED:-0}" == "1" ]]; then
+      warn "installed HAL executable differs from build (build=$BUILD_SHA installed=$INSTALLED_SHA)"
+    else
+      fail "installed HAL executable differs from build (build=$BUILD_SHA installed=$INSTALLED_SHA)"
+    fi
+  else
+    warn "could not compare build and installed HAL executables"
+  fi
+
   INST_OUT="$(spctl -a -vv -t install "$INSTALLED" 2>&1 || true)"
   if grep -q 'accepted' <<<"$INST_OUT"; then
     pass "installed HAL copy is Gatekeeper-accepted"
@@ -75,6 +99,25 @@ if system_profiler SPAudioDataType 2>/dev/null | grep -qi 'APM44 Bridge'; then
   pass "system_profiler lists APM44 Bridge"
 else
   warn "APM44 Bridge not visible (notarize+staple, reinstall, reload-coreaudio.sh, or reboot)"
+fi
+
+if [[ "${APM44_SKIP_HAL_SMOKE:-0}" != "1" ]]; then
+  if [[ -x "$SMOKE" ]]; then
+    if system_profiler SPAudioDataType 2>/dev/null | grep -qi 'APM44 Bridge'; then
+      SMOKE_OUT="$("$SMOKE" --timeout-sec "${APM44_HAL_SMOKE_TIMEOUT:-5}" 2>&1)" || {
+        fail "HAL smoke could not start APM44 Bridge / open shm"
+        while IFS= read -r line; do note "  $line"; done <<<"$SMOKE_OUT"
+      }
+      if [[ "${SMOKE_OUT+x}" == "x" ]] && grep -q '^hal_smoke=ok' <<<"$SMOKE_OUT"; then
+        pass "HAL smoke opened APM44 shm ring"
+        while IFS= read -r line; do note "  $line"; done <<<"$SMOKE_OUT"
+      fi
+    else
+      warn "skipping HAL smoke because APM44 Bridge is not visible"
+    fi
+  else
+    warn "HAL smoke tool missing at $SMOKE — build target apm44-hal-smoke"
+  fi
 fi
 
 if [[ -n "$BIN" ]]; then

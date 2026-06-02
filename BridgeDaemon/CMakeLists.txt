@@ -43,3 +43,21 @@ target_link_libraries(apm44-soak
 set_target_properties(apm44-soak PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/BridgeDaemon"
 )
+
+add_executable(apm44-hal-smoke
+  src/tools/apm44_hal_smoke_main.cpp
+  src/hal/DeviceEnumerator.cpp
+)
+
+target_include_directories(apm44-hal-smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+target_link_libraries(apm44-hal-smoke
+  PRIVATE
+    apm44_shared
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
+)
+
+set_target_properties(apm44-hal-smoke PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/BridgeDaemon"
+)

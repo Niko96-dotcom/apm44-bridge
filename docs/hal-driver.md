@@ -8,23 +8,23 @@ BlackHole is **not** required when this path is fully installed and loaded.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target APM44Bridge apm44-bridge
+cmake --build build --target APM44Bridge apm44-bridge apm44-hal-smoke
 ```
 
 Artifacts:
 
 - `build/Driver/APM44Bridge.driver`
 - `build/BridgeDaemon/apm44-bridge`
+- `build/BridgeDaemon/apm44-hal-smoke`
 
 ## Install (development)
 
 ```bash
 ./scripts/install-driver.sh
-./scripts/reload-coreaudio.sh   # sudo killall coreaudiod — kickstart is blocked on macOS 14.4+
 ./scripts/verify-hal-driver.sh
 ```
 
-Install copies the bundle to `/Library/Audio/Plug-Ins/HAL/`. **Production:** use signed + notarized driver (`scripts/sign-release.sh`, `scripts/notarize-hal-driver.sh`). On macOS 15+, unsigned HAL plug-ins fail to load.
+Install copies the bundle to `/Library/Audio/Plug-Ins/HAL/`, verifies the installed executable hash, and reloads Core Audio. `verify-hal-driver.sh` fails if the installed HAL executable differs from the current build and, when APM44 Bridge is visible, runs `apm44-hal-smoke` to start the Core Audio device and prove the driver creates a readable shared-memory ring. **Production:** use signed + notarized driver (`scripts/sign-release.sh`, `scripts/notarize-hal-driver.sh`). On macOS 15+, unsigned HAL plug-ins fail to load.
 
 ## Sample rate contract (44100 only)
 
@@ -44,12 +44,22 @@ build/BridgeDaemon/apm44-bridge --virtual-device --output-device "<AirPods UID>"
 
 Or: `bash scripts/start-virtual-bridge.sh`
 
+Single-shot IPC check:
+
+```bash
+build/BridgeDaemon/apm44-bridge --shm-status
+```
+
+The helper and driver both include an `APM44_BUILD_ID` fingerprint. The driver writes its build ID into the shm header, and `--shm-status` / `apm44-hal-smoke` report both IDs so stale driver/helper pairs are visible immediately.
+
 ## IPC
 
 - Shm name: `/apm44_bridge_ring` (see `Shared/include/apm44/ShmRingLayout.h`)
 - Driver: producer (ring created at driver load in `ShmIoHandler` constructor)
 - Daemon: consumer (`--virtual-device` → ring drain)
 - Shm mode **0666** so coreaudiod (driver) and user daemon can share the ring
+- Ring ABI version and driver build ID are stored in the shm header; mismatches fail fast instead of waiting for DAW playback.
+- Tests must construct `MmapShmRing` with a short per-test shm name and must never create/unlink the production `/apm44_bridge_ring`.
 
 ## Related
 

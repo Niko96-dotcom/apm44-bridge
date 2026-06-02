@@ -59,6 +59,7 @@ void PrintUsage(const char* programName) {
             << "  --list-devices      List Core Audio devices (UID, name, rate, I/O)\n"
             << "  --preflight         Validate devices/rates without starting audio\n"
             << "  --print-config      Print resolved device/config (no audio)\n"
+            << "  --shm-status        Check APM44Bridge.driver shared-memory ring once\n"
             << "  --input-device UID  Input device UID (default: BlackHole 2ch)\n"
             << "  --output-device UID Output device UID (default: AirPods Max)\n"
             << "  --target-fill-ms N  Ring target fill 6–40 ms (default 15)\n"
@@ -85,6 +86,8 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
       options.preflight = true;
     } else if (arg == "--print-config") {
       options.printConfig = true;
+    } else if (arg == "--shm-status") {
+      options.shmStatus = true;
     } else if (arg == "--metrics-json") {
       options.metricsJson = true;
     } else if (arg == "--legacy-converter") {

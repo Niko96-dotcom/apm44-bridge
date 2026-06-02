@@ -8,9 +8,21 @@ namespace apm44 {
 
 inline constexpr const char* kShmRingName = "/apm44_bridge_ring";
 inline constexpr uint32_t kShmMagic = 0x344D5041u;  // 'APM4' little-endian
-inline constexpr uint32_t kShmVersion = 1u;
+inline constexpr uint32_t kShmVersion = 2u;
 inline constexpr uint32_t kShmChannels = 2u;
 inline constexpr uint32_t kDefaultShmCapacityFrames = 4096u;
+inline constexpr std::size_t kShmBuildIdBytes = 64u;
+
+#ifndef APM44_VERSION_STRING
+#define APM44_VERSION_STRING "0.1.0"
+#endif
+
+#ifndef APM44_BUILD_ID
+#define APM44_BUILD_ID "unknown"
+#endif
+
+inline constexpr const char* kVersionString = APM44_VERSION_STRING;
+inline constexpr const char* kBuildId = APM44_BUILD_ID;
 
 struct ShmRingHeader {
   uint32_t magic = 0;
@@ -19,6 +31,9 @@ struct ShmRingHeader {
   uint32_t sample_rate = 44100;
   uint32_t channels = kShmChannels;
   uint32_t reserved0 = 0;
+  uint32_t header_bytes = 0;
+  uint32_t flags = 0;
+  char producer_build_id[kShmBuildIdBytes] = {};
   std::atomic<uint64_t> write_index{0};
   std::atomic<uint64_t> read_index{0};
   std::atomic<uint32_t> daemon_ready{0};
@@ -37,6 +52,9 @@ inline std::size_t ShmTotalSize(uint32_t capacityFrames) {
 
 inline bool ValidateShmHeader(const ShmRingHeader& header) {
   if (header.magic != kShmMagic || header.version != kShmVersion) {
+    return false;
+  }
+  if (header.header_bytes < sizeof(ShmRingHeader)) {
     return false;
   }
   if (header.capacity_frames == 0 || header.channels != kShmChannels) {

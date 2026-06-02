@@ -16,8 +16,13 @@ on run argv
 		"ditto " & quoted form of staged & " " & quoted form of halDest & " && " & ¬
 		"chown -R root:wheel " & quoted form of halDest & " && " & ¬
 		"xattr -cr " & quoted form of halDest & " && " & ¬
+		"SRC_BIN=$(find " & quoted form of staged & "/Contents/MacOS -maxdepth 1 -type f | head -1) && " & ¬
+		"DST_BIN=$(find " & quoted form of halDest & "/Contents/MacOS -maxdepth 1 -type f | head -1) && " & ¬
+		"SRC_SHA=$(shasum -a 256 \"$SRC_BIN\" | awk '{print $1}') && " & ¬
+		"DST_SHA=$(shasum -a 256 \"$DST_BIN\" | awk '{print $1}') && " & ¬
+		"if [ \"$SRC_SHA\" != \"$DST_SHA\" ]; then echo installed driver hash mismatch >&2; exit 1; fi && " & ¬
 		"rm -rf " & quoted form of staged & " && " & ¬
-		"killall coreaudiod"
+		"killall coreaudiod 2>/dev/null || true"
 
 	do shell script shellCmd with administrator privileges
 end run

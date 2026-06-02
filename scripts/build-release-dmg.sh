@@ -48,9 +48,18 @@ cat > "$STAGING/Install APM44 Bridge.command" <<CMD
 set -euo pipefail
 DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 echo "Installing APM44 Bridge (requires admin password)…"
+sudo rm -rf /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
 sudo ditto "\$DIR/APM44Bridge.driver" /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
 sudo chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
 sudo xattr -cr /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver 2>/dev/null || true
+SRC_BIN="\$(find "\$DIR/APM44Bridge.driver/Contents/MacOS" -maxdepth 1 -type f | head -1)"
+DST_BIN="\$(find /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS -maxdepth 1 -type f | head -1)"
+SRC_SHA="\$(shasum -a 256 "\$SRC_BIN" | awk '{print \$1}')"
+DST_SHA="\$(shasum -a 256 "\$DST_BIN" | awk '{print \$1}')"
+if [[ "\$SRC_SHA" != "\$DST_SHA" ]]; then
+  echo "Installed driver hash mismatch; aborting." >&2
+  exit 1
+fi
 sudo killall coreaudiod 2>/dev/null || true
 cp -R "\$DIR/APM44 Bridge.app" /Applications/
 open "/Applications/APM44 Bridge.app"

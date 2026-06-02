@@ -3,6 +3,7 @@
 #include "engine/IoProcHandlers.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <chrono>
 #include <csignal>
@@ -56,6 +57,17 @@ void HoldLastSample(float* ch0, float* ch1, std::size_t converted, std::size_t f
   }
 }
 
+bool IsFatalShmOpenFailure(ShmRingErrorCode code, int err) {
+  if (code == ShmRingErrorCode::InvalidHeader || code == ShmRingErrorCode::PermissionFailed) {
+    return true;
+  }
+  if ((code == ShmRingErrorCode::OpenFailed || code == ShmRingErrorCode::MapFailed) &&
+      (err == EACCES || err == EPERM)) {
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options) {
@@ -66,18 +78,30 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
 
   if (virtualDevice_) {
     constexpr auto kPollInterval = std::chrono::milliseconds(100);
-    constexpr auto kWaitTimeout = std::chrono::seconds(120);
+    constexpr auto kWaitTimeout = std::chrono::seconds(15);
     const auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
     bool printedWaitHint = false;
     while (!virtualFeed_.open()) {
       if (!printedWaitHint) {
-        std::cerr << "Waiting for APM44 Bridge shm: reload HAL driver if this persists, then in "
-                     "Cubase assign Control Room Monitor L/R ports (or Outputs bus ports) to "
-                     "APM44 Bridge and start playback...\n";
+        std::cerr << "Waiting for APM44 Bridge shm: the HAL driver should create "
+                  << kShmRingName
+                  << " when APM44 Bridge is loaded. If this persists, reinstall the matching "
+                     "driver, reload Core Audio, or run scripts/verify-hal-driver.sh.\n";
         printedWaitHint = true;
       }
+      if (IsFatalShmOpenFailure(virtualFeed_.lastOpenErrorCode(), virtualFeed_.lastOpenErrno())) {
+        std::cerr << "error: APM44 Bridge shm open failed: "
+                  << virtualFeed_.lastOpenError() << "\n";
+        return false;
+      }
       if (std::chrono::steady_clock::now() >= deadline) {
-        std::cerr << "error: could not open shm ring (is APM44Bridge.driver IO running?)\n";
+        std::cerr << "error: could not open shm ring after "
+                  << std::chrono::duration_cast<std::chrono::seconds>(kWaitTimeout).count()
+                  << "s";
+        if (!virtualFeed_.lastOpenError().empty()) {
+          std::cerr << ": " << virtualFeed_.lastOpenError();
+        }
+        std::cerr << "\n";
         return false;
       }
       std::this_thread::sleep_for(kPollInterval);

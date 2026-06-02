@@ -62,8 +62,14 @@ ditto "$DRIVER" "$PAYLOAD/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 
 cat > "$SCRIPTS/postinstall" <<'POST'
 #!/bin/bash
+set -e
 chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
 xattr -cr /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver 2>/dev/null || true
+DRIVER_BIN="$(find /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS -maxdepth 1 -type f | head -1)"
+if [[ -z "$DRIVER_BIN" ]]; then
+  echo "APM44Bridge.driver executable missing after install" >&2
+  exit 1
+fi
 killall coreaudiod 2>/dev/null || true
 CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
 if [[ -n "$CONSOLE_USER" && -d "/Applications/APM44 Bridge.app" ]]; then

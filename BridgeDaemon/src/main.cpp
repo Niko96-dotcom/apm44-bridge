@@ -5,13 +5,13 @@
 #include "hal/FormatNegotiator.h"
 
 #include <apm44/AudioFormats.h>
+#include <apm44/MmapShmRing.h>
 
+#include <cerrno>
 #include <iostream>
 #include <optional>
 
 namespace {
-
-constexpr const char* kVersion = "0.1.0";
 
 std::optional<apm44::BridgeDevicePair> ResolveDevices(const apm44::CliOptions& options,
                                                       bool requirePresent) {
@@ -130,13 +130,66 @@ int RunListDevices() {
   return 0;
 }
 
+const char* ShmErrorCodeName(apm44::ShmRingErrorCode code) {
+  switch (code) {
+    case apm44::ShmRingErrorCode::None:
+      return "none";
+    case apm44::ShmRingErrorCode::OpenFailed:
+      return "open_failed";
+    case apm44::ShmRingErrorCode::CreateFailed:
+      return "create_failed";
+    case apm44::ShmRingErrorCode::PermissionFailed:
+      return "permission_failed";
+    case apm44::ShmRingErrorCode::TruncateFailed:
+      return "truncate_failed";
+    case apm44::ShmRingErrorCode::StatFailed:
+      return "stat_failed";
+    case apm44::ShmRingErrorCode::EmptyObject:
+      return "empty_object";
+    case apm44::ShmRingErrorCode::MapFailed:
+      return "map_failed";
+    case apm44::ShmRingErrorCode::InvalidHeader:
+      return "invalid_header";
+  }
+  return "unknown";
+}
+
+int RunShmStatus() {
+  apm44::MmapShmRing ring;
+  if (!ring.open(apm44::ShmRingRole::Consumer)) {
+    const auto code = ring.lastErrorCode();
+    std::cerr << "shm_status=failed\n";
+    std::cerr << "shm_name=" << apm44::kShmRingName << "\n";
+    std::cerr << "helper_build_id=" << apm44::kBuildId << "\n";
+    std::cerr << "error_code=" << ShmErrorCodeName(code) << "\n";
+    std::cerr << "error=" << ring.lastError() << "\n";
+    if (code == apm44::ShmRingErrorCode::OpenFailed && ring.lastErrno() == ENOENT) {
+      return 2;
+    }
+    return 3;
+  }
+
+  const auto* header = ring.header();
+  std::cout << "shm_status=ok\n";
+  std::cout << "shm_name=" << apm44::kShmRingName << "\n";
+  std::cout << "helper_build_id=" << apm44::kBuildId << "\n";
+  std::cout << "driver_build_id=" << header->producer_build_id << "\n";
+  std::cout << "version=" << header->version << "\n";
+  std::cout << "capacity_frames=" << header->capacity_frames << "\n";
+  std::cout << "sample_rate=" << header->sample_rate << "\n";
+  std::cout << "channels=" << header->channels << "\n";
+  ring.close();
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
   const apm44::CliOptions options = apm44::ParseCliOptions(argc, argv);
 
   if (options.showVersion) {
-    std::cout << "apm44-bridge " << kVersion << "\n";
+    std::cout << "apm44-bridge " << apm44::kVersionString
+              << " build=" << apm44::kBuildId << "\n";
     return 0;
   }
   if (options.showHelp) {
@@ -145,6 +198,9 @@ int main(int argc, char* argv[]) {
   }
   if (options.listDevices) {
     return RunListDevices();
+  }
+  if (options.shmStatus) {
+    return RunShmStatus();
   }
   if (options.preflight) {
     return RunPreflight(options);

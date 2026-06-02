@@ -1,14 +1,23 @@
 #include "engine/VirtualDeviceFeed.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace apm44 {
+
+VirtualDeviceFeed::VirtualDeviceFeed(std::string ringName) : ring_(std::move(ringName)) {}
 
 bool VirtualDeviceFeed::open() {
   close();
   if (!ring_.open(ShmRingRole::Consumer)) {
+    lastOpenErrorCode_ = ring_.lastErrorCode();
+    lastOpenErrno_ = ring_.lastErrno();
+    lastOpenError_ = ring_.lastError();
     return false;
   }
+  lastOpenErrorCode_ = ShmRingErrorCode::None;
+  lastOpenErrno_ = 0;
+  lastOpenError_.clear();
   constexpr std::size_t kMaxDrain = 2048;
   interleavedScratch_.resize(PlanarRingBuffer::kChannels * kMaxDrain);
   planarScratch0_.resize(kMaxDrain);

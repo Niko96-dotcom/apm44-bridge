@@ -9,8 +9,20 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <string>
+#include <vector>
+
+namespace {
+
+std::string TestRingName() {
+  return "/apm44t" + std::to_string(static_cast<long long>(getpid())) + "f";
+}
+
+}  // namespace
+
 TEST_CASE("VirtualDeviceFeed drains shm into ring", "[virtual_device]") {
-  apm44::MmapShmRing producer;
+  const std::string ringName = TestRingName();
+  apm44::MmapShmRing producer(ringName);
   REQUIRE(producer.create(512));
 
   std::vector<float> interleaved(64);
@@ -21,7 +33,7 @@ TEST_CASE("VirtualDeviceFeed drains shm into ring", "[virtual_device]") {
   REQUIRE(producer.pushInterleaved(interleaved.data(), 32) == 32);
   producer.close();
 
-  apm44::VirtualDeviceFeed feed;
+  apm44::VirtualDeviceFeed feed(ringName);
   REQUIRE(feed.open());
 
   apm44::PlanarRingBuffer ring;
@@ -31,5 +43,5 @@ TEST_CASE("VirtualDeviceFeed drains shm into ring", "[virtual_device]") {
   REQUIRE(ring.fillFrames() == 32);
 
   feed.close();
-  shm_unlink(apm44::kShmRingName);
+  shm_unlink(ringName.c_str());
 }

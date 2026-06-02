@@ -274,6 +274,17 @@ final class BridgeProcessManager: ObservableObject {
         }
     }
 
+    private func bridgeFailureMessage(defaultMessage: String) -> String {
+        let stderr = stderrLines.joined(separator: "\n")
+        if stderr.localizedCaseInsensitiveContains("shm") {
+            return "APM44 driver IPC failed. Reinstall the matching driver and reload Core Audio."
+        }
+        if let last = stderrLines.last, !last.isEmpty {
+            return last
+        }
+        return defaultMessage
+    }
+
     private func handleTermination(_ proc: Process) {
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stdoutPipe = nil
@@ -285,12 +296,13 @@ final class BridgeProcessManager: ObservableObject {
             return
         }
         if proc.terminationStatus != 0, case .running = state {
-            state = .error("Lost connection to bridge.")
-            bannerMessage = "Lost connection to bridge."
+            let message = bridgeFailureMessage(defaultMessage: "Lost connection to bridge.")
+            state = .error(message)
+            bannerMessage = message
         } else if case .running = state {
             state = .idle
         } else if case .starting = state {
-            state = .error("Bridge could not start.")
+            state = .error(bridgeFailureMessage(defaultMessage: "Bridge could not start."))
         }
         connectionPhase = .stopped
     }

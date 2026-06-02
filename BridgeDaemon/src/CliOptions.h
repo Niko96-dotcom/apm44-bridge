@@ -14,6 +14,7 @@ struct CliOptions {
   bool listDevices = false;
   bool preflight = false;
   bool printConfig = false;
+  bool shmStatus = false;
   std::optional<std::string> inputDeviceUid;
   std::optional<std::string> outputDeviceUid;
 

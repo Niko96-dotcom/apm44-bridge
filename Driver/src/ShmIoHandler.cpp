@@ -4,8 +4,18 @@
 
 #include <algorithm>
 #include <cstring>
+#include <os/log.h>
 
 namespace apm44 {
+
+namespace {
+
+os_log_t DriverLog() {
+  static os_log_t log = os_log_create("com.niko.apm44.bridge", "HALDriver");
+  return log;
+}
+
+}  // namespace
 
 ShmIoHandler::ShmIoHandler() { ensureRingReady(); }
 
@@ -14,8 +24,12 @@ bool ShmIoHandler::ensureRingReady() {
     return true;
   }
   if (!ring_.create(kDefaultShmCapacityFrames)) {
+    os_log_error(DriverLog(), "APM44 shm ring create failed: %{public}s",
+                 ring_.lastError().c_str());
     return false;
   }
+  os_log(DriverLog(), "APM44 shm ring ready: %{public}s build=%{public}s", kShmRingName,
+         kBuildId);
   convertScratch_.resize(kDefaultShmCapacityFrames * kShmChannels);
   return true;
 }

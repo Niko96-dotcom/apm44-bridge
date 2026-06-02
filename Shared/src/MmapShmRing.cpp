@@ -4,8 +4,10 @@
 #include <cstring>
 #include <cerrno>
 #include <fcntl.h>
+#include <sstream>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <utility>
 #include <unistd.h>
 
 namespace apm44 {
@@ -14,39 +16,74 @@ namespace {
 
 constexpr int kMapProt = PROT_READ | PROT_WRITE;
 
+bool IsPermissionErrno(int err) { return err == EACCES || err == EPERM; }
+
+void CopyBuildId(char (&dst)[kShmBuildIdBytes]) {
+  std::memset(dst, 0, sizeof(dst));
+  std::strncpy(dst, kBuildId, sizeof(dst) - 1);
+}
+
+std::string DescribeHeaderMismatch(const ShmRingHeader& header) {
+  std::ostringstream out;
+  out << "invalid shm ring header"
+      << " magic=0x" << std::hex << header.magic << std::dec
+      << " version=" << header.version
+      << " expected_version=" << kShmVersion
+      << " header_bytes=" << header.header_bytes
+      << " expected_header_bytes>=" << sizeof(ShmRingHeader)
+      << " channels=" << header.channels
+      << " expected_channels=" << kShmChannels
+      << " producer_build_id='" << header.producer_build_id << "'"
+      << " consumer_build_id='" << kBuildId << "'";
+  return out.str();
+}
+
 }  // namespace
+
+MmapShmRing::MmapShmRing(std::string name) : name_(std::move(name)) {}
 
 MmapShmRing::~MmapShmRing() { close(); }
 
 bool MmapShmRing::create(uint32_t capacityFrames) {
   close();
+  clearError();
   role_ = ShmRingRole::Producer;
 
   const std::size_t totalSize = ShmTotalSize(capacityFrames);
   // Driver runs in coreaudiod; daemon runs as the logged-in user — world rw required.
-  ::shm_unlink(kShmRingName);
-  fd_ = ::shm_open(kShmRingName, O_CREAT | O_RDWR | O_EXCL, 0666);
+  ::shm_unlink(name_.c_str());
+  fd_ = ::shm_open(name_.c_str(), O_CREAT | O_RDWR | O_EXCL, 0666);
   if (fd_ < 0 && errno == EEXIST) {
-    fd_ = ::shm_open(kShmRingName, O_RDWR, 0666);
+    fd_ = ::shm_open(name_.c_str(), O_RDWR, 0666);
     if (fd_ >= 0) {
       ::fchmod(fd_, 0666);
     }
   }
   if (fd_ < 0) {
+    const int err = errno;
+    recordErrno(IsPermissionErrno(err) ? ShmRingErrorCode::PermissionFailed
+                                       : ShmRingErrorCode::CreateFailed,
+                "shm_open(create)", err);
     return false;
   }
   if (::fchmod(fd_, 0666) != 0) {
     // Continue; mode at create time should already allow daemon access.
   }
   if (::ftruncate(fd_, static_cast<off_t>(totalSize)) != 0) {
+    const int err = errno;
     close();
+    recordErrno(ShmRingErrorCode::TruncateFailed, "ftruncate", err);
     return false;
   }
 
   base_ = ::mmap(nullptr, totalSize, kMapProt, MAP_SHARED, fd_, 0);
   if (base_ == MAP_FAILED) {
+    const int err = errno;
     base_ = nullptr;
     close();
+    recordErrno(IsPermissionErrno(err) ? ShmRingErrorCode::PermissionFailed
+                                       : ShmRingErrorCode::MapFailed,
+                "mmap(create)", err);
     return false;
   }
   mappedSize_ = totalSize;
@@ -58,6 +95,8 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
   header_->capacity_frames = capacityFrames;
   header_->sample_rate = 44100;
   header_->channels = kShmChannels;
+  header_->header_bytes = static_cast<uint32_t>(sizeof(ShmRingHeader));
+  CopyBuildId(header_->producer_build_id);
   header_->write_index.store(0, std::memory_order_relaxed);
   header_->read_index.store(0, std::memory_order_relaxed);
   header_->daemon_ready.store(0, std::memory_order_relaxed);
@@ -67,28 +106,46 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
 
 bool MmapShmRing::open(ShmRingRole role) {
   close();
+  clearError();
   role_ = role;
 
-  fd_ = ::shm_open(kShmRingName, O_RDWR, 0);
+  fd_ = ::shm_open(name_.c_str(), O_RDWR, 0);
   if (fd_ < 0) {
+    const int err = errno;
+    recordErrno(IsPermissionErrno(err) ? ShmRingErrorCode::PermissionFailed
+                                       : ShmRingErrorCode::OpenFailed,
+                "shm_open(open)", err);
     return false;
   }
 
   struct stat st {};
   if (::fstat(fd_, &st) != 0 || st.st_size <= 0) {
+    const int err = errno;
+    const bool empty = st.st_size <= 0;
     close();
+    if (empty) {
+      recordError(ShmRingErrorCode::EmptyObject, "shm object exists but has zero size");
+    } else {
+      recordErrno(ShmRingErrorCode::StatFailed, "fstat", err);
+    }
     return false;
   }
   mappedSize_ = static_cast<std::size_t>(st.st_size);
   base_ = ::mmap(nullptr, mappedSize_, kMapProt, MAP_SHARED, fd_, 0);
   if (base_ == MAP_FAILED) {
+    const int err = errno;
     base_ = nullptr;
     close();
+    recordErrno(IsPermissionErrno(err) ? ShmRingErrorCode::PermissionFailed
+                                       : ShmRingErrorCode::MapFailed,
+                "mmap(open)", err);
     return false;
   }
   header_ = static_cast<ShmRingHeader*>(base_);
   if (!ValidateShmHeader(*header_)) {
+    const std::string message = DescribeHeaderMismatch(*header_);
     close();
+    recordError(ShmRingErrorCode::InvalidHeader, message);
     return false;
   }
   return true;
@@ -105,6 +162,27 @@ void MmapShmRing::close() {
     ::close(fd_);
     fd_ = -1;
   }
+}
+
+void MmapShmRing::clearError() {
+  lastErrorCode_ = ShmRingErrorCode::None;
+  lastErrno_ = 0;
+  lastError_.clear();
+}
+
+void MmapShmRing::recordError(ShmRingErrorCode code, std::string message, int err) {
+  lastErrorCode_ = code;
+  lastErrno_ = err;
+  lastError_ = std::move(message);
+}
+
+void MmapShmRing::recordErrno(ShmRingErrorCode code, const char* operation, int err) {
+  std::ostringstream out;
+  out << operation << " failed";
+  if (err != 0) {
+    out << ": " << std::strerror(err) << " (errno " << err << ")";
+  }
+  recordError(code, out.str(), err);
 }
 
 void MmapShmRing::setDaemonReady() {
