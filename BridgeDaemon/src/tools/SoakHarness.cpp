@@ -3,6 +3,7 @@
 #include "engine/LibSamplerateSrc.h"
 
 #include <apm44/DriftController.h>
+#include <apm44/InputFrameDemand.h>
 #include <apm44/PlanarRingBuffer.h>
 
 #include <algorithm>
@@ -17,10 +18,9 @@ constexpr double kInputRate = 44100.0;
 constexpr double kOutputRate = 48000.0;
 constexpr std::size_t kOutputBlockFrames = 256;
 
-std::size_t InputFramesForOutput(std::size_t outputFrames, double skewPpm) {
-  const double nominal = static_cast<double>(outputFrames) * kInputRate / kOutputRate;
+double InputRatioForSkew(double skewPpm) {
   const double skewFactor = 1.0 + skewPpm / 1'000'000.0;
-  return static_cast<std::size_t>(std::ceil(nominal * skewFactor));
+  return DriftController::kNominalRatio / skewFactor;
 }
 
 }  // namespace
@@ -68,10 +68,13 @@ SoakMetrics RunSoakHarness(const SoakOptions& options) {
   std::size_t overfillBlocks = 0;
 
   std::size_t inPhase = 0;
+  InputFrameDemand producerDemand;
+  InputFrameDemand consumerDemand;
 
   for (std::size_t block = 0; block < totalOutputBlocks; ++block) {
     const double skew = (block % 200 < 100) ? options.skewPpm : -options.skewPpm;
-    const std::size_t inputFrames = InputFramesForOutput(kOutputBlockFrames, skew);
+    const std::size_t inputFrames =
+        producerDemand.consume(kOutputBlockFrames, InputRatioForSkew(skew));
 
     for (std::size_t i = 0; i < inputFrames; ++i) {
       const double t = static_cast<double>(i + inPhase) / kInputRate;
@@ -112,8 +115,8 @@ SoakMetrics RunSoakHarness(const SoakOptions& options) {
     const double ratio = drift.update(fill);
     src.setRatio(ratio);
 
-    const std::size_t neededIn = InputFramesForOutput(kOutputBlockFrames, 0.0);
-    const std::size_t toPop = std::min(inputFrames, std::min(fill, pop0.size()));
+    const std::size_t neededIn = consumerDemand.consume(kOutputBlockFrames, ratio);
+    const std::size_t toPop = std::min(neededIn, std::min(fill, pop0.size()));
     if (toPop == 0) {
       drift.notifyUnderrun();
       continue;
@@ -125,6 +128,9 @@ SoakMetrics RunSoakHarness(const SoakOptions& options) {
     float* procOut[2] = {out0.data(), out1.data()};
     std::size_t written = 0;
     if (!src.process(procIn, popped, procOut, kOutputBlockFrames, written) || written == 0) {
+      drift.notifyUnderrun();
+    }
+    if (popped < neededIn) {
       drift.notifyUnderrun();
     }
   }

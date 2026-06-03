@@ -2,20 +2,20 @@
 
 #include "apm44/DriftController.h"
 
-TEST_CASE("DriftController fill above target yields positive ppm", "[drift_controller]") {
+TEST_CASE("DriftController fill above target lowers SRC ratio", "[drift_controller]") {
   apm44::DriftController drift;
   drift.setTargetFillFrames(662);
   drift.update(900);
-  REQUIRE(drift.currentPpm() > 0.0);
-  REQUIRE(drift.currentPpm() <= apm44::DriftController::kMaxPpm);
+  REQUIRE(drift.currentPpm() < 0.0);
+  REQUIRE(drift.currentPpm() >= -apm44::DriftController::kMaxPpm);
 }
 
-TEST_CASE("DriftController fill below target yields negative ppm", "[drift_controller]") {
+TEST_CASE("DriftController fill below target raises SRC ratio", "[drift_controller]") {
   apm44::DriftController drift;
   drift.setTargetFillFrames(662);
   drift.update(200);
-  REQUIRE(drift.currentPpm() < 0.0);
-  REQUIRE(drift.currentPpm() >= -apm44::DriftController::kMaxPpm);
+  REQUIRE(drift.currentPpm() > 0.0);
+  REQUIRE(drift.currentPpm() <= apm44::DriftController::kMaxPpm);
 }
 
 TEST_CASE("DriftController ppm clamp", "[drift_controller]") {
@@ -25,6 +25,31 @@ TEST_CASE("DriftController ppm clamp", "[drift_controller]") {
     drift.update(100000);
   }
   REQUIRE(std::abs(drift.currentPpm()) <= apm44::DriftController::kMaxPpm);
+}
+
+TEST_CASE("DriftController max ppm can be widened for virtual source pacing",
+          "[drift_controller]") {
+  apm44::DriftController drift;
+  drift.setTargetFillFrames(5000);
+  drift.setMaxPpm(3000.0);
+
+  for (int i = 0; i < 5000; ++i) {
+    drift.update(0);
+  }
+
+  REQUIRE(drift.currentPpm() > apm44::DriftController::kMaxPpm);
+  REQUIRE(std::abs(drift.currentPpm()) <= 3000.0);
+}
+
+TEST_CASE("DriftController asks for meaningful catch-up when fill is very low",
+          "[drift_controller]") {
+  apm44::DriftController drift;
+  drift.setTargetFillFrames(1323);
+
+  drift.update(735);
+
+  REQUIRE(drift.currentPpm() >= 175.0);
+  REQUIRE(drift.currentPpm() <= apm44::DriftController::kMaxPpm);
 }
 
 TEST_CASE("DriftController sustained skew stabilizes fill error", "[drift_controller]") {
@@ -37,7 +62,7 @@ TEST_CASE("DriftController sustained skew stabilizes fill error", "[drift_contro
     (void)drift.update(fill);
     const double ppm = drift.currentPpm();
     if (fill > kTarget) {
-      fill = fill > 50 ? fill - static_cast<std::size_t>(ppm * 0.05) : kTarget;
+      fill = fill > 50 ? fill - static_cast<std::size_t>(std::abs(ppm) * 0.05) : kTarget;
     }
   }
   REQUIRE(std::abs(static_cast<double>(fill) - static_cast<double>(kTarget)) <

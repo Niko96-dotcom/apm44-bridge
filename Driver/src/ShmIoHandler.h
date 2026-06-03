@@ -6,6 +6,7 @@
 #include <aspl/IORequestHandler.hpp>
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -31,16 +32,34 @@ class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestH
                           UInt32 buffBytesSize) override;
 
  private:
+  static constexpr std::size_t kPendingLaneQueueDepth = 8;
+
+  struct PendingLaneBlock {
+    std::array<float, kDefaultShmCapacityFrames> frames{};
+    Float64 sampleTime = 0.0;
+    UInt32 frameCount = 0;
+  };
+
   bool ensureRingReady();
   void pushInterleaved(const Float32* frames, UInt32 frameCount);
   void pushMonoLane(const std::shared_ptr<aspl::Stream>& stream,
                     const Float32* frames,
-                    UInt32 frameCount);
+                    UInt32 frameCount,
+                    Float64 sampleTime);
+  void enqueueLane(UInt32 channelIndex, const Float32* frames, UInt32 frameCount,
+                   Float64 sampleTime);
+  PendingLaneBlock& laneAt(UInt32 channelIndex, std::size_t offset);
+  void dropLane(UInt32 channelIndex);
+  int findLaneWithSampleTime(UInt32 channelIndex, Float64 sampleTime) const;
+  void flushPendingLanes();
+  void pushLanePair(const PendingLaneBlock& left, const PendingLaneBlock& right);
 
   MmapShmRing ring_;
   std::array<float, kDefaultShmCapacityFrames * kShmChannels> pendingInterleaved_{};
-  UInt32 pendingFrameCount_ = 0;
-  UInt32 pendingChannelMask_ = 0;
+  std::array<std::array<PendingLaneBlock, kPendingLaneQueueDepth>, kShmChannels> pendingLanes_{};
+  std::array<std::size_t, kShmChannels> pendingRead_{};
+  std::array<std::size_t, kShmChannels> pendingWrite_{};
+  std::array<std::size_t, kShmChannels> pendingCount_{};
   bool ioRunning_ = false;
 };
 

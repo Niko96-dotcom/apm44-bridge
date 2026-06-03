@@ -32,8 +32,13 @@ std::size_t VirtualDeviceFeed::drainTo(PlanarRingBuffer& ring, std::size_t maxFr
   if (!ring_.isMapped() || maxFrames == 0) {
     return 0;
   }
+  const std::size_t writable = ring.availableToWrite();
+  if (writable == 0) {
+    return 0;
+  }
   const std::size_t chunk =
-      std::min({maxFrames, planarScratch0_.size(), interleavedScratch_.size() / PlanarRingBuffer::kChannels});
+      std::min({maxFrames, writable, planarScratch0_.size(),
+                interleavedScratch_.size() / PlanarRingBuffer::kChannels});
   const std::size_t popped = ring_.popInterleaved(interleavedScratch_.data(), chunk);
   if (popped == 0) {
     return 0;

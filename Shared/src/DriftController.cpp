@@ -8,12 +8,12 @@ namespace apm44 {
 
 namespace {
 
-// Tuned for ~512-frame output blocks @ 48 kHz. Gentler ratio tracking reduces
-// audible SRC micro-steps (occasional clicks under HAL + host jitter).
-constexpr double kProportionalGain = 0.05;
-constexpr double kIntegralGain = 0.0015;
+// Tuned for ~512-frame output blocks @ 48 kHz. Keep the hard ±500 ppm cap, but
+// recover decisively when startup or host jitter leaves the buffer far from target.
+constexpr double kProportionalGain = 0.35;
+constexpr double kIntegralGain = 0.006;
 constexpr double kIntegralClamp = 5000.0;
-constexpr double kRatioSmoothingAlpha = 0.025;
+constexpr double kRatioSmoothingAlpha = 0.08;
 
 }  // namespace
 
@@ -29,6 +29,12 @@ void DriftController::setTargetFillFrames(std::size_t frames) {
   targetFillFrames_ = frames;
 }
 
+void DriftController::setMaxPpm(double ppm) {
+  if (std::isfinite(ppm) && ppm > 0.0) {
+    maxPpm_ = ppm;
+  }
+}
+
 double DriftController::update(std::size_t currentFillFrames) {
   double fill = static_cast<double>(currentFillFrames);
   if (!std::isfinite(fill)) {
@@ -39,8 +45,8 @@ double DriftController::update(std::size_t currentFillFrames) {
   integral_ += error;
   integral_ = std::clamp(integral_, -kIntegralClamp, kIntegralClamp);
 
-  double ppm = kProportionalGain * error + kIntegralGain * integral_;
-  ppm = std::clamp(ppm, -kMaxPpm, kMaxPpm);
+  double ppm = -(kProportionalGain * error + kIntegralGain * integral_);
+  ppm = std::clamp(ppm, -maxPpm_, maxPpm_);
   currentPpm_ = ppm;
 
   const double targetRatio = kNominalRatio * (1.0 + ppm / 1'000'000.0);

@@ -34,8 +34,11 @@ class LibSamplerateSrc {
   double lastRatio_ = 48000.0 / 44100.0;
   std::size_t maxInputFrames_ = 0;
   std::size_t maxOutputFrames_ = 0;
+  std::size_t maxPendingFrames_ = 0;
+  std::size_t pendingInputFrames_ = 0;
   std::vector<float> inputInterleaved_;
   std::vector<float> outputInterleaved_;
+  std::vector<float> pendingInterleaved_;
 };
 
 }  // namespace apm44

@@ -162,6 +162,50 @@ TEST_CASE("ShmIoHandler drops incomplete mono lane when same channel repeats",
   shm_unlink(ringName.c_str());
 }
 
+TEST_CASE("ShmIoHandler queues repeated mono lanes until matching channel arrives",
+          "[shm_io_handler]") {
+  const std::string ringName = TestRingName('q');
+  apm44::ShmIoHandler handler(ringName);
+  REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+
+  auto context = std::make_shared<aspl::Context>();
+  aspl::DeviceParameters deviceParams;
+  deviceParams.SampleRate = apm44::kApm44DriverSampleRate;
+  deviceParams.ChannelCount = apm44::kApm44DriverChannelCount;
+  auto device = std::make_shared<aspl::Device>(context, deviceParams);
+  auto left = std::make_shared<apm44::Apm44OutputStream>(context, device, 1);
+  auto right = std::make_shared<apm44::Apm44OutputStream>(context, device, 2);
+
+  std::vector<float> leftA{0.10f, 0.20f, 0.30f};
+  std::vector<float> leftB{0.40f, 0.50f, 0.60f};
+  std::vector<float> rightA{-0.10f, -0.20f, -0.30f};
+  std::vector<float> rightB{-0.40f, -0.50f, -0.60f};
+
+  handler.OnProcessMixedOutput(left, 0.0, 100.0, leftA.data(), 3, 1);
+  handler.OnProcessMixedOutput(left, 0.0, 200.0, leftB.data(), 3, 1);
+  handler.OnProcessMixedOutput(right, 0.0, 100.0, rightA.data(), 3, 1);
+  handler.OnProcessMixedOutput(right, 0.0, 200.0, rightB.data(), 3, 1);
+
+  std::vector<float> out(12);
+  REQUIRE(consumer.popInterleaved(out.data(), 6) == 6);
+  for (std::size_t frame = 0; frame < 3; ++frame) {
+    REQUIRE(out[frame * 2 + 0] == Catch::Approx(leftA[frame]).margin(1e-7f));
+    REQUIRE(out[frame * 2 + 1] == Catch::Approx(rightA[frame]).margin(1e-7f));
+  }
+  for (std::size_t frame = 0; frame < 3; ++frame) {
+    const std::size_t outFrame = frame + 3;
+    REQUIRE(out[outFrame * 2 + 0] == Catch::Approx(leftB[frame]).margin(1e-7f));
+    REQUIRE(out[outFrame * 2 + 1] == Catch::Approx(rightB[frame]).margin(1e-7f));
+  }
+
+  handler.OnStopIO();
+  consumer.close();
+  shm_unlink(ringName.c_str());
+}
+
 TEST_CASE("ShmIoHandler ignores mono buffers without a stream lane", "[shm_io_handler]") {
   const std::string ringName = TestRingName('n');
   apm44::ShmIoHandler handler(ringName);

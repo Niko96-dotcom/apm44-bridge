@@ -2,6 +2,8 @@
 
 #include <apm44/ShmRingLayout.h>
 
+#include <algorithm>
+#include <cmath>
 #include <os/log.h>
 #include <utility>
 
@@ -49,7 +51,7 @@ void ShmIoHandler::OnStopIO() {
 
 void ShmIoHandler::OnProcessMixedOutput(const std::shared_ptr<aspl::Stream>& stream,
                                         Float64,
-                                        Float64,
+                                        Float64 timestamp,
                                         Float32* frames,
                                         UInt32 frameCount,
                                         UInt32 channelCount) {
@@ -65,7 +67,7 @@ void ShmIoHandler::OnProcessMixedOutput(const std::shared_ptr<aspl::Stream>& str
     return;
   }
   if (channelCount == 1) {
-    pushMonoLane(stream, frames, frameCount);
+    pushMonoLane(stream, frames, frameCount, timestamp);
   }
 }
 
@@ -78,7 +80,8 @@ void ShmIoHandler::pushInterleaved(const Float32* frames, UInt32 frameCount) {
 
 void ShmIoHandler::pushMonoLane(const std::shared_ptr<aspl::Stream>& stream,
                                 const Float32* frames,
-                                UInt32 frameCount) {
+                                UInt32 frameCount,
+                                Float64 sampleTime) {
   if (!stream || frameCount > kDefaultShmCapacityFrames) {
     return;
   }
@@ -89,21 +92,88 @@ void ShmIoHandler::pushMonoLane(const std::shared_ptr<aspl::Stream>& stream,
   }
 
   const UInt32 channelIndex = startingChannel - 1;
-  const UInt32 channelBit = 1u << channelIndex;
-  if (pendingFrameCount_ != frameCount || (pendingChannelMask_ & channelBit) != 0) {
-    pendingFrameCount_ = frameCount;
-    pendingChannelMask_ = 0;
+  enqueueLane(channelIndex, frames, frameCount, sampleTime);
+  flushPendingLanes();
+}
+
+void ShmIoHandler::enqueueLane(UInt32 channelIndex,
+                               const Float32* frames,
+                               UInt32 frameCount,
+                               Float64 sampleTime) {
+  if (pendingCount_[channelIndex] == kPendingLaneQueueDepth) {
+    dropLane(channelIndex);
   }
 
+  PendingLaneBlock& block = pendingLanes_[channelIndex][pendingWrite_[channelIndex]];
+  block.sampleTime = sampleTime;
+  block.frameCount = frameCount;
   for (UInt32 frame = 0; frame < frameCount; ++frame) {
-    pendingInterleaved_[frame * kShmChannels + channelIndex] = frames[frame];
+    block.frames[frame] = frames[frame];
   }
+  pendingWrite_[channelIndex] = (pendingWrite_[channelIndex] + 1) % kPendingLaneQueueDepth;
+  ++pendingCount_[channelIndex];
+}
 
-  pendingChannelMask_ |= channelBit;
-  if (pendingChannelMask_ == ((1u << kShmChannels) - 1u)) {
-    pushInterleaved(pendingInterleaved_.data(), pendingFrameCount_);
-    pendingChannelMask_ = 0;
+ShmIoHandler::PendingLaneBlock& ShmIoHandler::laneAt(UInt32 channelIndex,
+                                                     std::size_t offset) {
+  const std::size_t index = (pendingRead_[channelIndex] + offset) % kPendingLaneQueueDepth;
+  return pendingLanes_[channelIndex][index];
+}
+
+void ShmIoHandler::dropLane(UInt32 channelIndex) {
+  if (pendingCount_[channelIndex] == 0) {
+    return;
   }
+  pendingRead_[channelIndex] = (pendingRead_[channelIndex] + 1) % kPendingLaneQueueDepth;
+  --pendingCount_[channelIndex];
+}
+
+int ShmIoHandler::findLaneWithSampleTime(UInt32 channelIndex, Float64 sampleTime) const {
+  for (std::size_t offset = 0; offset < pendingCount_[channelIndex]; ++offset) {
+    const std::size_t index = (pendingRead_[channelIndex] + offset) % kPendingLaneQueueDepth;
+    if (std::abs(pendingLanes_[channelIndex][index].sampleTime - sampleTime) < 0.5) {
+      return static_cast<int>(offset);
+    }
+  }
+  return -1;
+}
+
+void ShmIoHandler::flushPendingLanes() {
+  while (pendingCount_[0] > 0 && pendingCount_[1] > 0) {
+    PendingLaneBlock& left = laneAt(0, 0);
+    PendingLaneBlock& right = laneAt(1, 0);
+
+    if (std::abs(left.sampleTime - right.sampleTime) >= 0.5) {
+      const int leftMatchForRight = findLaneWithSampleTime(0, right.sampleTime);
+      if (leftMatchForRight > 0) {
+        for (int i = 0; i < leftMatchForRight; ++i) {
+          dropLane(0);
+        }
+        continue;
+      }
+      const int rightMatchForLeft = findLaneWithSampleTime(1, left.sampleTime);
+      if (rightMatchForLeft > 0) {
+        for (int i = 0; i < rightMatchForLeft; ++i) {
+          dropLane(1);
+        }
+        continue;
+      }
+    }
+
+    pushLanePair(left, right);
+    dropLane(0);
+    dropLane(1);
+  }
+}
+
+void ShmIoHandler::pushLanePair(const PendingLaneBlock& left,
+                                const PendingLaneBlock& right) {
+  const UInt32 frameCount = std::min(left.frameCount, right.frameCount);
+  for (UInt32 frame = 0; frame < frameCount; ++frame) {
+    pendingInterleaved_[frame * kShmChannels + 0] = left.frames[frame];
+    pendingInterleaved_[frame * kShmChannels + 1] = right.frames[frame];
+  }
+  pushInterleaved(pendingInterleaved_.data(), frameCount);
 }
 
 void ShmIoHandler::OnWriteMixedOutput(const std::shared_ptr<aspl::Stream>&,

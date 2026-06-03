@@ -17,6 +17,7 @@ namespace apm44 {
 namespace {
 
 volatile std::sig_atomic_t gStopRequested = 0;
+constexpr double kVirtualDeviceMaxPpm = 3000.0;
 
 void SignalHandler(int) { gStopRequested = 1; }
 
@@ -40,9 +41,9 @@ UInt32 ReadBufferFrameSize(AudioDeviceID deviceId) {
   return frames;
 }
 
-std::size_t InputFramesForOutputFrames(std::size_t outputFrames) {
-  return static_cast<std::size_t>(std::ceil(static_cast<double>(outputFrames) * kInputSampleRate /
-                                            kOutputSampleRate));
+std::size_t MaxInputFramesForOutputFrames(std::size_t outputFrames) {
+  return static_cast<std::size_t>(std::ceil(static_cast<double>(outputFrames) *
+                                            kInputSampleRate / kOutputSampleRate));
 }
 
 void HoldLastSample(float* ch0, float* ch1, std::size_t converted, std::size_t frames) {
@@ -119,8 +120,11 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   ring_.prepare(ringRequest);
   drift_.reset();
   drift_.setTargetFillFrames(targetFillFrames);
+  drift_.setMaxPpm(virtualDevice_ ? kVirtualDeviceMaxPpm : DriftController::kMaxPpm);
+  inputDemand_.reset();
+  virtualPrebuffer_.reset(targetFillFrames);
 
-  {
+  if (!virtualDevice_) {
     std::vector<float> prefill0(targetFillFrames, 0.0f);
     std::vector<float> prefill1(targetFillFrames, 0.0f);
     const float* preCh[2] = {prefill0.data(), prefill1.data()};
@@ -169,19 +173,31 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   std::memset(channels[1], 0, frames * sizeof(float));
 
   if (virtualDevice_) {
-    const std::size_t inputFramesNeeded = InputFramesForOutputFrames(frames);
-    virtualFeed_.drainTo(ring_, inputFramesNeeded + 256);
+    const std::size_t maxInputFrames = MaxInputFramesForOutputFrames(frames);
+    virtualFeed_.drainTo(ring_, maxInputFrames + 256);
   }
 
   const std::size_t fill = ring_.fillFrames();
   lastFillMs_ = ring_.fillMs(kInputSampleRate);
+  if (virtualDevice_ && !virtualPrebuffer_.shouldOutput(fill)) {
+    return;
+  }
 
   float* popCh[2] = {outputScratch0_.data(), outputScratch1_.data()};
-  const std::size_t inputFramesNeeded = InputFramesForOutputFrames(frames);
+  double ratio = DriftController::kNominalRatio;
+  if (!useLegacyConverter_) {
+    ratio = drift_.update(fill);
+    src_.setRatio(ratio);
+  }
+  const std::size_t inputFramesNeeded = inputDemand_.consume(frames, ratio);
   const std::size_t maxPop = std::min(inputFramesNeeded, outputScratch0_.size());
   const std::size_t popped = ring_.pop(popCh, maxPop);
   if (popped == 0) {
     drift_.notifyUnderrun();
+    if (virtualDevice_) {
+      virtualPrebuffer_.forceRebuffer();
+      inputDemand_.reset();
+    }
     xruns_.fetch_add(1, std::memory_order_relaxed);
     return;
   }
@@ -193,6 +209,10 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
       std::memset(channels[0], 0, frames * sizeof(float));
       std::memset(channels[1], 0, frames * sizeof(float));
       drift_.notifyUnderrun();
+      if (virtualDevice_) {
+        virtualPrebuffer_.forceRebuffer();
+        inputDemand_.reset();
+      }
       xruns_.fetch_add(1, std::memory_order_relaxed);
       return;
     }
@@ -202,15 +222,16 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
     return;
   }
 
-  const double ratio = drift_.update(fill);
-  src_.setRatio(ratio);
-
   std::size_t converted = 0;
   const float* inCh[2] = {popCh[0], popCh[1]};
   if (!src_.process(inCh, popped, channels, frames, converted) || converted == 0) {
     std::memset(channels[0], 0, frames * sizeof(float));
     std::memset(channels[1], 0, frames * sizeof(float));
     drift_.notifyUnderrun();
+    if (virtualDevice_) {
+      virtualPrebuffer_.forceRebuffer();
+      inputDemand_.reset();
+    }
     xruns_.fetch_add(1, std::memory_order_relaxed);
     return;
   }
@@ -220,6 +241,11 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   }
   if (popped < maxPop) {
     drift_.notifyUnderrun();
+    if (virtualDevice_ &&
+        virtualPrebuffer_.shouldRebufferForPartialShortage(maxPop, popped)) {
+      virtualPrebuffer_.forceRebuffer();
+      inputDemand_.reset();
+    }
   }
 }
 

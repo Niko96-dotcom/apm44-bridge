@@ -2,10 +2,12 @@
 
 #include "engine/AudioConverterSrc.h"
 #include "engine/LibSamplerateSrc.h"
+#include "engine/VirtualPrebufferGate.h"
 #include "engine/VirtualDeviceFeed.h"
 #include "hal/HalTypes.h"
 
 #include <apm44/DriftController.h>
+#include <apm44/InputFrameDemand.h>
 #include <apm44/PlanarRingBuffer.h>
 
 #include <atomic>
@@ -55,6 +57,8 @@ class BridgeEngine {
   BridgeEngineOptions options_{};
   PlanarRingBuffer ring_;
   DriftController drift_;
+  InputFrameDemand inputDemand_;
+  VirtualPrebufferGate virtualPrebuffer_;
   LibSamplerateSrc src_;
   AudioConverterSrc legacyConverter_;
   bool useLegacyConverter_ = false;
