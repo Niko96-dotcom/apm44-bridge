@@ -29,7 +29,7 @@ clock drift, and plays to the physical 48 kHz endpoint.
 | HAL driver `APM44Bridge.driver` | 44.1 kHz virtual output device |
 | Bridge daemon `apm44-bridge` | libsamplerate conversion and drift control |
 | Menu bar app `APM44 Bridge` | virtual-device mode, latency presets, first-run checks |
-| Release packaging | Developer ID signing, notarization, DMG, and PKG scripts |
+| Release packaging | Developer ID signing, notarized DMG, optional maintainer PKG scripts |
 
 ## Install
 
@@ -73,7 +73,6 @@ profile:
 
 ```bash
 export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
-export INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"
 export NOTARY_PROFILE="AC_NOTARY"
 bash scripts/release-all.sh
 ```

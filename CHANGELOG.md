@@ -2,10 +2,14 @@
 
 All notable user-facing changes will be documented here.
 
-## Unreleased
+## 0.1.1 - 2026-06-03
 
-- Open-source readiness: license, contribution, security, support, CI, and
-  GitHub workflow polish.
+- Fixed HAL virtual-device dropout recovery and virtual-source drift tracking.
+- Clarified menu metrics by separating hard xruns from recoveries.
+- Recorded Cubase 15 operator sign-off and 30+ minute soak completion.
+- Made the public release path DMG-first; PKG tooling is maintainer-only until
+  installer signing is fixed.
+- Pruned internal planning files from the public repository.
 
 ## 0.1.0 - 2026-06-01
 

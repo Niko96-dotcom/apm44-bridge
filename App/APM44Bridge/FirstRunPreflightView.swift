@@ -49,7 +49,7 @@ struct FirstRunPreflightView: View {
     private var halDetail: String {
         HalDriverDetector.isHalInstalled()
             ? "APM44 Bridge visible in Audio MIDI Setup"
-            : "Install driver from release pkg or scripts/install-driver.sh"
+            : "Install driver from the release DMG or scripts/install-driver.sh"
     }
 
     private var halRateOk: Bool {

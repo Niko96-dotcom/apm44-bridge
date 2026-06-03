@@ -9,7 +9,7 @@ namespace apm44 {
 
 namespace {
 
-constexpr const char* kVersion = "0.1.0";
+constexpr const char* kVersion = "0.1.1";
 
 bool IsFlag(std::string_view arg) { return !arg.empty() && arg[0] == '-'; }
 

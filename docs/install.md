@@ -8,16 +8,18 @@ From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
 
 | Artifact | Use when |
 |----------|----------|
-| **`APM44Bridge-0.1.0.dmg`** (recommended) | Notarized drag-and-drop install; run **Install APM44 Bridge.command** inside the DMG |
-| `APM44Bridge-0.1.0.pkg` | One-step installer (requires maintainer **Developer ID Installer** cert; may be unsigned in dev builds) |
+| **`APM44Bridge-0.1.1.dmg`** | Notarized installer disk image; run **Install APM44 Bridge.command** inside the DMG |
 
-Maintainer build: `bash scripts/release-all.sh` → produces stapled DMG (+ optional pkg).
+Maintainer build: `bash scripts/release-all.sh` produces the signed,
+notarized, stapled DMG. The PKG flow is maintainer-only until installer
+signing is fixed.
 
-## Install (pkg)
+## Install
 
-1. Download `APM44Bridge-0.1.0.pkg` from the release page.
-2. Double-click → follow the installer → enter your Mac password when asked.
-3. **Reboot once** if **APM44 Bridge** does not appear in **Audio MIDI Setup** (first HAL install).
+1. Download `APM44Bridge-0.1.1.dmg` from the release page.
+2. Open the DMG and run **Install APM44 Bridge.command**.
+3. Enter your Mac admin password in Terminal when asked.
+4. **Reboot once** if **APM44 Bridge** does not appear in **Audio MIDI Setup** (first HAL install).
 
 ## After install — every session
 
@@ -44,7 +46,8 @@ In the menu bar panel:
 - **Balanced** — default; HAL path uses at least ~20 ms internal buffer automatically.
 - **Low** — lowest latency; may click if the DAW or Bluetooth adds jitter.
 
-If you hear rare tiny clicks, switch to **Safe**, use **USB-C** AirPods, and watch the **xruns** counter in the menu bar while playing.
+If you hear rare tiny clicks, switch to **Safe**, use **USB-C** AirPods, and
+watch **Hard xruns** and **Recoveries** in the menu bar while playing.
 
 ## Uninstall
 

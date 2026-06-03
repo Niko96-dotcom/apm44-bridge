@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${APM44_BUILD_CONFIG:-Release}"
-VERSION="${APM44_VERSION:-0.1.0}"
+VERSION="${APM44_VERSION:-0.1.1}"
 OUT="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 STAGING="${APM44_DMG_STAGING:-$ROOT/build/signing/dmg-staging}"
 
@@ -20,6 +20,21 @@ Output: build/signing/APM44Bridge-<version>.dmg
 EOF
   exit 0
 fi
+
+resolve_sign_id() {
+  if [[ -n "${SIGN_ID:-}" ]]; then
+    printf '%s\n' "$SIGN_ID"
+    return
+  fi
+
+  local identities
+  identities="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: .*\)".*/\1/p' || true)"
+  local count
+  count="$(printf '%s\n' "$identities" | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [[ "$count" == "1" ]]; then
+    printf '%s\n' "$identities"
+  fi
+}
 
 echo "Building Release…"
 cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release
@@ -69,5 +84,9 @@ chmod +x "$STAGING/Install APM44 Bridge.command"
 
 rm -f "$OUT"
 hdiutil create -volname "APM44 Bridge" -srcfolder "$STAGING" -ov -format UDZO "$OUT"
+DMG_SIGN_ID="$(resolve_sign_id)"
+if [[ -n "$DMG_SIGN_ID" ]]; then
+  codesign --force --sign "$DMG_SIGN_ID" --timestamp "$OUT"
+fi
 echo "DMG created: $OUT"
-echo "Install: open DMG → run Install APM44 Bridge.command → drag app to Applications"
+echo "Install: open DMG -> run Install APM44 Bridge.command"

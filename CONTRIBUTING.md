@@ -65,7 +65,6 @@ Use:
 
 ```bash
 export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
-export INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"
 export NOTARY_PROFILE="AC_NOTARY"
 bash scripts/release-all.sh
 ```

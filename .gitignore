@@ -6,6 +6,9 @@ cmake-build-*/
 .env.*
 !.env.example
 .claude/
+.planning/
+AGENTS.md
+CLAUDE.md
 *.xcodeproj/
 *.xcworkspace/
 *.xcuserstate

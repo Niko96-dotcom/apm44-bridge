@@ -1,10 +1,10 @@
 # Cubase 15 first-run setup
 
-Guide for **Cubase 15** (German UI supported) with the **APM44 Bridge** HAL path. No Terminal required after installing the release pkg/DMG.
+Guide for **Cubase 15** (German UI supported) with the **APM44 Bridge** HAL path. No Terminal required after installing the release DMG.
 
 ## Before Cubase
 
-1. Install **APM44 Bridge** from the release pkg or DMG (`scripts/build-release-pkg.sh` output).
+1. Install **APM44 Bridge** from the release DMG.
 2. Open **APM44 Bridge** from the menu bar — complete the first-run preflight sheet.
 3. In **Audio MIDI Setup**:
    - **APM44 Bridge** → **44,100 Hz** (only rate offered after Phase 7 hardening)

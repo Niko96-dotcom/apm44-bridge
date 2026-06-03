@@ -32,15 +32,18 @@ auto-detects a single local Developer ID Application identity.
 
 ```bash
 export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
-export INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"
 export NOTARY_PROFILE="AC_NOTARY"
 ```
 
-**One-command release** (build, notarize, staple, pkg):
+**One-command release** (build, sign, notarize, and staple the public DMG):
 
 ```bash
 bash scripts/release-all.sh
 ```
+
+The public artifact is `build/signing/APM44Bridge-<version>.dmg`. The PKG
+path is optional maintainer tooling; set `APM44_BUILD_PKG=1` only when the
+Developer ID Installer keychain is configured and you want to test the package.
 
 Manual steps (after Release build):
 
@@ -51,8 +54,9 @@ bash scripts/codesign-verify-release.sh
 bash scripts/notary-dry-run.sh          # full zip submit (SHIP-02 evidence)
 xcrun stapler staple "build/Release/APM44 Bridge.app"
 xcrun stapler staple build/Driver/APM44Bridge.driver
-bash scripts/build-release-pkg.sh
-bash scripts/notarize-release-pkg.sh    # pkg notarize + staple
+bash scripts/notarize-release-dmg.sh
+# optional maintainer-only pkg:
+APM44_BUILD_PKG=1 bash scripts/release-all.sh
 # or driver-only:
 bash scripts/notarize-hal-driver.sh
 ```
@@ -200,4 +204,3 @@ Optional future: GitHub Actions `macos-latest` job compiling daemon + tests only
 
 - [DAW validation matrix](daw-matrix.md)
 - [Export rate check](../scripts/validate-export-rate.sh)
-- Project stack: `CLAUDE.md` (signing table)

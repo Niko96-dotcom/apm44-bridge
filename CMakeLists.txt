@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(APM44Bridge VERSION 0.1.0 LANGUAGES CXX)
+project(APM44Bridge VERSION 0.1.1 LANGUAGES CXX)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Allow pinned third-party projects with older CMake policies")
 
@@ -36,7 +36,7 @@ if(Git_FOUND)
     string(APPEND APM44_GIT_SHA "-dirty")
   endif()
 endif()
-set(APM44_BUILD_ID "${PROJECT_VERSION}+${APM44_GIT_SHA}" CACHE STRING "APM44 build fingerprint")
+set(APM44_BUILD_ID "${PROJECT_VERSION}+${APM44_GIT_SHA}" CACHE STRING "APM44 build fingerprint" FORCE)
 message(STATUS "APM44 build id: ${APM44_BUILD_ID}")
 
 enable_testing()

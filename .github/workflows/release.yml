@@ -51,5 +51,5 @@ jobs:
 
       - name: Note
         run: |
-          echo "Signed/notarized pkg must be built on a maintainer Mac with AC_NOTARY:"
+          echo "Signed/notarized DMG must be built on a maintainer Mac with AC_NOTARY:"
           echo "  bash scripts/release-all.sh"
