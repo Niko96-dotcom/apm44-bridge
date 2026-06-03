@@ -1,5 +1,5 @@
 ---
-status: fixed_pending_user_confirmation
+status: resolved
 trigger: "now i get a click each second like a little dropout"
 created: "2026-06-03"
 updated: "2026-06-03"
@@ -20,7 +20,7 @@ updated: "2026-06-03"
 - hypothesis: The UI can show zero glitches because it tracks hard `xruns`, while periodic audible dropouts can come from virtual-mode partial underruns and prebuffer/recovery behavior.
 - test: verify AirPods/BlackHole live helper captures for `underruns`, `xruns`, fill jumps, producer fps, and fill stability after adaptive virtual-source pacing.
 - expecting: sustained playback holds near Safe target fill with `underruns=0`, `xruns=0`, and no large fill jump/rebuffer events.
-- next_action: user confirms live AirPods monitoring after reconnecting AirPods as a CoreAudio output and restarting the updated menu app helper.
+- next_action: resolved; reopen only if periodic dropouts recur on the installed helper/driver pair.
 - reasoning_checkpoint:
 - tdd_checkpoint:
 
@@ -70,6 +70,7 @@ updated: "2026-06-03"
 - 2026-06-03: A trial change to shorten the HAL zero timestamp period to 512 frames was tested and rejected; it reduced measured production to about `1363.8 fps`. Reverted and reinstalled the known-good HAL driver hash `63d91b29341f20c15b140b0e2cd1b3997a37e08568b856133338162c5168fd70`.
 - 2026-06-03: Added configurable drift ppm cap. Default remains `500 ppm`; virtual-device mode widens the cap to handle the measured virtual-source pacing mismatch without silence rebuffering.
 - 2026-06-03: Final post-fix isolated 45s capture with installed helper hash `e6ee15b76b0cf81d7f2b868a06f3b66f65155a03fc654c0faf91f603b799d0e1`: `write_fps=44100.8`, `read_fps=44098.0`, first fill `32.6 ms`, mid fill `30.2 ms`, last fill `30.5 ms`, `delta underruns=0`, `delta xruns=0`, `max_fill_jump=1.7`, `big_jumps=0`.
+- 2026-06-03: User confirmed the installed build works in live monitoring, then confirmed again after completing the follow-up operator steps.
 
 ## Eliminated
 
@@ -82,5 +83,5 @@ updated: "2026-06-03"
 
 - root_cause: Several real-time handoff defects compounded. `ShmIoHandler` first dropped mono lanes around timestamp rollover, then still dropped repeated same-channel blocks because it had only one pending lane slot. The daemon also overconsumed input due per-callback ceil demand, had inverted drift sign, discarded shared-memory frames when its internal ring was full, consumed fake silence before real virtual-device input arrived, and later exposed non-xrun partial underrun/rebuffer events when virtual-source pacing exceeded the normal ±500 ppm correction range.
 - fix: Use per-channel fixed FIFO lane pairing in the HAL driver; add fractional input-frame demand; correct drift direction; preserve libsamplerate pending input; prevent `VirtualDeviceFeed` from discarding shm frames when the daemon ring is full; add virtual prebuffering; avoid rebuffering for tiny partial shortages; widen the drift cap only in virtual-device mode so the bridge tracks the observed virtual source without inserting silence.
-- verification: Driver lane regressions, input-frame demand tests, drift tests, libsamplerate tests, virtual-feed tests, virtual-prebuffer tests, full CMake/CTest, Swift app tests, CI, soak, HAL structural verification, and isolated 45s live helper capture all pass. Final capture held near `30 ms` with `0` underruns, `0` xruns, and no large fill jumps.
+- verification: Driver lane regressions, input-frame demand tests, drift tests, libsamplerate tests, virtual-feed tests, virtual-prebuffer tests, full CMake/CTest, Swift app tests, CI, soak, HAL structural verification, isolated 45s live helper capture, and user live monitoring confirmation all pass. Final capture held near `30 ms` with `0` underruns, `0` xruns, and no large fill jumps.
 - files_changed: `Driver/src/ShmIoHandler.{h,cpp}`, `tests/test_shm_io_handler.cpp`, `Shared/include/apm44/InputFrameDemand.h`, `Shared/src/InputFrameDemand.cpp`, `Shared/include/apm44/DriftController.h`, `Shared/src/DriftController.cpp`, `BridgeDaemon/src/engine/BridgeEngine.{h,cpp}`, `BridgeDaemon/src/engine/LibSamplerateSrc.{h,cpp}`, `BridgeDaemon/src/engine/VirtualDeviceFeed.cpp`, `BridgeDaemon/src/engine/VirtualPrebufferGate.h`, `BridgeDaemon/src/tools/SoakHarness.cpp`, `tests/test_input_frame_demand.cpp`, `tests/test_drift_controller.cpp`, `tests/test_lib_samplerate_src.cpp`, `tests/test_virtual_device_feed.cpp`, `tests/test_virtual_prebuffer_gate.cpp`, `Shared/CMakeLists.txt`, `tests/CMakeLists.txt`, `.planning/debug/click-each-second-dropout.md`

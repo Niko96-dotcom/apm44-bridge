@@ -17,19 +17,19 @@ See [docs/cubase-soak.md](../../../docs/cubase-soak.md) and [docs/daw-matrix.md]
 
 | Requirement | Evidence | Pass? |
 |-------------|----------|-------|
-| DEV-03 Cubase 15 @ 44100 → APM44 Bridge → AirPods | Listening notes | |
-| DEV-04 AirPods @ 48000 during HAL path | AMS screenshot or afinfo | |
-| QA-01 30+ min soak | [cubase-soak.md](../../../docs/cubase-soak.md) evidence block | |
-| QA-02 export @ 44100 | `validate-export-rate.sh --check-file` exit 0 | |
+| DEV-03 Cubase 15 @ 44100 -> APM44 Bridge -> AirPods | Operator confirmed live monitoring works after the dropout fix on 2026-06-03. | Pass (operator-confirmed) |
+| DEV-04 AirPods @ 48000 during HAL path | Operator marked the AirPods/HAL-path check done on 2026-06-03; exact AMS screenshot/`afinfo` output was not supplied in chat. | Pass (operator-confirmed) |
+| QA-01 30+ min soak | Operator reported the Cubase soak done on 2026-06-03. | Pass (operator-confirmed) |
+| QA-02 export @ 44100 | Operator reported the export validation done on 2026-06-03; exact `validate-export-rate.sh --check-file` output was not supplied in chat. | Pass (operator-confirmed) |
 
 ## Sign-off
 
 | Field | Value |
 |-------|-------|
-| Operator | |
-| Date | |
-| macOS | |
+| Operator | Niko |
+| Date | 2026-06-03 |
+| macOS | 26.5 |
 | Cubase | 15.x |
-| Overall | pass / fail |
+| Overall | Pass (operator-confirmed) |
 
-When all rows pass, mark Phase 9 complete in `.planning/STATE.md`.
+Phase 9 is complete based on operator confirmation.

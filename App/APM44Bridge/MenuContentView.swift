@@ -231,9 +231,14 @@ struct MenuContentView: View {
                     }
 
                     HStack(alignment: .top) {
-                        metricStat("Glitches", "\(metrics.xruns)", flashing: manager.glitchFlash)
+                        metricStat("Hard xruns", "\(metrics.xruns)", flashing: manager.glitchFlash)
                         Spacer()
+                        metricStat("Recoveries", "\(metrics.underruns)", alignment: .trailing)
+                    }
+
+                    HStack(alignment: .top) {
                         metricStat("Drift ratio", String(format: "%.4f", metrics.ratio))
+                        Spacer()
                     }
 
                     if manager.metricsStale {
@@ -262,8 +267,13 @@ struct MenuContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func metricStat(_ title: String, _ value: String, flashing: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private func metricStat(
+        _ title: String,
+        _ value: String,
+        flashing: Bool = false,
+        alignment: HorizontalAlignment = .leading
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
             HStack(spacing: 4) {
                 Text(title)
                     .font(.caption2)

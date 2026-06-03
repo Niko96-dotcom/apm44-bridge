@@ -16,8 +16,8 @@ Production sign-off — close v1.0 audit gaps with **Cubase 15** as the primary 
 ### Virtual device & DAW integration (DEV)
 
 - [ ] **DEV-01**: User sees **APM44 Bridge** in Audio MIDI Setup as a stereo output @ **44,100 Hz** after signed install and HAL reload
-- [ ] **DEV-03**: User can run **Cubase 15** with project @ **44.1 kHz**, playback routed to **APM44 Bridge**, and hear monitoring on AirPods Max USB-C via the bridge daemon
-- [ ] **DEV-04**: Physical AirPods Max USB-C endpoint remains at **48,000 Hz** in AMS while the HAL production path is active (regression check)
+- [x] **DEV-03**: User can run **Cubase 15** with project @ **44.1 kHz**, playback routed to **APM44 Bridge**, and hear monitoring on AirPods Max USB-C via the bridge daemon
+- [x] **DEV-04**: Physical AirPods Max USB-C endpoint remains at **48,000 Hz** in AMS while the HAL production path is active (regression check)
 
 ### Production driver (DRV)
 
@@ -30,8 +30,8 @@ Production sign-off — close v1.0 audit gaps with **Cubase 15** as the primary 
 
 ### Quality & validation (QA)
 
-- [ ] **QA-01**: Operator completes **30+ minutes** continuous playback on the **HAL path** (Cubase → APM44 Bridge → daemon → AirPods) without crackle, unbounded latency growth, or drift-induced dropouts
-- [ ] **QA-02**: **Cubase 15** export or bounce of a 44.1 kHz project produces audio files verified @ **44,100 Hz** by `scripts/validate-export-rate.sh` (and `afinfo`)
+- [x] **QA-01**: Operator completes **30+ minutes** continuous playback on the **HAL path** (Cubase → APM44 Bridge → daemon → AirPods) without crackle, unbounded latency growth, or drift-induced dropouts
+- [x] **QA-02**: **Cubase 15** export or bounce of a 44.1 kHz project produces audio files verified @ **44,100 Hz** by `scripts/validate-export-rate.sh` (and `afinfo`)
 
 ### Product distribution (POL)
 
@@ -76,10 +76,10 @@ Deferred beyond v1.1 — acknowledged for roadmap hygiene.
 | DRV-02 | Phase 7 | Complete |
 | APP-06 | Phase 8 | Complete |
 | APP-07 | Phase 8 | Complete |
-| DEV-03 | Phase 9 | Pending |
-| DEV-04 | Phase 9 | Pending |
-| QA-01 | Phase 9 | Pending |
-| QA-02 | Phase 9 | Pending |
+| DEV-03 | Phase 9 | Complete |
+| DEV-04 | Phase 9 | Complete |
+| QA-01 | Phase 9 | Complete |
+| QA-02 | Phase 9 | Complete |
 | POL-01 | Phase 10 | Complete |
 
 **Coverage:**
@@ -89,4 +89,4 @@ Deferred beyond v1.1 — acknowledged for roadmap hygiene.
 
 ---
 *Requirements defined: 2026-06-01 — milestone v1.1 Production Sign-Off*
-*Last updated: 2026-06-01 — traceability synced to ROADMAP.md (Phases 6–9)*
+*Last updated: 2026-06-03 — Phase 9 operator sign-off recorded*

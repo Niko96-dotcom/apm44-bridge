@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 APM44 Bridge MVP** — Phases 1–5 (shipped 2026-06-01)
-- 🚧 **v1.1 Production Sign-Off** — Phases 6–9 (in progress)
+- 🚧 **v1.1 Production Sign-Off** — Phases 6–10 (operator sign-off recorded; release signing next)
 
 ## Overview
 
@@ -31,7 +31,7 @@ Full phase details: [.planning/milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADM
 - [x] **Phase 6: HAL Signing & Load Verification** — Developer ID sign scripts; notary dry-run; verify-hal-driver enhancements
 - [x] **Phase 7: Driver 44100-Only Hardening** — SetAvailableSampleRatesAsync 44100 only
 - [x] **Phase 8: App Virtual-Device Integration** — Menu bar spawns `--virtual-device`; routing mode UI
-- [ ] **Phase 9: Cubase Sign-Off & Soak** — Operator templates ready; human 30+ min soak + export pending
+- [x] **Phase 9: Cubase Sign-Off & Soak** — Operator-confirmed 30+ min soak + export check recorded 2026-06-03
 - [x] **Phase 10: Product Distribution & First-Run** — pkg/DMG scripts, embedded daemon, first-run preflight
 
 ## Phase Details
