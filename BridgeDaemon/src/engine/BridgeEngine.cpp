@@ -1,5 +1,7 @@
 #include "engine/BridgeEngine.h"
 
+#include "engine/BridgeControlLoop.h"
+#include "engine/BridgeInputOverrun.h"
 #include "engine/IoProcHandlers.h"
 
 #include <algorithm>
@@ -141,7 +143,6 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
     }
   }
 
-  constexpr std::size_t kMaxCallbackFrames = 1024;
   outputScratch0_.resize(kMaxCallbackFrames);
   outputScratch1_.resize(kMaxCallbackFrames);
   inputDropScratch0_.resize(kMaxCallbackFrames);
@@ -157,18 +158,42 @@ double BridgeEngine::converterRatio() const {
 }
 
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
-  const std::size_t pushed = ring_.push(channels, frames);
-  if (pushed < frames) {
-    drift_.notifyOverrun();
-    float* dropCh[2] = {inputDropScratch0_.data(), inputDropScratch1_.data()};
-    const std::size_t toDrop = frames - pushed;
-    ring_.pop(dropCh, toDrop);
-    const float* remainder[2] = {channels[0] + pushed, channels[1] + pushed};
-    ring_.push(remainder, frames - pushed);
+  float* dropCh[2] = {inputDropScratch0_.data(), inputDropScratch1_.data()};
+  DropOldestThenPush(ring_, dropCh, drift_, channels, frames);
+}
+
+void BridgeEngine::publishMetricsSnapshot() {
+  const uint32_t seq = metricsSeq_.load(std::memory_order_relaxed);
+  metricsSeq_.store(seq + 1, std::memory_order_release);
+  metricsSnapshot_.fillMs = ring_.fillMs(kInputSampleRate);
+  metricsSnapshot_.smoothedRatio = drift_.smoothedRatio();
+  metricsSnapshot_.ppm = drift_.currentPpm();
+  metricsSnapshot_.underruns = drift_.underrunCount();
+  metricsSnapshot_.overruns = drift_.overrunCount();
+  metricsSnapshot_.xruns = xruns_.load(std::memory_order_relaxed);
+  metricsSeq_.store(seq + 2, std::memory_order_release);
+}
+
+MetricsSnapshot BridgeEngine::readMetricsSnapshot() const {
+  for (;;) {
+    const uint32_t seqBefore = metricsSeq_.load(std::memory_order_acquire);
+    if (seqBefore & 1U) {
+      continue;
+    }
+    const MetricsSnapshot copy = metricsSnapshot_;
+    const uint32_t seqAfter = metricsSeq_.load(std::memory_order_acquire);
+    if (seqBefore == seqAfter) {
+      return copy;
+    }
   }
 }
 
 void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
+  struct PublishGuard {
+    BridgeEngine& engine;
+    ~PublishGuard() { engine.publishMetricsSnapshot(); }
+  } publishGuard{*this};
+
   std::memset(channels[0], 0, frames * sizeof(float));
   std::memset(channels[1], 0, frames * sizeof(float));
 
@@ -178,7 +203,6 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   }
 
   const std::size_t fill = ring_.fillFrames();
-  lastFillMs_ = ring_.fillMs(kInputSampleRate);
   if (virtualDevice_ && !virtualPrebuffer_.shouldOutput(fill)) {
     return;
   }
@@ -335,18 +359,43 @@ void BridgeEngine::stop() {
 void BridgeEngine::requestStop() { gStopRequested = 1; }
 
 BridgeEngine::VirtualFeedStaleAction BridgeEngine::pollVirtualFeedStaleRing() {
-  if (!virtualDevice_) {
+  if (!virtualDevice_ || !running_ || outputProc_ == nullptr) {
     return VirtualFeedStaleAction::None;
   }
-  switch (virtualFeed_.pollStaleRing()) {
-    case StaleRingPollResult::Ok:
-      return VirtualFeedStaleAction::None;
-    case StaleRingPollResult::Remapped:
-      return VirtualFeedStaleAction::StopForRemap;
-    case StaleRingPollResult::MustExit:
-      return VirtualFeedStaleAction::StopForExit;
+  if (!virtualFeed_.isRingStale()) {
+    return VirtualFeedStaleAction::None;
   }
-  return VirtualFeedStaleAction::None;
+
+  // Stop output IO before unmapping; onOutput may call drainTo on the audio thread.
+  const OSStatus stopStatus = AudioDeviceStop(devices_.output.deviceId, outputProc_);
+  if (stopStatus != noErr) {
+    std::cerr << "warning: AudioDeviceStop before shm remap failed: " << stopStatus << "\n";
+  }
+
+  const StaleRingPollResult pollResult = virtualFeed_.pollStaleRing();
+
+  VirtualFeedStaleAction action = VirtualFeedStaleAction::None;
+  switch (pollResult) {
+    case StaleRingPollResult::Ok:
+      action = VirtualFeedStaleAction::None;
+      break;
+    case StaleRingPollResult::Remapped:
+      action = VirtualFeedStaleAction::StopForRemap;
+      break;
+    case StaleRingPollResult::MustExit:
+      action = VirtualFeedStaleAction::StopForExit;
+      break;
+  }
+
+  if (pollResult != StaleRingPollResult::MustExit) {
+    const OSStatus startStatus = AudioDeviceStart(devices_.output.deviceId, outputProc_);
+    if (startStatus != noErr) {
+      std::cerr << "error: AudioDeviceStart after shm remap failed: " << startStatus << "\n";
+      return VirtualFeedStaleAction::StopForExit;
+    }
+  }
+
+  return action;
 }
 
 void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick) {
@@ -357,13 +406,14 @@ void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>
     if (onTick) {
       onTick(*this);
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(kControlLoopInterval);
   }
   stop();
-  std::cerr << "apm44-bridge: stopped. fill_ms=" << lastFillMs_
+  const MetricsSnapshot stopped = readMetricsSnapshot();
+  std::cerr << "apm44-bridge: stopped. fill_ms=" << stopped.fillMs
             << " ratio=" << drift_.smoothedRatio() << " ppm=" << drift_.currentPpm()
             << " underruns=" << drift_.underrunCount() << " overruns=" << drift_.overrunCount()
-            << " xruns=" << xrunCount() << "\n";
+            << " xruns=" << stopped.xruns << "\n";
 }
 
 }  // namespace apm44

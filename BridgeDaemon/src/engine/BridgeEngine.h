@@ -24,6 +24,15 @@ struct BridgeEngineOptions {
   bool virtualDevice = false;
 };
 
+struct MetricsSnapshot {
+  double fillMs = 0.0;
+  double smoothedRatio = 1.0;
+  double ppm = 0.0;
+  uint64_t underruns = 0;
+  uint64_t overruns = 0;
+  uint64_t xruns = 0;
+};
+
 class BridgeEngine {
  public:
   bool prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options = {});
@@ -41,13 +50,13 @@ class BridgeEngine {
   const BridgeDevicePair& devices() const { return devices_; }
   std::size_t ringCapacity() const { return ring_.capacityFrames(); }
   double converterRatio() const;
-  uint64_t xrunCount() const { return xruns_.load(std::memory_order_relaxed); }
+  uint64_t xrunCount() const { return readMetricsSnapshot().xruns; }
 
-  double lastFillMs() const { return lastFillMs_; }
-  double lastSmoothedRatio() const { return drift_.smoothedRatio(); }
-  double lastPpm() const { return drift_.currentPpm(); }
-  uint64_t underrunCount() const { return drift_.underrunCount(); }
-  uint64_t overrunCount() const { return drift_.overrunCount(); }
+  double lastFillMs() const { return readMetricsSnapshot().fillMs; }
+  double lastSmoothedRatio() const { return readMetricsSnapshot().smoothedRatio; }
+  double lastPpm() const { return readMetricsSnapshot().ppm; }
+  uint64_t underrunCount() const { return readMetricsSnapshot().underruns; }
+  uint64_t overrunCount() const { return readMetricsSnapshot().overruns; }
 
   // Called from IOProcs (RT-safe).
   void onInput(const float* const channels[2], std::size_t frames);
@@ -60,6 +69,9 @@ class BridgeEngine {
   float* outputScratch1() { return outputScratch1_.data(); }
 
  private:
+  void publishMetricsSnapshot();
+  MetricsSnapshot readMetricsSnapshot() const;
+
   BridgeDevicePair devices_{};
   BridgeEngineOptions options_{};
   PlanarRingBuffer ring_;
@@ -78,7 +90,8 @@ class BridgeEngine {
   std::atomic<uint64_t> xruns_{0};
   bool running_ = false;
 
-  double lastFillMs_ = 0.0;
+  std::atomic<uint32_t> metricsSeq_{0};
+  MetricsSnapshot metricsSnapshot_{};
 
   AudioDeviceIOProcID inputProc_ = nullptr;
   AudioDeviceIOProcID outputProc_ = nullptr;
