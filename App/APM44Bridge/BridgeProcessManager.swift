@@ -246,15 +246,20 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func stop() {
+        Task { await stopAsync() }
+    }
+
+    func stopAsync() async {
         wasRunningBeforeDisconnect = false
         cancelRetryTask()
         retryAttempt = 0
         if process != nil {
-            initiateStop(reason: .user)
+            await terminateProcessWithEscalation(reason: .user)
         } else if case .reconnecting = state {
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
+            clearPipeHandlers()
         }
     }
 
@@ -318,22 +323,11 @@ final class BridgeProcessManager: ObservableObject {
 
         lastStopReason = reason
         if process != nil {
-            initiateStop(reason: reason)
-
-            do {
-                try await waitForTermination(timeout: .seconds(5))
-            } catch {
-                if let proc = process, processLauncher.isProcessRunning(proc), proc.isRunning {
-                    let pid = proc.processIdentifier
-                    kill(pid, SIGKILL)
-                }
-                do {
-                    try await waitForTermination(timeout: .seconds(5))
-                } catch {
-                    state = .error("Bridge did not stop")
-                    bannerMessage = "Bridge did not stop"
-                    return
-                }
+            let stopped = await terminateProcessWithEscalation(reason: reason)
+            if !stopped {
+                state = .error("Bridge did not stop")
+                bannerMessage = "Bridge did not stop"
+                return
             }
         }
 
@@ -357,8 +351,7 @@ final class BridgeProcessManager: ObservableObject {
             if isRunning {
                 wasRunningBeforeDisconnect = false
                 bannerMessage = "Output disconnected — select a device"
-                initiateStop(reason: .hotplug)
-                try? await waitForTermination(timeout: .seconds(5))
+                _ = await terminateProcessWithEscalation(reason: .hotplug)
                 state = .error("Output device disconnected")
             }
             return
@@ -372,8 +365,7 @@ final class BridgeProcessManager: ObservableObject {
                 await restart(reason: .hotplug)
             } else {
                 wasRunningBeforeDisconnect = true
-                initiateStop(reason: .hotplug)
-                try? await waitForTermination(timeout: .seconds(5))
+                _ = await terminateProcessWithEscalation(reason: .hotplug)
                 state = .reconnecting
                 bannerMessage = "Output disconnected — waiting for \(deviceDisplayName)…"
             }
@@ -421,7 +413,7 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func buildArguments(outputUid: String) -> [String] {
-        let ms = settings.effectiveTargetFillMs
+        let ms = settings.effectiveTargetFillMs(halMode: routingMode == .halVirtualDevice)
         let quality = settings.effectiveSrcQuality.cliArgument
         var args: [String] = [
             "--output-device", outputUid,
@@ -546,7 +538,39 @@ final class BridgeProcessManager: ObservableObject {
         return defaultMessage
     }
 
+    private func clearPipeHandlers() {
+        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        stdoutPipe = nil
+        stderrPipe = nil
+    }
+
+    @discardableResult
+    private func terminateProcessWithEscalation(reason: StopReason) async -> Bool {
+        initiateStop(reason: reason)
+        guard process != nil else {
+            clearPipeHandlers()
+            return true
+        }
+        do {
+            try await waitForTermination(timeout: .seconds(5))
+            return true
+        } catch {
+            if let proc = process, processLauncher.isProcessRunning(proc), proc.isRunning {
+                kill(proc.processIdentifier, SIGKILL)
+            }
+            do {
+                try await waitForTermination(timeout: .seconds(5))
+                return true
+            } catch {
+                clearPipeHandlers()
+                return false
+            }
+        }
+    }
+
     private func transitionToIdle() {
+        clearPipeHandlers()
         state = .idle
         connectionPhase = .stopped
         lastStopReason = nil
@@ -615,10 +639,7 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func handleTermination(_ proc: Process) {
-        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
-        stdoutPipe = nil
-        stderrPipe?.fileHandleForReading.readabilityHandler = nil
-        stderrPipe = nil
+        clearPipeHandlers()
         process = nil
         staleTask?.cancel()
         if case .stopping = state {
