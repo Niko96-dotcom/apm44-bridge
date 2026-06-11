@@ -2,9 +2,12 @@
 
 #include "engine/AudioConverterSrc.h"
 #include "engine/LibSamplerateSrc.h"
+#include "engine/MetricsPublisher.h"
 #include "engine/VirtualPrebufferGate.h"
 #include "engine/VirtualDeviceFeed.h"
 #include "hal/HalTypes.h"
+
+#include <apm44/MetricsSnapshot.h>
 
 #include <apm44/DriftController.h>
 #include <apm44/InputFrameDemand.h>
@@ -24,14 +27,9 @@ struct BridgeEngineOptions {
   bool virtualDevice = false;
 };
 
-struct MetricsSnapshot {
-  double fillMs = 0.0;
-  double smoothedRatio = 1.0;
-  double ppm = 0.0;
-  uint64_t underruns = 0;
-  uint64_t overruns = 0;
-  uint64_t xruns = 0;
-};
+// MetricsSnapshot now lives in <apm44/MetricsSnapshot.h>; the typedef-
+// like alias keeps the rest of the engine compiled unchanged.
+using MetricsSnapshot = ::apm44::MetricsSnapshot;
 
 class BridgeEngine {
  public:
@@ -90,8 +88,10 @@ class BridgeEngine {
   std::atomic<uint64_t> xruns_{0};
   bool running_ = false;
 
-  std::atomic<uint32_t> metricsSeq_{0};
-  MetricsSnapshot metricsSnapshot_{};
+  // Seqlock state, extracted into MetricsPublisher so the contract
+  // is independently testable. The legacy `metricsSeq_` /
+  // `metricsSnapshot_` fields are now folded into `publisher_`.
+  MetricsPublisherState publisher_;
 
   AudioDeviceIOProcID inputProc_ = nullptr;
   AudioDeviceIOProcID outputProc_ = nullptr;

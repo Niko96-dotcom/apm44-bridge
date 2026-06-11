@@ -163,29 +163,18 @@ void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
 }
 
 void BridgeEngine::publishMetricsSnapshot() {
-  const uint32_t seq = metricsSeq_.load(std::memory_order_relaxed);
-  metricsSeq_.store(seq + 1, std::memory_order_release);
-  metricsSnapshot_.fillMs = ring_.fillMs(kInputSampleRate);
-  metricsSnapshot_.smoothedRatio = drift_.smoothedRatio();
-  metricsSnapshot_.ppm = drift_.currentPpm();
-  metricsSnapshot_.underruns = drift_.underrunCount();
-  metricsSnapshot_.overruns = drift_.overrunCount();
-  metricsSnapshot_.xruns = xruns_.load(std::memory_order_relaxed);
-  metricsSeq_.store(seq + 2, std::memory_order_release);
+  MetricsSnapshot next;
+  next.fillMs = ring_.fillMs(kInputSampleRate);
+  next.smoothedRatio = drift_.smoothedRatio();
+  next.ppm = drift_.currentPpm();
+  next.underruns = drift_.underrunCount();
+  next.overruns = drift_.overrunCount();
+  next.xruns = xruns_.load(std::memory_order_relaxed);
+  PublishMetrics(publisher_, next);
 }
 
 MetricsSnapshot BridgeEngine::readMetricsSnapshot() const {
-  for (;;) {
-    const uint32_t seqBefore = metricsSeq_.load(std::memory_order_acquire);
-    if (seqBefore & 1U) {
-      continue;
-    }
-    const MetricsSnapshot copy = metricsSnapshot_;
-    const uint32_t seqAfter = metricsSeq_.load(std::memory_order_acquire);
-    if (seqBefore == seqAfter) {
-      return copy;
-    }
-  }
+  return ReadMetrics(publisher_);
 }
 
 void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
