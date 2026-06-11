@@ -61,6 +61,19 @@ The helper and driver both include an `APM44_BUILD_ID` fingerprint. The driver w
 - Ring ABI version and driver build ID are stored in the shm header; mismatches fail fast instead of waiting for DAW playback.
 - Tests must construct `MmapShmRing` with a short per-test shm name and must never create/unlink the production `/apm44_bridge_ring`.
 
+### Build ID sync check
+
+Before a DAW session, confirm all four build fingerprints agree:
+
+| Artifact | How to read |
+|----------|-------------|
+| Repo build | `APM44_BUILD_ID` at compile time (CMake prints `APM44 build id:` during configure) |
+| Installed helper | `apm44-bridge --version` (`build=` field) |
+| Installed driver | `scripts/verify-hal-driver.sh` compares build vs installed HAL executable SHA-256 |
+| Live ring | `apm44-bridge --shm-status` → `driver_build_id`, `helper_build_id`, `driver_generation`, `shm_dev`/`shm_ino` |
+
+`helper_build_id` is the daemon binary fingerprint; `driver_build_id` is copied from the HAL producer into the live ring header. When the ring exists, these must match. If they differ, rebuild, reinstall the driver bundle, reload Core Audio (`scripts/reload-coreaudio.sh`), and restart the menu bar app.
+
 ## Related
 
 - [Release signing](release.md)

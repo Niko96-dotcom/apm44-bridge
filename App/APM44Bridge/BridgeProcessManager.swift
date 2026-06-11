@@ -175,13 +175,15 @@ final class BridgeProcessManager: ObservableObject {
         updateConnectionPhase()
     }
 
-    func start() {
+    func start(resetRetryAttempt: Bool = true) {
         switch state {
         case .idle, .error, .reconnecting: break
         default: return
         }
-        cancelRetryTask()
-        retryAttempt = 0
+        if resetRetryAttempt {
+            cancelRetryTask()
+            retryAttempt = 0
+        }
         guard let url = binaryURL else {
             state = .error("Bridge not found — build or install apm44-bridge")
             return
@@ -518,8 +520,23 @@ final class BridgeProcessManager: ObservableObject {
         }
     }
 
+    internal func appendStderrForTesting(_ text: String) {
+        appendStderr(text)
+    }
+
+    private func isRecoverableStaleRingExit(status: Int32, stderr: String) -> Bool {
+        status == 42 && stderr.localizedCaseInsensitiveContains("stale shm ring")
+    }
+
+    internal func bridgeFailureMessageForTesting(defaultMessage: String) -> String {
+        bridgeFailureMessage(defaultMessage: defaultMessage)
+    }
+
     private func bridgeFailureMessage(defaultMessage: String) -> String {
         let stderr = stderrLines.joined(separator: "\n")
+        if stderr.localizedCaseInsensitiveContains("stale shm ring") {
+            return "APM44 driver IPC failed. Reinstall the matching driver and reload Core Audio."
+        }
         if stderr.localizedCaseInsensitiveContains("shm") {
             return "APM44 driver IPC failed. Reinstall the matching driver and reload Core Audio."
         }
@@ -575,7 +592,7 @@ final class BridgeProcessManager: ObservableObject {
                 guard !Task.isCancelled else { return }
                 guard case .reconnecting = self.state else { return }
 
-                self.start()
+                self.start(resetRetryAttempt: false)
                 if self.isRunning {
                     self.retryAttempt = 0
                     return
@@ -610,6 +627,9 @@ final class BridgeProcessManager: ObservableObject {
         }
         let exitStatus = testTerminationStatus ?? proc.terminationStatus
         testTerminationStatus = nil
+        let stderr = stderrLines.joined(separator: "\n")
+        let recoverableStale = isRecoverableStaleRingExit(status: exitStatus, stderr: stderr)
+
         if exitStatus != 0, case .running = state {
             if lastStopReason != .user {
                 scheduleAutoRetry()
@@ -626,8 +646,12 @@ final class BridgeProcessManager: ObservableObject {
             lastStopReason = nil
             state = .idle
         } else if case .starting = state {
-            lastStopReason = nil
-            state = .error(bridgeFailureMessage(defaultMessage: "Bridge could not start."))
+            if recoverableStale, lastStopReason != .user {
+                scheduleAutoRetry()
+            } else {
+                lastStopReason = nil
+                state = .error(bridgeFailureMessage(defaultMessage: "Bridge could not start."))
+            }
         }
         connectionPhase = .stopped
         resumeTerminationWaiters()

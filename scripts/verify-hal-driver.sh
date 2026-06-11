@@ -101,6 +101,23 @@ else
   warn "APM44 Bridge not visible (notarize+staple, reinstall, reload-coreaudio.sh, or reboot)"
 fi
 
+if [[ -x "$DAEMON" ]] && system_profiler SPAudioDataType 2>/dev/null | grep -qi 'APM44 Bridge'; then
+  SHM_OUT="$("$DAEMON" --shm-status 2>&1 || true)"
+  HELPER_ID="$(printf '%s\n' "$SHM_OUT" | awk -F= '/^helper_build_id=/{print $2; exit}')"
+  DRIVER_ID="$(printf '%s\n' "$SHM_OUT" | awk -F= '/^driver_build_id=/{print $2; exit}')"
+  if [[ -n "$HELPER_ID" && -n "$DRIVER_ID" ]]; then
+    if [[ "$HELPER_ID" == "$DRIVER_ID" ]]; then
+      pass "helper and live ring build IDs match ($HELPER_ID)"
+    else
+      fail "helper and live ring producer build IDs differ (helper=$HELPER_ID ring=$DRIVER_ID)"
+    fi
+  else
+    warn "could not parse --shm-status build IDs (ring may be absent)"
+  fi
+elif [[ -x "$DAEMON" ]]; then
+  warn "skipping --shm-status build ID check (APM44 Bridge not visible)"
+fi
+
 if [[ "${APM44_SKIP_HAL_SMOKE:-0}" != "1" ]]; then
   if [[ -x "$SMOKE" ]]; then
     if system_profiler SPAudioDataType 2>/dev/null | grep -qi 'APM44 Bridge'; then

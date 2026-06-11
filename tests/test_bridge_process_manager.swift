@@ -376,6 +376,32 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
+    func testRetryExhaustionFromZeroAttempt() async {
+        let launcher = MockProcessLauncher()
+        launcher.failLaunchesAfterFirstSuccess = true
+        let (manager, _, _) = makeManager(launcher: launcher)
+        manager.testRetryDelays = [0]
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        manager.testTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        for _ in 0..<200 {
+            if case .error = manager.state { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        if case .error(let message) = manager.state {
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("retries"))
+        } else {
+            XCTFail("Expected final error after retries from zero, got \(manager.state)")
+        }
+    }
+
     func testRetryBackoffDelays() async {
         let (manager, _, launcher) = makeManager()
         manager.testRetryDelays = [0.01, 0.02, 0.04, 0.04]
@@ -404,6 +430,51 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .idle)
         XCTAssertEqual(launcher.makeCount, 0)
+    }
+
+    func testRecoverableStaleRingExitTriggersRetry() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [60]
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        manager.appendStderrForTesting("stale shm ring: could not remap shared-memory ring")
+        manager.testTerminationStatus = 42
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        if case .reconnecting = manager.state {
+            XCTAssertTrue(manager.bannerMessage?.localizedCaseInsensitiveContains("attempt") == true)
+        } else {
+            XCTFail("Expected reconnecting after recoverable stale ring exit, got \(manager.state)")
+        }
+    }
+
+    func testUserStopSuppressesStaleRingRetry() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [0.01]
+
+        manager.start()
+        manager.stop()
+
+        manager.appendStderrForTesting("stale shm ring: invalid header")
+        manager.testTerminationStatus = 42
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testStaleRingFailureMessageIsActionable() {
+        let (manager, _, _) = makeManager()
+        manager.appendStderrForTesting("stale shm ring: invalid shm ring header")
+        let message = manager.bridgeFailureMessageForTesting(defaultMessage: "Lost connection to bridge.")
+        XCTAssertTrue(message.localizedCaseInsensitiveContains("reinstall"))
+        XCTAssertTrue(message.localizedCaseInsensitiveContains("driver"))
     }
 
     func testSettingsRestartWaitsForTermination() async {

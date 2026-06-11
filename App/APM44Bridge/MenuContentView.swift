@@ -234,8 +234,10 @@ struct MenuContentView: View {
     }
 
     private var showsStopButton: Bool {
-        if case .running = manager.state { return true }
-        return false
+        switch manager.state {
+        case .running, .reconnecting: return true
+        default: return false
+        }
     }
 
     private var showsRestartButton: Bool {
