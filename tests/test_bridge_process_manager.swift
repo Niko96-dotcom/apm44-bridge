@@ -501,4 +501,40 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(launcher.makeCount, 2)
         XCTAssertEqual(manager.lastStopReason, nil)
     }
+
+    // PROC-03: two concurrent termination waiters must both unblock when
+    // the daemon terminates. The old single-slot continuation would
+    // overwrite the first waiter; the new list-based implementation
+    // appends each caller and drains the full list on termination.
+    func testConcurrentTerminationWaitersAllComplete() async {
+        let (manager, _, launcher) = makeManager()
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        // Kick off two concurrent stop calls. Each invokes
+        // `finishStopWithEscalation` → `waitForTermination` →
+        // `terminationContinuations.append`. Both must unblock when
+        // the daemon fires its termination handler.
+        let stop1 = Task { @MainActor in
+            manager.stop()
+        }
+        let stop2 = Task { @MainActor in
+            manager.stop()
+        }
+
+        // Give both tasks a moment to enter waitForTermination and append
+        // their continuations to the list.
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        // Both awaiters must complete without hanging.
+        await stop1.value
+        await stop2.value
+
+        XCTAssertEqual(manager.state, .idle)
+    }
 }
