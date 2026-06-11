@@ -39,7 +39,7 @@ final class BridgeProcessManager: ObservableObject {
     private var staleTask: Task<Void, Never>?
     private var lastMetricsAt: Date?
     private var stderrLines: [String] = []
-    private var terminationContinuation: CheckedContinuation<Void, Never>?
+    private var terminationContinuations: [CheckedContinuation<Void, Never>] = []
     private var restartTask: Task<Void, Never>?
     private var pendingRestartReason: StopReason?
     private var wasRunningBeforeDisconnect = false
@@ -408,7 +408,11 @@ final class BridgeProcessManager: ObservableObject {
                         continuation.resume()
                         return
                     }
-                    self.terminationContinuation = continuation
+                    // PROC-03: support concurrent termination waiters. Each
+                    // caller appends its own continuation; the termination
+                    // handler drains the full list. A single optional slot
+                    // would let the second caller overwrite the first.
+                    self.terminationContinuations.append(continuation)
                 }
             }
             group.addTask {
@@ -574,7 +578,12 @@ final class BridgeProcessManager: ObservableObject {
                 try await waitForTermination(timeout: .seconds(5))
                 return true
             } catch {
+                // PROC-01: ensure any in-flight termination waiter
+                // unblocks with a final result instead of hanging. Clear
+                // pipe handlers and resume every queued continuation so
+                // the caller gets a deterministic `false`.
                 clearPipeHandlers()
+                resumeTerminationWaiters()
                 return false
             }
         }
@@ -602,8 +611,14 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func resumeTerminationWaiters() {
-        terminationContinuation?.resume()
-        terminationContinuation = nil
+        // PROC-03: resume all queued termination continuations, not just
+        // one. Drain the list, then clear it so a new waiter that arrives
+        // after this point is not immediately resumed.
+        let pending = terminationContinuations
+        terminationContinuations = []
+        for continuation in pending {
+            continuation.resume()
+        }
     }
 
     private func cancelRetryTask() {
