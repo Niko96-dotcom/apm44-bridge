@@ -42,6 +42,7 @@ class MmapShmRing {
   ShmRingErrorCode lastErrorCode() const { return lastErrorCode_; }
   int lastErrno() const { return lastErrno_; }
   const std::string& lastError() const { return lastError_; }
+  // Returns nullptr when unmapped; callers must check isMapped() before use.
   const ShmRingHeader* header() const { return header_; }
   ShmRingHeader* header() { return header_; }
 
