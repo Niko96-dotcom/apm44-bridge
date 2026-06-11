@@ -7,11 +7,15 @@
 #include <apm44/AudioFormats.h>
 #include <apm44/MmapShmRing.h>
 
+#include <apm44/ShmObjectIdentity.h>
+
 #include <cerrno>
 #include <iostream>
 #include <optional>
 
 namespace {
+
+constexpr int kExitStaleShmRing = 42;
 
 std::optional<apm44::BridgeDevicePair> ResolveDevices(const apm44::CliOptions& options,
                                                       bool requirePresent) {
@@ -170,6 +174,8 @@ int RunShmStatus() {
   }
 
   const auto* header = ring.header();
+  apm44::ShmObjectIdentity identity;
+  const bool hasIdentity = apm44::StatNamedShmObject(apm44::kShmRingName, identity);
   std::cout << "shm_status=ok\n";
   std::cout << "shm_name=" << apm44::kShmRingName << "\n";
   std::cout << "helper_build_id=" << apm44::kBuildId << "\n";
@@ -178,6 +184,13 @@ int RunShmStatus() {
   std::cout << "capacity_frames=" << header->capacity_frames << "\n";
   std::cout << "sample_rate=" << header->sample_rate << "\n";
   std::cout << "channels=" << header->channels << "\n";
+  std::cout << "driver_generation="
+            << header->driver_generation.load(std::memory_order_relaxed) << "\n";
+  std::cout << "daemon_ready=" << header->daemon_ready.load(std::memory_order_relaxed) << "\n";
+  if (hasIdentity && identity.valid) {
+    std::cout << "shm_dev=" << identity.st_dev << "\n";
+    std::cout << "shm_ino=" << identity.st_ino << "\n";
+  }
   ring.close();
   return 0;
 }
@@ -232,7 +245,36 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  if (options.metricsJson) {
+  int exitCode = 0;
+  if (options.virtualDevice) {
+    engine.runUntilSignal([&engine, &options, &exitCode](const apm44::BridgeEngine& snapshot) {
+      switch (engine.pollVirtualFeedStaleRing()) {
+        case apm44::BridgeEngine::VirtualFeedStaleAction::StopForRemap:
+          std::cerr << "apm44-bridge: remapped stale shm ring\n";
+          break;
+        case apm44::BridgeEngine::VirtualFeedStaleAction::StopForExit: {
+          const std::string& detail = engine.virtualFeedLastOpenError();
+          if (!detail.empty()) {
+            std::cerr << "stale shm ring: " << detail << "\n";
+          } else {
+            std::cerr << "stale shm ring: could not remap shared-memory ring\n";
+          }
+          apm44::BridgeEngine::requestStop();
+          exitCode = kExitStaleShmRing;
+          break;
+        }
+        case apm44::BridgeEngine::VirtualFeedStaleAction::None:
+          break;
+      }
+      if (options.metricsJson) {
+        const auto metrics = apm44::MakeBridgeMetrics(
+            snapshot.lastFillMs(), snapshot.lastSmoothedRatio(), snapshot.lastPpm(),
+            snapshot.underrunCount(), snapshot.overrunCount(), snapshot.xrunCount(),
+            options.targetFillMs, apm44::SrcQualityCliString(options.srcQuality));
+        std::cout << apm44::ToJsonLine(metrics) << '\n' << std::flush;
+      }
+    });
+  } else if (options.metricsJson) {
     engine.runUntilSignal([&options](const apm44::BridgeEngine& snapshot) {
       const auto metrics = apm44::MakeBridgeMetrics(
           snapshot.lastFillMs(), snapshot.lastSmoothedRatio(), snapshot.lastPpm(),
@@ -243,5 +285,5 @@ int main(int argc, char* argv[]) {
   } else {
     engine.runUntilSignal();
   }
-  return 0;
+  return exitCode;
 }

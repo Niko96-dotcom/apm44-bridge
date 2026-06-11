@@ -332,6 +332,23 @@ void BridgeEngine::stop() {
   running_ = false;
 }
 
+void BridgeEngine::requestStop() { gStopRequested = 1; }
+
+BridgeEngine::VirtualFeedStaleAction BridgeEngine::pollVirtualFeedStaleRing() {
+  if (!virtualDevice_) {
+    return VirtualFeedStaleAction::None;
+  }
+  switch (virtualFeed_.pollStaleRing()) {
+    case StaleRingPollResult::Ok:
+      return VirtualFeedStaleAction::None;
+    case StaleRingPollResult::Remapped:
+      return VirtualFeedStaleAction::StopForRemap;
+    case StaleRingPollResult::MustExit:
+      return VirtualFeedStaleAction::StopForExit;
+  }
+  return VirtualFeedStaleAction::None;
+}
+
 void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick) {
   std::signal(SIGINT, SignalHandler);
   std::signal(SIGTERM, SignalHandler);
@@ -339,8 +356,8 @@ void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>
   while (gStopRequested == 0) {
     if (onTick) {
       onTick(*this);
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
   stop();
   std::cerr << "apm44-bridge: stopped. fill_ms=" << lastFillMs_

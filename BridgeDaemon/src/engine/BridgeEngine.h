@@ -30,6 +30,13 @@ class BridgeEngine {
   bool start();
   void stop();
   void runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick = nullptr);
+  static void requestStop();
+
+  enum class VirtualFeedStaleAction { None, StopForRemap, StopForExit };
+  VirtualFeedStaleAction pollVirtualFeedStaleRing();
+  const std::string& virtualFeedLastOpenError() const {
+    return virtualFeed_.lastOpenError();
+  }
 
   const BridgeDevicePair& devices() const { return devices_; }
   std::size_t ringCapacity() const { return ring_.capacityFrames(); }
