@@ -38,13 +38,24 @@ relaunches.
   machine.
 - `verify-installed-sync.sh` not yet CI-gated.
 
-## Next Milestone Goals
+## Current Milestone: v0.3 Realtime Audio Hardening
 
-Planning not started. Candidate themes from deferred items:
-- PKG installer signing and DMG-first install without Terminal.
-- Logic/Ableton validation matrix expansion.
-- Support bundle export for operator diagnostics.
-- Close QA-03 live verification and wire sync scripts into CI.
+**Goal:** Make the realtime audio, process-stop, metrics, and shared-memory
+paths race-free and defensive before expanding packaging or DAW coverage.
+
+**Target features:**
+- Preserve the `PlanarRingBuffer` single-producer / single-consumer contract by
+  removing producer-side consumer behavior or moving oldest-frame dropping to the
+  output side.
+- Ensure output callbacks larger than the internal scratch size render or
+  silence every frame.
+- Make Swift process-stop waiting timeout-safe, escalation-safe, and safe for
+  concurrent waiters.
+- Publish bridge metrics through a C++ data-race-free path.
+- Reject truncated, inconsistent, or corrupt shared-memory mappings before any
+  ring read/write path trusts header capacity or build-ID strings.
+- Close deferred installed-system proof: QA-03 live DAW/hotplug soak, IPC-04
+  build-ID sync, and CI-gating for `verify-installed-sync.sh`.
 
 ## Requirements
 
@@ -78,8 +89,17 @@ Planning not started. Candidate themes from deferred items:
 
 ### Active
 
+- [ ] Realtime ring ownership: `PlanarRingBuffer` remains SPSC under overrun and
+  normal callback flow.
+- [ ] Output callback coverage: every Core Audio output frame is rendered or
+  explicitly silenced, including callbacks larger than scratch buffers.
+- [ ] Stop escalation: timed-out process termination reliably reaches SIGKILL
+  and concurrent termination waiters do not overwrite each other.
+- [ ] Metrics publication: UI metrics snapshots are C++ data-race-free.
+- [ ] Shared-memory validation: malformed/truncated shm objects and unterminated
+  build-ID fields are rejected or safely described.
 - [ ] Live installed-system proof: hotplug smoke, Cubase HAL soak, build-ID sync
-  on operator hardware (QA-03, IPC-04 — deferred from v0.2 close).
+  on operator hardware (QA-03, IPC-04 - deferred from v0.2 close).
 - [ ] Commit and CI-gate `scripts/verify-installed-sync.sh`.
 
 ### Out of Scope
@@ -99,10 +119,17 @@ Planning not started. Candidate themes from deferred items:
 - v0.2 closed with 22/24 requirements satisfied by automated evidence; QA-03 and
   IPC-04 accepted as operator-dependent gaps.
 - Source integration points for reliability work:
+  - `BridgeDaemon/src/engine/BridgeInputOverrun.h`
+  - `BridgeDaemon/src/IoProcHandlers.cpp`
+  - `BridgeDaemon/src/engine/BridgeEngine.*`
   - `App/APM44Bridge/BridgeProcessManager.swift`
   - `App/APM44Bridge/HotplugMonitor.swift`
   - `BridgeDaemon/src/engine/VirtualDeviceFeed.cpp`
   - `Shared/src/MmapShmRing.cpp`
+  - `Shared/src/ShmObjectIdentity.*`
+- v0.3 was seeded from a focused highest-priority bug/risk review covering SPSC
+  ring ownership, large callbacks, stop-timeout continuation handling, metrics
+  races, and shm mapping validation.
 - `.planning/` is gitignored by default; selected artifacts are force-added for
   local GSD state.
 
@@ -129,10 +156,24 @@ Planning not started. Candidate themes from deferred items:
 | Keep `.planning/` local/ignored for now | v0.1.1 intentionally made the repo public-facing and removed workbench artifacts | ✓ Good — unchanged |
 | Accept QA-03/IPC-04 gaps at milestone close | Operator hardware and sudo driver reinstall required for live proof | ⚠️ Revisit — next milestone or ops task |
 | macOS shm_dev=0 uses driver_generation for stale detection | st_ino unreliable on macOS shm objects | ✓ Good — Phase 7 |
+| Treat v0.3 as hardening before feature expansion | The attached risk list points to correctness issues in realtime and IPC paths | — Pending |
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
+**After each phase transition** (via `$gsd-transition`):
+1. Requirements invalidated? Move to Out of Scope with reason.
+2. Requirements validated? Move to Validated with phase reference.
+3. New requirements emerged? Add to Active.
+4. Decisions to log? Add to Key Decisions.
+5. "What This Is" still accurate? Update if drifted.
+
+**After each milestone** (via `$gsd-complete-milestone`):
+1. Full review of all sections.
+2. Core Value check - still the right priority?
+3. Audit Out of Scope - reasons still valid?
+4. Update Context with current state.
+
 ---
-*Last updated: 2026-06-11 after v0.2 Reliability and Self-Healing milestone*
+*Last updated: 2026-06-12 after v0.3 Realtime Audio Hardening milestone start*
