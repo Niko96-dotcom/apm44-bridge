@@ -104,38 +104,36 @@ mystery relaunches.
 
 ## Traceability
 
-Traceability is filled during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RT-01 | TBD | Pending |
-| RT-02 | TBD | Pending |
-| RT-03 | TBD | Pending |
-| RT-04 | TBD | Pending |
-| RT-05 | TBD | Pending |
-| PROC-01 | TBD | Pending |
-| PROC-02 | TBD | Pending |
-| PROC-03 | TBD | Pending |
-| PROC-04 | TBD | Pending |
-| METR-01 | TBD | Pending |
-| METR-02 | TBD | Pending |
-| METR-03 | TBD | Pending |
-| SHM-01 | TBD | Pending |
-| SHM-02 | TBD | Pending |
-| SHM-03 | TBD | Pending |
-| SHM-04 | TBD | Pending |
-| SHM-05 | TBD | Pending |
-| QA-01 | TBD | Pending |
-| QA-02 | TBD | Pending |
-| QA-03 | TBD | Pending |
-| QA-04 | TBD | Pending |
-| QA-05 | TBD | Pending |
+| RT-01 | Phase 9 | Pending |
+| RT-02 | Phase 9 | Pending |
+| RT-03 | Phase 9 | Pending |
+| RT-04 | Phase 9 | Pending |
+| RT-05 | Phase 9 | Pending |
+| PROC-01 | Phase 10 | Pending |
+| PROC-02 | Phase 10 | Pending |
+| PROC-03 | Phase 10 | Pending |
+| PROC-04 | Phase 10 | Pending |
+| METR-01 | Phase 10 | Pending |
+| METR-02 | Phase 10 | Pending |
+| METR-03 | Phase 10 | Pending |
+| SHM-01 | Phase 11 | Pending |
+| SHM-02 | Phase 11 | Pending |
+| SHM-03 | Phase 11 | Pending |
+| SHM-04 | Phase 11 | Pending |
+| SHM-05 | Phase 11 | Pending |
+| QA-01 | Phase 12 | Pending |
+| QA-02 | Phase 12 | Pending |
+| QA-03 | Phase 12 | Pending |
+| QA-04 | Phase 12 | Pending |
+| QA-05 | Phase 12 | Pending |
 
 **Coverage:**
 - v0.3 requirements: 22 total
-- Mapped to phases: 0
-- Unmapped: 22
+- Mapped to phases: 22
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-12*
-*Last updated: 2026-06-12 after v0.3 requirements definition*
+*Last updated: 2026-06-12 after v0.3 roadmap creation*
