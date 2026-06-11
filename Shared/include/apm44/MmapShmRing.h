@@ -1,8 +1,10 @@
 #pragma once
 
+#include "apm44/ShmObjectIdentity.h"
 #include "apm44/ShmRingLayout.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace apm44 {
@@ -49,6 +51,10 @@ class MmapShmRing {
 
   void setDaemonReady();
 
+  const ShmObjectIdentity& mappedObjectIdentity() const { return mappedIdentity_; }
+  uint32_t mappedDriverGeneration() const { return mappedDriverGeneration_; }
+  bool isMappedObjectStale() const;
+
  private:
   float* samples() const;
   std::size_t availableToWrite() const;
@@ -66,6 +72,8 @@ class MmapShmRing {
   ShmRingErrorCode lastErrorCode_ = ShmRingErrorCode::None;
   int lastErrno_ = 0;
   std::string lastError_;
+  ShmObjectIdentity mappedIdentity_{};
+  uint32_t mappedDriverGeneration_ = 0;
 };
 
 }  // namespace apm44

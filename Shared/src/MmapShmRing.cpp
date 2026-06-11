@@ -1,6 +1,7 @@
 #include "apm44/MmapShmRing.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <cerrno>
 #include <fcntl.h>
@@ -16,7 +17,26 @@ namespace {
 
 constexpr int kMapProt = PROT_READ | PROT_WRITE;
 
+std::atomic<uint32_t> gNextShmDriverGeneration{0};
+
 bool IsPermissionErrno(int err) { return err == EACCES || err == EPERM; }
+
+void CaptureMappedIdentity(int fd, ShmObjectIdentity& identity, uint32_t& generation,
+                           const ShmRingHeader* header) {
+  identity = {};
+  generation = 0;
+  if (header != nullptr) {
+    generation = header->driver_generation.load(std::memory_order_relaxed);
+    identity.driver_generation = generation;
+    identity.has_generation = true;
+  }
+  struct stat st {};
+  if (fd >= 0 && ::fstat(fd, &st) == 0) {
+    identity.st_dev = st.st_dev;
+    identity.st_ino = st.st_ino;
+    identity.valid = true;
+  }
+}
 
 void CopyBuildId(char (&dst)[kShmBuildIdBytes]) {
   std::memset(dst, 0, sizeof(dst));
@@ -100,7 +120,10 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
   header_->write_index.store(0, std::memory_order_relaxed);
   header_->read_index.store(0, std::memory_order_relaxed);
   header_->daemon_ready.store(0, std::memory_order_relaxed);
-  header_->driver_generation.fetch_add(1, std::memory_order_relaxed);
+  const uint32_t generation =
+      gNextShmDriverGeneration.fetch_add(1, std::memory_order_relaxed) + 1;
+  header_->driver_generation.store(generation, std::memory_order_relaxed);
+  CaptureMappedIdentity(fd_, mappedIdentity_, mappedDriverGeneration_, header_);
   return true;
 }
 
@@ -148,6 +171,7 @@ bool MmapShmRing::open(ShmRingRole role) {
     recordError(ShmRingErrorCode::InvalidHeader, message);
     return false;
   }
+  CaptureMappedIdentity(fd_, mappedIdentity_, mappedDriverGeneration_, header_);
   return true;
 }
 
@@ -158,10 +182,23 @@ void MmapShmRing::close() {
   base_ = nullptr;
   mappedSize_ = 0;
   header_ = nullptr;
+  mappedIdentity_ = {};
+  mappedDriverGeneration_ = 0;
   if (fd_ >= 0) {
     ::close(fd_);
     fd_ = -1;
   }
+}
+
+bool MmapShmRing::isMappedObjectStale() const {
+  if (!isMapped()) {
+    return false;
+  }
+  ShmObjectIdentity current;
+  if (!StatNamedShmObject(name_, current)) {
+    return true;
+  }
+  return ShmObjectIdentityChanged(mappedIdentity_, current);
 }
 
 void MmapShmRing::clearError() {
