@@ -47,8 +47,9 @@ verify-hal-driver.sh → FAIL installed SHA mismatch; WARN Gatekeeper on build b
 
 ## Task Commits
 
-1. **CI + verify-installed-sync.sh** - pending commit
-2. **Live checklist + embed** - pending commit
+1. **CI + verify-installed-sync.sh** - `f0b728f`
+2. **Live checklist + VERIFICATION.md** - `497b11a`
+3. **Plan summaries** - `35aaba5`
 
 ## Checkpoint status
 

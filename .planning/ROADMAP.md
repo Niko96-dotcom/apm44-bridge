@@ -1,0 +1,205 @@
+# Roadmap: APM44 Bridge
+
+## Milestones
+
+- Complete **v0.1.0 Initial Distribution** - Core bridge, HAL driver, daemon,
+  menu bar app, and release scripts shipped 2026-06-01.
+- Complete **v0.1.1 Public Release** - HAL dropout recovery, metrics clarity,
+  public repo cleanup, notarized DMG shipped 2026-06-03.
+- In progress **v0.2 Reliability and Self-Healing** - Phases 5-8.
+
+## Overview
+
+The v0.2 journey fixes the lifecycle layer around an already-working audio/DSP
+core. It starts by making the app state machine deterministic, then moves device
+recovery to app lifetime, then teaches the daemon/app pair to recover from HAL
+shared-memory recreation, and finishes with low-level hardening plus live
+installed-system verification.
+
+## Phase Numbering
+
+Phase numbering continues from the shipped conceptual history:
+
+- Phases 1-4: v0.1/v0.1.1 shipped product path.
+- Phases 5-8: v0.2 Reliability and Self-Healing.
+
+## Phases
+
+- [x] **Phase 5: App State Machine and Deterministic Restart** - Make Start, (completed 2026-06-11)
+  Stop, Restart, error recovery, and settings restarts trustworthy.
+- [x] **Phase 6: Always-On Device Recovery** - Keep hotplug/device monitoring (completed 2026-06-11)
+  alive for the app lifetime and reconnect selected outputs.
+- [x] **Phase 7: HAL IPC Self-Healing** - Detect stale shared-memory ring (completed 2026-06-11)
+  identity and relaunch/remap cleanly.
+- [x] **Phase 8: Hardening and Live Verification** - Close smaller audit bugs and (completed 2026-06-11)
+  prove the installed system is current.
+
+## Phase Details
+
+### Phase 5: App State Machine and Deterministic Restart
+
+**Goal:** The menu bar app never presents a dead Start button or races itself
+during restart.
+
+**Depends on:** v0.1.1 shipped baseline
+
+**Requirements:** APP-01, APP-02, APP-03, APP-04, APP-05, REC-01, QA-01
+
+**Success Criteria** (what must be TRUE):
+1. User can recover from any app error by clicking Start or Restart without
+   relaunching the app.
+2. Changing latency, SRC quality, or output while running waits for actual
+   daemon termination before launching the next daemon.
+3. User stop never triggers auto-retry; unexpected exits are classified for later
+   recovery behavior.
+4. Swift tests exercise the transition table and restart sequencing.
+
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 05-01-PLAN.md — StopReason enum, ProcessLaunching seam, start-from-error fix (APP-01, APP-02)
+- [x] 05-02-PLAN.md — awaitable restart(reason:) and settings restart without sleep (REC-01, APP-02)
+- [x] 05-03-PLAN.md — Restart UI, control disabled states, transition tests (APP-03–05, QA-01)
+
+**Wave 1** *(no dependencies)*
+- 05-01
+
+**Wave 2** *(blocked on Wave 1)*
+- 05-02
+
+**Wave 3** *(blocked on Waves 1–2)*
+- 05-03
+
+Cross-cutting constraints:
+- User can recover from error via Start without relaunching the app
+- Settings restarts wait for actual daemon termination before relaunch
+- User stop is tracked separately from unexpected exits
+
+### Phase 6: Always-On Device Recovery
+
+**Goal:** Normal output device changes are handled even when the menu window is
+closed.
+
+**Depends on:** Phase 5
+
+**Requirements:** REC-02, REC-03, REC-04, REC-05
+
+**Success Criteria** (what must be TRUE):
+1. Hotplug listener is active while the app process is alive, independent of menu
+   visibility.
+2. Disconnecting and reconnecting selected USB-C AirPods triggers bounded
+   recovery without a DAW restart when the device returns.
+3. Output picker excludes virtual loopback devices that cannot be valid physical
+   monitoring outputs.
+4. Unexpected daemon exits retry with visible backoff and eventually land in a
+   working error state.
+
+**Plans:** 2/2 plans complete
+
+Plans:
+- [x] 06-01-PLAN.md — App-scoped hotplug lifetime and idle hotplug refresh (REC-03)
+- [x] 06-02-PLAN.md — Virtual device filtering, disconnect reconnect, bounded retry UI (REC-02, REC-04, REC-05)
+
+**Wave 1** *(no dependencies)*
+- 06-01
+
+**Wave 2** *(blocked on Wave 1)*
+- 06-02
+
+Cross-cutting constraints:
+- Hotplug listener active for app process lifetime independent of menu visibility
+- Unexpected daemon exits retry with visible backoff; user stop never triggers auto-retry
+- Output picker excludes virtual loopback devices
+
+### Phase 7: HAL IPC Self-Healing
+
+**Goal:** The daemon/app pair recovers when the HAL driver recreates the shared
+memory ring after coreaudiod or driver reload.
+
+**Depends on:** Phase 6
+
+**Requirements:** IPC-01, IPC-02, IPC-03, IPC-04
+
+**Success Criteria** (what must be TRUE):
+1. Daemon detects when `/apm44_bridge_ring` no longer matches its mapped shm
+   object.
+2. Detection happens on a non-real-time path and either remaps safely or exits
+   with a distinct recoverable status.
+3. App recognizes that recoverable status and relaunches under the bounded retry
+   policy.
+4. Verification proves build ID agreement across repo helper, installed helper,
+   installed driver, and live ring.
+
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 07-01-PLAN.md — ShmObjectIdentity helpers and MmapShmRing stale detection (IPC-01)
+- [x] 07-02-PLAN.md — VirtualDeviceFeed remap-once, control tick, exit 42 (IPC-02)
+- [x] 07-03-PLAN.md — App recoverable classification, --shm-status, verify sync (IPC-03, IPC-04)
+
+**Wave 1** *(no dependencies)*
+- 07-01
+
+**Wave 2** *(blocked on Wave 1)*
+- 07-02
+
+**Wave 3** *(blocked on Waves 1–2)*
+- 07-03
+
+Cross-cutting constraints:
+- Stale detection and remap only on control thread, never IOProc
+- Remap once then exit 42 with `stale shm ring` stderr when recovery fails
+- User stop suppresses auto-retry even for exit 42
+
+### Phase 8: Hardening and Live Verification
+
+**Goal:** Close the smaller audit bugs and finish with a live installed-system
+proof path.
+
+**Depends on:** Phase 7
+
+**Requirements:** AUD-01, AUD-02, AUD-03, AUD-04, AUD-05, AUD-06, AUD-07,
+QA-02, QA-03
+
+**Success Criteria** (what must be TRUE):
+1. CLI without metrics JSON does not busy-spin.
+2. IOProc, ring, metrics, and process shutdown edge cases have regression tests.
+3. Latency UI tells the truth about HAL-mode minimum target fill.
+4. `scripts/ci.sh`, `scripts/verify-hal-driver.sh`, `apm44-bridge --shm-status`,
+   app/helper sync checks, hotplug smoke, and Cubase HAL smoke/soak are captured
+   before milestone completion.
+
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 08-01-PLAN.md — CLI idle, IOProc clamp, SPSC overrun, shm guards, metrics sync (AUD-01–05)
+- [x] 08-02-PLAN.md — Process handler cleanup, SIGKILL escalation, latency truth, QA-02 tests (AUD-06–07, QA-02)
+- [x] 08-03-PLAN.md — CI/driver/sync scripts, install, live hotplug/Cubase checklist (QA-03)
+
+**Wave 1** *(no dependencies)*
+- 08-01
+
+**Wave 2** *(blocked on Wave 1)*
+- 08-02
+
+**Wave 3** *(blocked on Waves 1–2)*
+- 08-03
+
+## Progress
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1-4. Shipped product path | v0.1/v0.1.1 | - | Complete | 2026-06-03 |
+| 5. App State Machine and Deterministic Restart | v0.2 | 3/3 | Complete   | 2026-06-11 |
+| 6. Always-On Device Recovery | v0.2 | 2/2 | Complete   | 2026-06-11 |
+| 7. HAL IPC Self-Healing | v0.2 | 3/3 | Complete   | 2026-06-11 |
+| 8. Hardening and Live Verification | v0.2 | 3/3 | Complete   | 2026-06-11 |
+
+## Coverage
+
+- Requirements mapped: 24/24
+- Phases: 4
+- Plans: 14
+
+---
+*Roadmap created: 2026-06-11 for milestone v0.2 Reliability and Self-Healing*
