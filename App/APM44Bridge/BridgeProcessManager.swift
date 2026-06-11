@@ -246,7 +246,18 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func stop() {
-        Task { await stopAsync() }
+        wasRunningBeforeDisconnect = false
+        cancelRetryTask()
+        retryAttempt = 0
+        if process != nil {
+            initiateStop(reason: .user)
+            Task { await finishStopWithEscalation() }
+        } else if case .reconnecting = state {
+            state = .idle
+            bannerMessage = nil
+            lastStopReason = nil
+            clearPipeHandlers()
+        }
     }
 
     func stopAsync() async {
@@ -254,7 +265,8 @@ final class BridgeProcessManager: ObservableObject {
         cancelRetryTask()
         retryAttempt = 0
         if process != nil {
-            await terminateProcessWithEscalation(reason: .user)
+            initiateStop(reason: .user)
+            await finishStopWithEscalation()
         } else if case .reconnecting = state {
             state = .idle
             bannerMessage = nil
@@ -546,8 +558,7 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     @discardableResult
-    private func terminateProcessWithEscalation(reason: StopReason) async -> Bool {
-        initiateStop(reason: reason)
+    private func finishStopWithEscalation() async -> Bool {
         guard process != nil else {
             clearPipeHandlers()
             return true
@@ -567,6 +578,12 @@ final class BridgeProcessManager: ObservableObject {
                 return false
             }
         }
+    }
+
+    @discardableResult
+    private func terminateProcessWithEscalation(reason: StopReason) async -> Bool {
+        initiateStop(reason: reason)
+        return await finishStopWithEscalation()
     }
 
     private func transitionToIdle() {
