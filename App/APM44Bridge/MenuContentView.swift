@@ -165,7 +165,7 @@ struct MenuContentView: View {
                 settings.onPresetChanged()
                 Task { await manager.restartForSettingsChange() }
             }
-            Text(settings.latencyPreset.targetDescription)
+            Text(settings.latencyPreset.targetDescription(halMode: manager.routingMode == .halVirtualDevice))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -294,7 +294,7 @@ struct MenuContentView: View {
                         Text("Monitoring adds latency")
                             .font(.caption)
                             .fontWeight(.medium)
-                        Text(settings.latencyPreset.stoppedLatencyHint)
+                        Text(settings.latencyPreset.stoppedLatencyHint(halMode: manager.routingMode == .halVirtualDevice))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

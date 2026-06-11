@@ -5,6 +5,8 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
     case balanced
     case safe
 
+    static let halMinimumTargetFillMs: Double = 20
+
     var id: String { rawValue }
 
     var targetFillMs: Double {
@@ -22,13 +24,20 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
         }
     }
 
-    var menuTitle: String {
+    func effectiveTargetFillMs(halMode: Bool) -> Double {
+        halMode ? max(targetFillMs, Self.halMinimumTargetFillMs) : targetFillMs
+    }
+
+    func menuTitle(halMode: Bool) -> String {
+        let ms = Int(effectiveTargetFillMs(halMode: halMode))
         switch self {
-        case .low: return "Low (~8 ms)"
-        case .balanced: return "Balanced (~15 ms)"
-        case .safe: return "Safe (~30 ms)"
+        case .low: return halMode ? "Low (~\(ms) ms HAL min)" : "Low (~8 ms)"
+        case .balanced: return halMode ? "Balanced (~\(ms) ms)" : "Balanced (~15 ms)"
+        case .safe: return "Safe (~\(ms) ms)"
         }
     }
+
+    var menuTitle: String { menuTitle(halMode: false) }
 
     /// Short label for the segmented control — the "~N ms" detail is shown
     /// separately beneath the picker so the segments don't clip.
@@ -41,15 +50,30 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
     }
 
     /// One-line target description shown under the latency segmented control.
-    var targetDescription: String {
-        "~\(Int(targetFillMs)) ms buffer target"
+    func targetDescription(halMode: Bool) -> String {
+        let ms = Int(effectiveTargetFillMs(halMode: halMode))
+        if halMode, targetFillMs < Self.halMinimumTargetFillMs {
+            return "~\(ms) ms buffer target (HAL minimum)"
+        }
+        return "~\(ms) ms buffer target"
     }
 
-    var stoppedLatencyHint: String {
+    var targetDescription: String { targetDescription(halMode: false) }
+
+    func stoppedLatencyHint(halMode: Bool) -> String {
         switch self {
-        case .low: return "About 10–12 ms in Low mode when running."
-        case .balanced: return "About 12–18 ms in Balanced mode when running."
-        case .safe: return "About 25–40 ms in Safe mode when running."
+        case .low:
+            return halMode
+                ? "About 20 ms buffer target in Low mode with the HAL driver (minimum)."
+                : "About 10–12 ms in Low mode when running."
+        case .balanced:
+            return halMode
+                ? "About 15–20 ms in Balanced mode with the HAL driver."
+                : "About 12–18 ms in Balanced mode when running."
+        case .safe:
+            return "About 25–40 ms in Safe mode when running."
         }
     }
+
+    var stoppedLatencyHint: String { stoppedLatencyHint(halMode: false) }
 }

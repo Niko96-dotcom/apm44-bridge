@@ -30,8 +30,12 @@ final class BridgeSettings: ObservableObject {
         srcQualityOverride ?? latencyPreset.defaultSrcQuality
     }
 
+    func effectiveTargetFillMs(halMode: Bool) -> Double {
+        latencyPreset.effectiveTargetFillMs(halMode: halMode)
+    }
+
     var effectiveTargetFillMs: Double {
-        latencyPreset.targetFillMs
+        effectiveTargetFillMs(halMode: false)
     }
 
     init() {
