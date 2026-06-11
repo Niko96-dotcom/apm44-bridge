@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 enum BridgeRunState: Equatable {
     case idle
@@ -6,6 +7,13 @@ enum BridgeRunState: Equatable {
     case running
     case stopping
     case error(String)
+}
+
+enum StopReason: Equatable {
+    case user
+    case settingsChange
+    case hotplug
+    case `internal`
 }
 
 @MainActor
@@ -17,6 +25,7 @@ final class BridgeProcessManager: ObservableObject {
     @Published private(set) var devices: [AudioDeviceRow] = []
     @Published private(set) var routingMode: RoutingMode = .blackHoleFallback
     @Published private(set) var connectionPhase: BridgeConnectionPhase = .stopped
+    @Published private(set) var lastStopReason: StopReason?
     @Published var bannerMessage: String?
 
     private var process: Process?
@@ -28,14 +37,33 @@ final class BridgeProcessManager: ObservableObject {
     private var staleTask: Task<Void, Never>?
     private var lastMetricsAt: Date?
     private var stderrLines: [String] = []
+    private var terminationContinuation: CheckedContinuation<Void, Never>?
+    private var restartTask: Task<Void, Never>?
+    private var pendingRestartReason: StopReason?
+
+    private let processLauncher: ProcessLaunching
+    private let binaryURLOverride: URL?
 
     let settings: BridgeSettings
 
-    init(settings: BridgeSettings) {
+    init(
+        settings: BridgeSettings,
+        processLauncher: ProcessLaunching? = nil,
+        binaryURLOverride: URL? = nil
+    ) {
         self.settings = settings
+        self.processLauncher = processLauncher ?? LiveProcessLauncher()
+        self.binaryURLOverride = binaryURLOverride
     }
 
-    var binaryURL: URL? { BridgeBinaryLocator.resolve() }
+    var binaryURL: URL? { binaryURLOverride ?? BridgeBinaryLocator.resolve() }
+
+    var isTransitioning: Bool {
+        switch state {
+        case .starting, .stopping: return true
+        default: return false
+        }
+    }
 
     var deviceDisplayName: String {
         guard let uid = settings.outputDeviceUid,
@@ -49,6 +77,17 @@ final class BridgeProcessManager: ObservableObject {
         if case .running = state { return true }
         return false
     }
+
+    internal func setDevicesForTesting(_ list: [AudioDeviceRow]) {
+        devices = list
+    }
+
+    internal func setStateForTesting(_ newState: BridgeRunState) {
+        state = newState
+    }
+
+    internal var testLaunchArgumentsOverride: [String]?
+    internal var testTerminationStatus: Int32?
 
     func refreshDevices() async {
         refreshRoutingMode()
@@ -77,7 +116,10 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func start() {
-        guard case .idle = state else { return }
+        switch state {
+        case .idle, .error: break
+        default: return
+        }
         guard let url = binaryURL else {
             state = .error("Bridge not found — build or install apm44-bridge")
             return
@@ -94,9 +136,9 @@ final class BridgeProcessManager: ObservableObject {
         lastXrunCount = 0
         metricsStale = false
 
-        let proc = Process()
+        let proc = processLauncher.makeProcess()
         proc.executableURL = url
-        proc.arguments = buildArguments(outputUid: uid)
+        proc.arguments = testLaunchArgumentsOverride ?? buildArguments(outputUid: uid)
 
         let outPipe = Pipe()
         stdoutPipe = outPipe
@@ -126,7 +168,7 @@ final class BridgeProcessManager: ObservableObject {
         }
 
         do {
-            try proc.run()
+            try processLauncher.launch(proc)
             process = proc
             state = .running
             updateConnectionPhase()
@@ -137,12 +179,88 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func stop() {
+        initiateStop(reason: .user)
+    }
+
+    private func initiateStop(reason: StopReason) {
+        lastStopReason = reason
         guard let proc = process else {
-            state = .idle
+            transitionToIdle()
             return
         }
         state = .stopping
-        proc.terminate()
+        if processLauncher.isProcessRunning(proc) {
+            if proc.isRunning {
+                proc.terminate()
+            }
+        } else {
+            handleTermination(proc)
+        }
+    }
+
+    func restart(reason: StopReason) async {
+        if let existing = restartTask {
+            pendingRestartReason = reason
+            await existing.value
+            return
+        }
+
+        switch state {
+        case .starting, .stopping:
+            pendingRestartReason = reason
+            return
+        default:
+            break
+        }
+
+        let task = Task { @MainActor in
+            await self.performRestart(reason: reason)
+        }
+        restartTask = task
+        await task.value
+        restartTask = nil
+
+        while let pending = pendingRestartReason {
+            pendingRestartReason = nil
+            await restart(reason: pending)
+        }
+    }
+
+    func restartForSettingsChange() async {
+        await restart(reason: .settingsChange)
+    }
+
+    private func performRestart(reason: StopReason) async {
+        switch state {
+        case .idle, .error:
+            start()
+            return
+        case .running:
+            break
+        default:
+            return
+        }
+
+        lastStopReason = reason
+        initiateStop(reason: reason)
+
+        do {
+            try await waitForTermination(timeout: .seconds(5))
+        } catch {
+            if let proc = process, processLauncher.isProcessRunning(proc), proc.isRunning {
+                let pid = proc.processIdentifier
+                kill(pid, SIGKILL)
+            }
+            do {
+                try await waitForTermination(timeout: .seconds(5))
+            } catch {
+                state = .error("Bridge did not stop")
+                bannerMessage = "Bridge did not stop"
+                return
+            }
+        }
+
+        start()
     }
 
     func toggle() {
@@ -172,6 +290,32 @@ final class BridgeProcessManager: ObservableObject {
             bannerMessage = "Output disconnected — select a device"
             stop()
         }
+    }
+
+    private func waitForTermination(timeout: Duration = .seconds(5)) async throws {
+        if state == .idle, process == nil { return }
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    if self.state == .idle, self.process == nil {
+                        continuation.resume()
+                        return
+                    }
+                    self.terminationContinuation = continuation
+                }
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw TerminationWaitError.timedOut
+            }
+            _ = try await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private enum TerminationWaitError: Error {
+        case timedOut
     }
 
     private func buildArguments(outputUid: String) -> [String] {
@@ -285,26 +429,43 @@ final class BridgeProcessManager: ObservableObject {
         return defaultMessage
     }
 
+    private func transitionToIdle() {
+        state = .idle
+        connectionPhase = .stopped
+        lastStopReason = nil
+        resumeTerminationWaiters()
+    }
+
+    private func resumeTerminationWaiters() {
+        terminationContinuation?.resume()
+        terminationContinuation = nil
+    }
+
     private func handleTermination(_ proc: Process) {
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stdoutPipe = nil
         process = nil
         staleTask?.cancel()
         if case .stopping = state {
-            state = .idle
-            connectionPhase = .stopped
+            transitionToIdle()
             return
         }
-        if proc.terminationStatus != 0, case .running = state {
+        let exitStatus = testTerminationStatus ?? proc.terminationStatus
+        testTerminationStatus = nil
+        if exitStatus != 0, case .running = state {
+            lastStopReason = nil
             let message = bridgeFailureMessage(defaultMessage: "Lost connection to bridge.")
             state = .error(message)
             bannerMessage = message
         } else if case .running = state {
+            lastStopReason = nil
             state = .idle
         } else if case .starting = state {
+            lastStopReason = nil
             state = .error(bridgeFailureMessage(defaultMessage: "Bridge could not start."))
         }
         connectionPhase = .stopped
+        resumeTerminationWaiters()
     }
 
 }
