@@ -18,4 +18,16 @@ final class LatencyPresetTests: XCTestCase {
         XCTAssertEqual(SrcQuality.high.cliArgument, "high")
         XCTAssertEqual(SrcQuality.best.cliArgument, "best")
     }
+
+    func testHalEffectiveTargetFill() {
+        XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: true), 20)
+        XCTAssertEqual(LatencyPreset.balanced.effectiveTargetFillMs(halMode: true), 20)
+        XCTAssertEqual(LatencyPreset.safe.effectiveTargetFillMs(halMode: true), 30)
+        XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: false), 8)
+    }
+
+    func testHalTargetDescription() {
+        XCTAssertTrue(LatencyPreset.low.targetDescription(halMode: true).contains("20"))
+        XCTAssertTrue(LatencyPreset.low.targetDescription(halMode: true).contains("HAL minimum"))
+    }
 }
