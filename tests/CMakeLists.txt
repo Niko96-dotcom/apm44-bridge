@@ -30,6 +30,7 @@ apm44_add_test(test_lib_samplerate_src test_lib_samplerate_src.cpp)
 apm44_add_test(test_soak_offline test_soak_offline.cpp)
 apm44_add_test(test_bridge_metrics_json test_bridge_metrics_json.cpp)
 apm44_add_test(test_mmap_shm_ring test_mmap_shm_ring.cpp)
+apm44_add_test(test_shm_object_identity test_shm_object_identity.cpp)
 apm44_add_test(test_shm_io_handler test_shm_io_handler.cpp)
 apm44_add_test(test_virtual_device_feed test_virtual_device_feed.cpp)
 
