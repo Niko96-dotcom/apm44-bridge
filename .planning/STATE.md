@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.2
-milestone_name: Reliability and Self-Healing
-status: complete
-stopped_at: Milestone v0.2 archived
-last_updated: "2026-06-11T23:00:00.000Z"
-last_activity: 2026-06-11 — Milestone v0.2 completed and archived
+milestone: v0.3
+milestone_name: Realtime Audio Hardening
+status: planning
+last_updated: "2026-06-11T22:05:20.069Z"
+last_activity: 2026-06-11
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +27,10 @@ mystery relaunches.
 
 ## Current Position
 
-Phase: Milestone v0.2 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-11 — Milestone v0.2 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-11 — Milestone v0.3 started
 
 ## Performance Metrics
 
@@ -58,9 +57,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 - v0.2: Keep milestone focused on lifecycle reliability, not new DSP or
   packaging scope.
+
 - v0.2: Fix the app state machine before adding auto-restart behavior.
 - v0.2: Treat installed app/helper/driver/live ring synchronization as part of
   completion.
+
 - Phase 7: macOS shm uses driver_generation when st_ino is zero for stale detection.
 - Phase 7: Daemon exit 42 + `stale shm ring` stderr for app recoverable classification.
 - Milestone close: Accepted QA-03 and IPC-04 gaps as operator-dependent tech debt.
