@@ -44,4 +44,12 @@ if [[ "${APM44_SKIP_APP:-0}" != "1" ]]; then
   fi
 fi
 
+# QA-01: non-hardware dry-run check of build-ID sync between the
+# repo daemon and the embedded app helper. The dry-run path is
+# non-fatal — the script exits 0 with a WARN if the embedded
+# helper is missing, which is the expected state until
+# scripts/embed-daemon-in-app.sh has been run.
+echo "== Installed-sync dry-run =="
+bash scripts/verify-installed-sync.sh --dry-run
+
 echo "ci: OK"
