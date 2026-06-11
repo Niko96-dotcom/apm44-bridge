@@ -8,6 +8,8 @@
 
 namespace apm44 {
 
+enum class StaleRingPollResult { Ok, Remapped, MustExit };
+
 class VirtualDeviceFeed {
  public:
   explicit VirtualDeviceFeed(std::string ringName = kShmRingName);
@@ -19,6 +21,7 @@ class VirtualDeviceFeed {
   const std::string& lastOpenError() const { return lastOpenError_; }
 
   std::size_t drainTo(PlanarRingBuffer& ring, std::size_t maxFrames);
+  StaleRingPollResult pollStaleRing();
 
  private:
   MmapShmRing ring_;

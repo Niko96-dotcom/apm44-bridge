@@ -60,6 +60,11 @@ target_sources(test_virtual_device_feed PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/VirtualDeviceFeed.cpp
 )
 
+apm44_add_test(test_shm_stale_recovery test_shm_stale_recovery.cpp)
+target_sources(test_shm_stale_recovery PRIVATE
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/VirtualDeviceFeed.cpp
+)
+
 target_sources(test_device_enumerator PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/hal/DeviceEnumerator.cpp
 )

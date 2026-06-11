@@ -28,6 +28,24 @@ bool VirtualDeviceFeed::open() {
 
 void VirtualDeviceFeed::close() { ring_.close(); }
 
+StaleRingPollResult VirtualDeviceFeed::pollStaleRing() {
+  if (!isOpen()) {
+    return StaleRingPollResult::Ok;
+  }
+  if (!ring_.isMappedObjectStale()) {
+    return StaleRingPollResult::Ok;
+  }
+  close();
+  if (!open()) {
+    return StaleRingPollResult::MustExit;
+  }
+  if (ring_.isMappedObjectStale()) {
+    close();
+    return StaleRingPollResult::MustExit;
+  }
+  return StaleRingPollResult::Remapped;
+}
+
 std::size_t VirtualDeviceFeed::drainTo(PlanarRingBuffer& ring, std::size_t maxFrames) {
   if (!ring_.isMapped() || maxFrames == 0) {
     return 0;
