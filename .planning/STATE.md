@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Realtime Audio Hardening
 status: in_progress
-last_updated: "2026-06-12T01:30:00+02:00"
+last_updated: "2026-06-12T01:42:00+02:00"
 last_activity: 2026-06-12
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 6
-  percent: 75
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -23,14 +23,14 @@ See: .planning/PROJECT.md (updated 2026-06-12)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Phase 12 - Verification Closure
+**Current focus:** Lifecycle: audit → complete → cleanup
 
 ## Current Position
 
-Phase: 12 of 12 (Verification Closure)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-06-12 - Phase 11 verification + commit complete
+Phase: 12 of 12 (Verification Closure) - Complete
+Plan: 2/2 in current phase
+Status: Ready for milestone audit
+Last activity: 2026-06-12 - Phase 12 verification + commits complete
 
 ## Performance Metrics
 
@@ -51,7 +51,7 @@ Last activity: 2026-06-12 - Phase 11 verification + commit complete
 | 09 | 2/2 | Complete |
 | 10 | 2/2 | Complete |
 | 11 | 2/2 | Complete |
-| 12 | 0/2 | Ready to plan |
+| 12 | 2/2 | Complete |
 
 ## Accumulated Context
 
@@ -99,9 +99,9 @@ Items acknowledged and deferred at milestone close on 2026-06-11:
 ## Session Continuity
 
 Last session: 2026-06-12
-Stopped at: Phase 11 verification complete; Phase 12 ready to plan
+Stopped at: All v0.3 phases complete; ready for milestone audit
 Resume file: None
 
 ## Operator Next Steps
 
-- Start Phase 12 with `$gsd-discuss-phase 12` or `$gsd-plan-phase 12`.
+- Run milestone audit with `$gsd-audit-milestone` to close out v0.3.
