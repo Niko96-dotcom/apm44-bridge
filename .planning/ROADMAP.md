@@ -7,7 +7,7 @@
   notarized DMG (shipped 2026-06-03)
 - Complete **v0.2 Reliability and Self-Healing** - Phases 5-8 (shipped
   2026-06-11) - [archive](milestones/v0.2-ROADMAP.md)
-- In progress **v0.3 Realtime Audio Hardening** - Phases 9-12
+- Complete **v0.3 Realtime Audio Hardening** - Phases 9-12 (2026-06-12)
 
 ## Overview
 
@@ -32,7 +32,7 @@ Phase numbering continues from shipped history:
   timeout-safe and publish metrics through a C++ race-free path.
 - [x] **Phase 11: Shared-Memory Validation Hardening** - Reject truncated or
   corrupt shm mappings before trusting header capacity or build IDs.
-- [ ] **Phase 12: Verification Closure** - Gate non-hardware sync checks and
+- [x] **Phase 12: Verification Closure** - Gate non-hardware sync checks and
   capture live installed-system evidence or exact hardware blockers.
 
 ## Phase Details
@@ -138,7 +138,7 @@ proof, or with precise hardware blockers recorded.
 5. Milestone close records any remaining hardware-only caveat instead of
    treating CI-only proof as complete.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 12-01 - Add installed-sync dry-run to CI and run full automated gates
@@ -158,7 +158,7 @@ Planned work:
 | 9. Realtime Callback Ownership | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 10. Process and Metrics Race Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 11. Shared-Memory Validation Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
-| 12. Verification Closure | v0.3 | 0/2 | Ready to plan | - |
+| 12. Verification Closure | v0.3 | 2/2 | Complete | 2026-06-12 |
 
 ## Coverage
 
@@ -168,4 +168,4 @@ Planned work:
 - Unmapped requirements: 0
 
 ---
-*Roadmap updated: 2026-06-12 after Phase 11 verification*
+*Roadmap updated: 2026-06-12 after Phase 12 verification*
