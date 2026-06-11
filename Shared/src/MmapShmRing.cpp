@@ -34,6 +34,7 @@ void CaptureMappedIdentity(int fd, ShmObjectIdentity& identity, uint32_t& genera
   if (fd >= 0 && ::fstat(fd, &st) == 0) {
     identity.st_dev = st.st_dev;
     identity.st_ino = st.st_ino;
+    identity.size = static_cast<std::size_t>(st.st_size);
     identity.valid = true;
   }
 }
@@ -41,6 +42,28 @@ void CaptureMappedIdentity(int fd, ShmObjectIdentity& identity, uint32_t& genera
 void CopyBuildId(char (&dst)[kShmBuildIdBytes]) {
   std::memset(dst, 0, sizeof(dst));
   std::strncpy(dst, kBuildId, sizeof(dst) - 1);
+}
+
+// SHM-04: bounded build-ID rendering. The build-ID field is a
+// fixed-size `char[kShmBuildIdBytes]` array. A producer that fills
+// the field with non-null bytes (e.g., `strncpy` truncated the
+// source) leaves no null terminator. Streaming the field directly
+// into an `ostringstream` would either stop at the first embedded
+// null or — depending on the platform — read past the field into
+// adjacent header memory. This helper bounds the read explicitly:
+// copy at most `kShmBuildIdBytes` bytes, find the real length with
+// `strnlen`, and substitute a sentinel string if no null was found
+// within the field.
+std::string RenderBoundedBuildId(const char* field) {
+  char buf[kShmBuildIdBytes + 1] = {};
+  if (field != nullptr) {
+    std::memcpy(buf, field, kShmBuildIdBytes);
+  }
+  const std::size_t len = ::strnlen(buf, kShmBuildIdBytes);
+  if (len == 0) {
+    return "<unterminated>";
+  }
+  return std::string(buf, len);
 }
 
 std::string DescribeHeaderMismatch(const ShmRingHeader& header) {
@@ -53,8 +76,8 @@ std::string DescribeHeaderMismatch(const ShmRingHeader& header) {
       << " expected_header_bytes>=" << sizeof(ShmRingHeader)
       << " channels=" << header.channels
       << " expected_channels=" << kShmChannels
-      << " producer_build_id='" << header.producer_build_id << "'"
-      << " consumer_build_id='" << kBuildId << "'";
+      << " producer_build_id='" << RenderBoundedBuildId(header.producer_build_id) << "'"
+      << " consumer_build_id='" << RenderBoundedBuildId(kBuildId) << "'";
   return out.str();
 }
 
@@ -153,6 +176,17 @@ bool MmapShmRing::open(ShmRingRole role) {
     }
     return false;
   }
+  // SHM-01: reject objects too small to contain a ShmRingHeader
+  // BEFORE we map or read the header. The previous implementation
+  // mapped the object and then dereferenced `header_`, which would
+  // read past the end of a truncated object.
+  if (static_cast<std::size_t>(st.st_size) < sizeof(ShmRingHeader)) {
+    const std::string message = "shm object is smaller than ShmRingHeader: " +
+                                std::to_string(st.st_size) + " bytes";
+    close();
+    recordError(ShmRingErrorCode::HeaderTruncated, message);
+    return false;
+  }
   mappedSize_ = static_cast<std::size_t>(st.st_size);
   base_ = ::mmap(nullptr, mappedSize_, kMapProt, MAP_SHARED, fd_, 0);
   if (base_ == MAP_FAILED) {
@@ -169,6 +203,23 @@ bool MmapShmRing::open(ShmRingRole role) {
     const std::string message = DescribeHeaderMismatch(*header_);
     close();
     recordError(ShmRingErrorCode::InvalidHeader, message);
+    return false;
+  }
+  // SHM-02: a syntactically valid header can still lie about its
+  // capacity. The mapped object must be large enough to hold the
+  // declared sample data plus the header. A producer that truncated
+  // the object after writing a valid header would otherwise pass
+  // the field-level validation and crash on the first push/pop.
+  const std::size_t declaredTotal =
+      ShmTotalSize(header_->capacity_frames);
+  if (mappedSize_ < declaredTotal) {
+    const std::string message =
+        "shm object too small for declared capacity: mapped " +
+        std::to_string(mappedSize_) + " bytes, header declares " +
+        std::to_string(declaredTotal) + " bytes (capacity_frames=" +
+        std::to_string(header_->capacity_frames) + ")";
+    close();
+    recordError(ShmRingErrorCode::CapacityExceedsObject, message);
     return false;
   }
   CaptureMappedIdentity(fd_, mappedIdentity_, mappedDriverGeneration_, header_);

@@ -21,6 +21,11 @@ enum class ShmRingErrorCode {
   EmptyObject,
   MapFailed,
   InvalidHeader,
+  // SHM-01: object is too small to contain a ShmRingHeader.
+  HeaderTruncated,
+  // SHM-02: header declares a capacity that would exceed the mapped
+  // object size.
+  CapacityExceedsObject,
 };
 
 // Cross-process SPSC ring: interleaved float stereo in the mmap segment.
