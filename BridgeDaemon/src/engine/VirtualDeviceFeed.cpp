@@ -28,6 +28,10 @@ bool VirtualDeviceFeed::open() {
 
 void VirtualDeviceFeed::close() { ring_.close(); }
 
+bool VirtualDeviceFeed::isRingStale() const {
+  return isOpen() && ring_.isMappedObjectStale();
+}
+
 StaleRingPollResult VirtualDeviceFeed::pollStaleRing() {
   if (!isOpen()) {
     return StaleRingPollResult::Ok;

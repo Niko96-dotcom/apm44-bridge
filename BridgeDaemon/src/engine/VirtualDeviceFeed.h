@@ -21,6 +21,7 @@ class VirtualDeviceFeed {
   const std::string& lastOpenError() const { return lastOpenError_; }
 
   std::size_t drainTo(PlanarRingBuffer& ring, std::size_t maxFrames);
+  bool isRingStale() const;
   StaleRingPollResult pollStaleRing();
 
  private:

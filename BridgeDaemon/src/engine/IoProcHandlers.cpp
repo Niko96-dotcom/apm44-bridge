@@ -1,14 +1,20 @@
 #include "engine/IoProcHandlers.h"
 
+#include "engine/BridgeControlLoop.h"
 #include "engine/BridgeEngine.h"
 
 #include <apm44/AudioFormats.h>
 
+#include <algorithm>
 #include <cstring>
 
 namespace apm44 {
 
 namespace {
+
+std::size_t ClampCallbackFrames(std::size_t frames) {
+  return std::min(frames, kMaxCallbackFrames);
+}
 
 void WriteSilence(AudioBufferList* bufferList, std::size_t frames) {
   if (bufferList == nullptr) {
@@ -40,8 +46,9 @@ OSStatus InputIoProc(AudioDeviceID,
     if (interleaved == nullptr) {
       return noErr;
     }
-    const std::size_t frames =
+    std::size_t frames =
         inputData->mBuffers[0].mDataByteSize / (sizeof(float) * asbd.mChannelsPerFrame);
+    frames = ClampCallbackFrames(frames);
     float* scratch[2] = {engine->inputScratch0(), engine->inputScratch1()};
     for (std::size_t i = 0; i < frames; ++i) {
       scratch[0][i] = interleaved[i * 2 + 0];
@@ -59,7 +66,8 @@ OSStatus InputIoProc(AudioDeviceID,
   if (b0 == nullptr || b1 == nullptr) {
     return noErr;
   }
-  const std::size_t frames = inputData->mBuffers[0].mDataByteSize / sizeof(float);
+  std::size_t frames = inputData->mBuffers[0].mDataByteSize / sizeof(float);
+  frames = ClampCallbackFrames(frames);
   const float* channels[2] = {b0, b1};
   engine->onInput(channels, frames);
   return noErr;
@@ -82,8 +90,9 @@ OSStatus OutputIoProc(AudioDeviceID,
     if (interleaved == nullptr) {
       return noErr;
     }
-    const std::size_t frames =
+    std::size_t frames =
         outputData->mBuffers[0].mDataByteSize / (sizeof(float) * asbd.mChannelsPerFrame);
+    frames = ClampCallbackFrames(frames);
     float* scratch[2] = {engine->outputScratch0(), engine->outputScratch1()};
     engine->onOutput(scratch, frames);
     for (std::size_t i = 0; i < frames; ++i) {
@@ -100,7 +109,8 @@ OSStatus OutputIoProc(AudioDeviceID,
   if (b0 == nullptr || b1 == nullptr) {
     return noErr;
   }
-  const std::size_t frames = outputData->mBuffers[0].mDataByteSize / sizeof(float);
+  std::size_t frames = outputData->mBuffers[0].mDataByteSize / sizeof(float);
+  frames = ClampCallbackFrames(frames);
   float* channels[2] = {b0, b1};
   engine->onOutput(channels, frames);
   return noErr;
