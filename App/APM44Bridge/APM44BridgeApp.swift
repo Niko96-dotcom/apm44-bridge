@@ -17,6 +17,10 @@ struct APM44BridgeApp: App {
                 await manager.handleHotplug()
             }
         }
+        hotplug.start()
+        Task { @MainActor in
+            await manager.refreshDevices()
+        }
     }
 
     var body: some Scene {
@@ -26,15 +30,10 @@ struct APM44BridgeApp: App {
                     FirstRunPreflightView(manager: manager, isPresented: $showFirstRun)
                 }
                 .onAppear {
-                    hotplug.start()
                     manager.refreshRoutingMode()
-                    Task { await manager.refreshDevices() }
                     if !UserDefaults.standard.bool(forKey: FirstRunKeys.completed) {
                         showFirstRun = true
                     }
-                }
-                .onDisappear {
-                    hotplug.stop()
                 }
         } label: {
             Image(systemName: menuBarSymbol)
@@ -57,6 +56,7 @@ struct APM44BridgeApp: App {
     private var menuBarTint: Color {
         switch manager.state {
         case .running: return .green
+        case .reconnecting: return .orange
         case .error: return .red
         default: return .secondary
         }
@@ -73,6 +73,7 @@ struct APM44BridgeApp: App {
         case .starting: return "starting"
         case .running: return "running"
         case .stopping: return "stopping"
+        case .reconnecting: return "reconnecting"
         case .error: return "error"
         }
     }

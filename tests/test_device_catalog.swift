@@ -11,14 +11,55 @@ final class DeviceCatalogTests: XCTestCase {
 
     func testParsesOutputsOnly() {
         let rows = DeviceCatalog.parseListDevicesOutput(fixture)
-        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.count, 1)
         XCTAssertTrue(rows.contains { $0.uid == "AP-UID" })
-        XCTAssertTrue(rows.contains { $0.uid == "BH-UID" })
+        XCTAssertFalse(rows.contains { $0.uid == "BH-UID" })
         XCTAssertFalse(rows.contains { $0.uid == "MIC-UID" })
     }
 
     func testPreferredDefaultPicksAirPods() {
         let rows = DeviceCatalog.parseListDevicesOutput(fixture)
         XCTAssertEqual(DeviceCatalog.preferredDefault(from: rows)?.uid, "AP-UID")
+    }
+
+    func testFilterExcludesBlackHole() {
+        let row = AudioDeviceRow(
+            uid: "BH-UID",
+            name: "BlackHole 2ch",
+            nominalRate: 44_100,
+            hasInput: true,
+            hasOutput: true
+        )
+        XCTAssertTrue(DeviceCatalog.filterMonitoringOutputs([row]).isEmpty)
+    }
+
+    func testFilterExcludesAPM44Bridge() {
+        let row = AudioDeviceRow(
+            uid: "APM44-OUT",
+            name: "APM44 Bridge",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+        XCTAssertTrue(DeviceCatalog.filterMonitoringOutputs([row]).isEmpty)
+    }
+
+    func testFilterKeepsPhysicalUSB() {
+        let airpods = AudioDeviceRow(
+            uid: "AP-UID",
+            name: "AirPods Max",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+        let usb = AudioDeviceRow(
+            uid: "USB-UID",
+            name: "USB Audio",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+        let filtered = DeviceCatalog.filterMonitoringOutputs([airpods, usb])
+        XCTAssertEqual(filtered.count, 2)
     }
 }

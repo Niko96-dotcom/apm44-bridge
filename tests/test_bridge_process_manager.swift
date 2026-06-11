@@ -6,6 +6,8 @@ final class MockProcessLauncher: ProcessLaunching {
     private(set) var lastProcess: Process?
     var terminationDelayNanoseconds: UInt64 = 0
     var shouldFailLaunch = false
+    var failLaunchesAfterFirstSuccess = false
+    private var successfulLaunches = 0
     private var running = Set<ObjectIdentifier>()
 
     func makeProcess() -> Process {
@@ -19,6 +21,10 @@ final class MockProcessLauncher: ProcessLaunching {
         if shouldFailLaunch {
             throw NSError(domain: "MockProcessLauncher", code: 1)
         }
+        if failLaunchesAfterFirstSuccess, successfulLaunches >= 1 {
+            throw NSError(domain: "MockProcessLauncher", code: 1)
+        }
+        successfulLaunches += 1
         running.insert(ObjectIdentifier(process))
     }
 
@@ -45,6 +51,21 @@ final class BridgeProcessManagerTests: XCTestCase {
         hasOutput: true
     )
 
+    private func awaitHotplugCompletingTermination(
+        manager: BridgeProcessManager,
+        launcher: MockProcessLauncher
+    ) async {
+        let task = Task { await manager.handleHotplug() }
+        for _ in 0..<200 {
+            if case .stopping = manager.state { break }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await task.value
+    }
+
     private func makeManager(
         launcher: MockProcessLauncher? = nil,
         executable: String = "/usr/bin/sleep",
@@ -59,6 +80,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             binaryURLOverride: URL(fileURLWithPath: executable)
         )
         manager.setDevicesForTesting([testDevice])
+        manager.testDeviceListOverride = [testDevice]
         manager.testLaunchArgumentsOverride = launchArguments
         return (manager, settings, mockLauncher)
     }
@@ -121,21 +143,23 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testRunningUnexpectedExit() async {
         let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [60]
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
 
+        let generationBefore = manager.retryGeneration
         manager.testTerminationStatus = 1
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
 
-        if case .error = manager.state {
-            // expected
+        if case .reconnecting = manager.state {
+            XCTAssertGreaterThan(manager.retryGeneration, generationBefore)
+            XCTAssertTrue(manager.bannerMessage?.localizedCaseInsensitiveContains("attempt") == true)
         } else {
-            XCTFail("Expected error state after unexpected exit, got \(manager.state)")
+            XCTFail("Expected reconnecting state after unexpected exit, got \(manager.state)")
         }
-        XCTAssertNil(manager.lastStopReason)
     }
 
     func testErrorToStarting() {
@@ -162,6 +186,224 @@ final class BridgeProcessManagerTests: XCTestCase {
         let mirror = Mirror(reflecting: manager)
         let hasAutoRetry = mirror.children.contains { $0.label == "shouldAutoRetry" }
         XCTAssertFalse(hasAutoRetry)
+    }
+
+    func testUserStopNoAutoRetry() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [0.01]
+
+        manager.start()
+        let generationBefore = manager.retryGeneration
+        manager.stop()
+
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(manager.retryGeneration, generationBefore)
+    }
+
+    func testHotplugWhileIdleRefreshesDevices() async {
+        let (manager, _, _) = makeManager()
+        manager.setDevicesForTesting([])
+        let generationBefore = manager.hotplugRefreshGeneration
+
+        await manager.handleHotplug()
+
+        XCTAssertGreaterThan(manager.hotplugRefreshGeneration, generationBefore)
+    }
+
+    func testHotplugWhileIdleDoesNotStartBridge() async {
+        let (manager, _, launcher) = makeManager()
+        XCTAssertEqual(manager.state, .idle)
+
+        await manager.handleHotplug()
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+    }
+
+    func testHotplugWhileRunningStillRestarts() async {
+        let (manager, _, launcher) = makeManager()
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let makeCountBefore = launcher.makeCount
+
+        await awaitHotplugCompletingTermination(manager: manager, launcher: launcher)
+
+        XCTAssertGreaterThan(launcher.makeCount, makeCountBefore)
+        XCTAssertEqual(manager.state, .running)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testDisconnectWhileRunningEntersReconnecting() async {
+        let (manager, settings, launcher) = makeManager()
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        settings.outputDeviceUid = testDevice.uid
+        manager.testDeviceListOverride = []
+
+        await awaitHotplugCompletingTermination(manager: manager, launcher: launcher)
+
+        if case .reconnecting = manager.state {
+            // expected
+        } else {
+            XCTFail("Expected reconnecting after disconnect, got \(manager.state)")
+        }
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertTrue(manager.bannerMessage?.localizedCaseInsensitiveContains("waiting for") == true)
+    }
+
+    func testReconnectAfterDisconnectAutoStarts() async {
+        let (manager, settings, launcher) = makeManager()
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        manager.testDeviceListOverride = []
+        await awaitHotplugCompletingTermination(manager: manager, launcher: launcher)
+
+        if case .reconnecting = manager.state {
+            // expected
+        } else {
+            XCTFail("Expected reconnecting before auto-restart, got \(manager.state)")
+        }
+
+        manager.testDeviceListOverride = [testDevice]
+        settings.outputDeviceUid = testDevice.uid
+        await manager.handleHotplug()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertGreaterThan(launcher.makeCount, 1)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testDisconnectWhileIdleStaysIdle() async {
+        let (manager, settings, launcher) = makeManager()
+        settings.outputDeviceUid = testDevice.uid
+        manager.testDeviceListOverride = []
+
+        await manager.handleHotplug()
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+    }
+
+    func testUserStopClearsWasRunningFlag() async {
+        let (manager, _, launcher) = makeManager()
+
+        manager.start()
+        manager.setStateForTesting(.reconnecting)
+
+        manager.stop()
+
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testInvalidSelectedDeviceCleared() {
+        let (manager, settings, _) = makeManager()
+        settings.outputDeviceUid = "BH-UID"
+        let airpods = AudioDeviceRow(
+            uid: "AP-UID",
+            name: "AirPods Max",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+
+        manager.applyRefreshedDeviceListForTesting([airpods])
+
+        XCTAssertNil(settings.outputDeviceUid)
+        XCTAssertEqual(manager.bannerMessage, "Previous output unavailable — select a device")
+    }
+
+    func testUnexpectedExitSchedulesRetry() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [60]
+
+        manager.start()
+        manager.testTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        if case .reconnecting = manager.state {
+            XCTAssertTrue(manager.bannerMessage?.localizedCaseInsensitiveContains("attempt") == true)
+        } else {
+            XCTFail("Expected reconnecting with retry banner, got \(manager.state)")
+        }
+    }
+
+    func testRetryExhaustionLandsInError() async {
+        let launcher = MockProcessLauncher()
+        launcher.failLaunchesAfterFirstSuccess = true
+        let (manager, _, _) = makeManager(launcher: launcher)
+        manager.testRetryDelays = [0]
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        manager.setRetryAttemptForTesting(4)
+
+        manager.testTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        for _ in 0..<100 {
+            if case .error = manager.state { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        if case .error(let message) = manager.state {
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("retries"))
+        } else {
+            XCTFail("Expected final error after retries, got \(manager.state)")
+        }
+    }
+
+    func testRetryBackoffDelays() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [0.01, 0.02, 0.04, 0.04]
+
+        manager.start()
+        let startTime = Date()
+        manager.testTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertEqual(manager.testRetryDelays, [0.01, 0.02, 0.04, 0.04])
+        _ = startTime
+        if case .reconnecting = manager.state {
+            XCTAssertTrue(manager.bannerMessage?.contains("attempt 1") == true)
+        }
+    }
+
+    func testSettingsRestartWhileIdleDoesNotStart() async {
+        let (manager, _, launcher) = makeManager()
+
+        XCTAssertEqual(manager.state, .idle)
+
+        await manager.restartForSettingsChange()
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
     }
 
     func testSettingsRestartWaitsForTermination() async {

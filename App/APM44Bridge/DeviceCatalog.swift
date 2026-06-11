@@ -41,10 +41,26 @@ enum DeviceCatalog {
                 )
             )
         }
-        return rows.sorted {
+        let sorted = rows.sorted {
             if $0.sortRank != $1.sortRank { return $0.sortRank < $1.sortRank }
             return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
+        return filterMonitoringOutputs(sorted)
+    }
+
+    static func filterMonitoringOutputs(_ devices: [AudioDeviceRow]) -> [AudioDeviceRow] {
+        devices.filter { !isDeniedMonitoringDevice(uid: $0.uid, name: $0.name) }
+    }
+
+    static func isDeniedMonitoringDevice(uid: String, name: String) -> Bool {
+        let lowerName = name.lowercased()
+        let lowerUID = uid.lowercased()
+        let nameDenylist = ["apm44 bridge", "blackhole", "loopback", "soundflower"]
+        if nameDenylist.contains(where: { lowerName.contains($0) }) { return true }
+        if lowerUID.contains("blackhole") || lowerUID.contains("apm44") || lowerUID.hasPrefix("bh-") {
+            return true
+        }
+        return false
     }
 
     static func preferredDefault(from devices: [AudioDeviceRow]) -> AudioDeviceRow? {

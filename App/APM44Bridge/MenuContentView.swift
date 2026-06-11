@@ -348,10 +348,14 @@ struct MenuContentView: View {
     }
 
     private func bannerView(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        let isReconnecting = message.localizedCaseInsensitiveContains("reconnecting")
+            || message.localizedCaseInsensitiveContains("attempt")
+            || message.localizedCaseInsensitiveContains("waiting for")
+        let tint: Color = isReconnecting ? .orange : .red
+        return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.caption)
-                .foregroundStyle(.red)
+                .foregroundStyle(tint)
             Text(message)
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
@@ -361,7 +365,7 @@ struct MenuContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.red.opacity(0.1))
+                .fill(tint.opacity(0.1))
         )
         .transition(.opacity)
     }
@@ -416,6 +420,12 @@ struct MenuContentView: View {
         case .starting: return "Starting…"
         case .running: return manager.connectionPhase.label
         case .stopping: return "Stopping…"
+        case .reconnecting:
+            if let banner = manager.bannerMessage,
+               banner.localizedCaseInsensitiveContains("attempt") {
+                return banner
+            }
+            return "Reconnecting…"
         case .error(let message):
             if message.count > 60 {
                 return String(message.prefix(57)) + "…"
@@ -427,6 +437,7 @@ struct MenuContentView: View {
     private var statusSymbol: String {
         switch manager.state {
         case .error: return "exclamationmark.triangle.fill"
+        case .reconnecting: return "arrow.triangle.2.circlepath"
         case .running: return "waveform"
         default: return "headphones"
         }
@@ -435,6 +446,7 @@ struct MenuContentView: View {
     private var statusTint: Color {
         switch manager.state {
         case .error: return .red
+        case .reconnecting: return .orange
         case .running: return manager.connectionPhase == .waitingForDAW ? .orange : .green
         case .starting: return .orange
         default: return .secondary
