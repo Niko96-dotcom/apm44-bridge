@@ -26,11 +26,11 @@ Phase numbering continues from shipped history:
 
 ## Phases
 
-- [ ] **Phase 9: Realtime Callback Ownership** - Preserve SPSC ring ownership
+- [x] **Phase 9: Realtime Callback Ownership** - Preserve SPSC ring ownership
   and make oversized output callbacks deterministic.
-- [ ] **Phase 10: Process and Metrics Race Hardening** - Make stop escalation
+- [x] **Phase 10: Process and Metrics Race Hardening** - Make stop escalation
   timeout-safe and publish metrics through a C++ race-free path.
-- [ ] **Phase 11: Shared-Memory Validation Hardening** - Reject truncated or
+- [x] **Phase 11: Shared-Memory Validation Hardening** - Reject truncated or
   corrupt shm mappings before trusting header capacity or build IDs.
 - [ ] **Phase 12: Verification Closure** - Gate non-hardware sync checks and
   capture live installed-system evidence or exact hardware blockers.
@@ -56,7 +56,7 @@ leave Core Audio output frames stale.
 4. Native regression tests cover the selected overrun policy and oversized
    callback behavior without touching `/apm44_bridge_ring`.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 09-01 - Replace producer-side drop-oldest policy and update SPSC tests
@@ -82,7 +82,7 @@ deterministic under timeout and cross-thread access.
 4. Swift and native tests cover termination timeout/escalation, concurrent
    waiters, and the metrics publication contract.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 10-01 - Replace single termination continuation with explicit waiter
@@ -109,7 +109,7 @@ any ring operation trusts their declared layout.
 5. Catch2 tests cover truncated, header-only, huge-capacity, and unterminated
    build-ID cases with isolated test shm names.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 11-01 - Add shm size validation before header/capacity trust (SHM-01, SHM-02,
@@ -155,10 +155,10 @@ Planned work:
 | 6. Always-On Device Recovery | v0.2 | 2/2 | Complete | 2026-06-11 |
 | 7. HAL IPC Self-Healing | v0.2 | 3/3 | Complete | 2026-06-11 |
 | 8. Hardening and Live Verification | v0.2 | 3/3 | Complete | 2026-06-11 |
-| 9. Realtime Callback Ownership | v0.3 | 0/2 | Ready to plan | - |
-| 10. Process and Metrics Race Hardening | v0.3 | 0/2 | Pending | - |
-| 11. Shared-Memory Validation Hardening | v0.3 | 0/2 | Pending | - |
-| 12. Verification Closure | v0.3 | 0/2 | Pending | - |
+| 9. Realtime Callback Ownership | v0.3 | 2/2 | Complete | 2026-06-12 |
+| 10. Process and Metrics Race Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
+| 11. Shared-Memory Validation Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
+| 12. Verification Closure | v0.3 | 0/2 | Ready to plan | - |
 
 ## Coverage
 
@@ -168,4 +168,4 @@ Planned work:
 - Unmapped requirements: 0
 
 ---
-*Roadmap updated: 2026-06-12 after v0.3 roadmap creation*
+*Roadmap updated: 2026-06-12 after Phase 11 verification*
