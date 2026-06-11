@@ -24,7 +24,11 @@ TEST_CASE("MmapShmRing closed ring returns zero safely", "[hardening_audit]") {
   ring.setDaemonReady();
 }
 
-TEST_CASE("PlanarRingBuffer drop-oldest overrun preserves indices", "[hardening_audit]") {
+TEST_CASE("PlanarRingBuffer drop-input overrun preserves consumer-visible fill", "[hardening_audit]") {
+  // RT-01 / RT-02 contract: the producer path drops the unaccepted tail
+  // of the incoming block (drop-new-input policy) and never calls `pop`
+  // from the producer side. Consumer-visible fill is therefore preserved
+  // exactly; the incoming 2 frames do not enter the ring.
   apm44::PlanarRingBuffer ring;
   ring.prepare(4);
 
@@ -44,16 +48,22 @@ TEST_CASE("PlanarRingBuffer drop-oldest overrun preserves indices", "[hardening_
   const float* incoming[2] = {new0, new1};
   apm44::DropOldestThenPush(ring, dropScratch, drift, incoming, 2);
 
+  // Overrun was reported, fill preserved at 3 (no producer-side pop).
   REQUIRE(ring.availableToRead() == 3);
   REQUIRE(drift.overrunCount() == 1);
 
+  // Consumer pops the original 3 frames — they are unchanged, the
+  // incoming 2 frames were dropped, not stored.
   float out0[3] = {};
   float out1[3] = {};
   float* out[2] = {out0, out1};
   REQUIRE(ring.pop(out, 3) == 3);
-  REQUIRE(out0[0] == 3.0f);
-  REQUIRE(out0[1] == 90.0f);
-  REQUIRE(out0[2] == 91.0f);
+  REQUIRE(out0[0] == 1.0f);
+  REQUIRE(out0[1] == 2.0f);
+  REQUIRE(out0[2] == 3.0f);
+  REQUIRE(out1[0] == 5.0f);
+  REQUIRE(out1[1] == 6.0f);
+  REQUIRE(out1[2] == 7.0f);
 }
 
 TEST_CASE("kMaxCallbackFrames matches scratch capacity constant", "[hardening_audit]") {
