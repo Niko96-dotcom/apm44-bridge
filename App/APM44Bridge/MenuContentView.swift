@@ -10,7 +10,7 @@ struct MenuContentView: View {
             statusHero
             routingChain
             controlCard
-            primaryButton
+            primaryButtons
             Divider()
             statusDetail
             if let banner = manager.bannerMessage {
@@ -163,7 +163,7 @@ struct MenuContentView: View {
             .labelsHidden()
             .onChange(of: settings.latencyPreset) { _, _ in
                 settings.onPresetChanged()
-                restartIfRunning()
+                Task { await manager.restartForSettingsChange() }
             }
             Text(settings.latencyPreset.targetDescription)
                 .font(.caption2)
@@ -184,29 +184,65 @@ struct MenuContentView: View {
         }
     }
 
-    private var primaryButton: some View {
-        Group {
-            if manager.isRunning {
-                Button(role: .destructive) {
-                    manager.stop()
-                } label: {
-                    Label("Stop Bridge", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
+    private var primaryButtons: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if showsStartButton {
+                    Button {
+                        manager.start()
+                    } label: {
+                        Label("Start Bridge", systemImage: "play.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canStart || manager.isTransitioning)
                 }
-                .tint(.red)
-            } else {
+
+                if showsStopButton {
+                    Button(role: .destructive) {
+                        manager.stop()
+                    } label: {
+                        Label("Stop Bridge", systemImage: "stop.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .disabled(manager.isTransitioning)
+                }
+            }
+
+            if showsRestartButton {
                 Button {
-                    manager.start()
+                    Task { await manager.restart(reason: .user) }
                 } label: {
-                    Label("Start Bridge", systemImage: "play.fill")
+                    Label("Restart", systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                 }
-                .disabled(!canStart)
+                .buttonStyle(.bordered)
+                .disabled(manager.isTransitioning || !canStart)
             }
         }
-        .buttonStyle(.borderedProminent)
         .controlSize(.large)
-        .accessibilityHint(manager.isRunning ? "Stops monitoring bridge" : "Starts bridge to selected output")
+        .accessibilityHint("Controls bridge process lifecycle")
+    }
+
+    private var showsStartButton: Bool {
+        switch manager.state {
+        case .idle, .error: return true
+        default: return false
+        }
+    }
+
+    private var showsStopButton: Bool {
+        if case .running = manager.state { return true }
+        return false
+    }
+
+    private var showsRestartButton: Bool {
+        switch manager.state {
+        case .running, .error: return true
+        default: return false
+        }
     }
 
     // MARK: - Running metrics / idle hint
@@ -330,7 +366,7 @@ struct MenuContentView: View {
         .transition(.opacity)
     }
 
-    // MARK: - Bindings (unchanged behavior)
+    // MARK: - Bindings
 
     private var openAtLoginBinding: Binding<Bool> {
         Binding(
@@ -354,7 +390,7 @@ struct MenuContentView: View {
             get: { settings.outputDeviceUid },
             set: { newValue in
                 settings.outputDeviceUid = newValue
-                restartIfRunning()
+                Task { await manager.restartForSettingsChange() }
             }
         )
     }
@@ -364,17 +400,9 @@ struct MenuContentView: View {
             get: { settings.effectiveSrcQuality },
             set: { newValue in
                 settings.srcQualityOverride = newValue
-                restartIfRunning()
+                Task { await manager.restartForSettingsChange() }
             }
         )
-    }
-
-    private func restartIfRunning() {
-        guard manager.isRunning else { return }
-        manager.stop()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            manager.start()
-        }
     }
 
     // MARK: - Derived presentation
@@ -388,7 +416,11 @@ struct MenuContentView: View {
         case .starting: return "Starting…"
         case .running: return manager.connectionPhase.label
         case .stopping: return "Stopping…"
-        case .error: return "Error"
+        case .error(let message):
+            if message.count > 60 {
+                return String(message.prefix(57)) + "…"
+            }
+            return message
         }
     }
 
