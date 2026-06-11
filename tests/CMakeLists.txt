@@ -34,6 +34,7 @@ apm44_add_test(test_shm_object_identity test_shm_object_identity.cpp)
 apm44_add_test(test_shm_io_handler test_shm_io_handler.cpp)
 apm44_add_test(test_virtual_device_feed test_virtual_device_feed.cpp)
 apm44_add_test(test_io_proc_callbacks test_io_proc_callbacks.cpp)
+apm44_add_test(test_mmap_shm_validation test_mmap_shm_validation.cpp)
 
 target_sources(test_bridge_metrics_json PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/BridgeMetrics.cpp
