@@ -29,11 +29,11 @@ clock drift, and plays to the physical 48 kHz endpoint.
 | HAL driver `APM44Bridge.driver` | 44.1 kHz virtual output device |
 | Bridge daemon `apm44-bridge` | libsamplerate conversion and drift control |
 | Menu bar app `APM44 Bridge` | virtual-device mode, latency presets, first-run checks |
-| Release packaging | Developer ID signing, notarized DMG, optional maintainer PKG scripts |
+| Release packaging | Developer ID signing, DMG-primary public release, maintainer-only PKG scripts |
 
 ## Install
 
-Download the latest release from
+Download the latest DMG-primary release from
 [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases).
 
 Start with:

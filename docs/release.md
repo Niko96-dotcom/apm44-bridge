@@ -17,6 +17,40 @@ Distribution checklist for **apm44-bridge**, **APM44 Bridge.app**, and **APM44Br
 | Menu bar app | `build/Release/APM44 Bridge.app` | `App/APM44Bridge/APM44Bridge.entitlements` |
 | HAL plug-in | `build/Release/APM44Bridge.driver` | `Driver/APM44Bridge.entitlements` |
 
+## Distribution posture
+
+v0.4 is **DMG-primary** for public distribution. The public artifact is the
+signed, notarized, stapled DMG produced by `scripts/release-all.sh`.
+
+The DMG intentionally contains an admin installer command because the HAL driver
+must be copied to `/Library/Audio/Plug-Ins/HAL/` and owned by `root:wheel`.
+This is the supported public install path until a signed PKG installer becomes
+the primary release artifact.
+
+PKG tooling remains maintainer-only for now. Use `APM44_BUILD_PKG=1` only to
+test the package path after Developer ID Installer signing and validation are
+configured.
+
+## Security / local IPC
+
+`/apm44_bridge_ring` is local-machine IPC between the HAL producer and the
+user-space daemon. It is not an authentication or privilege boundary.
+
+The shm object currently uses mode **0666** so `coreaudiod` and the daemon can
+open the same ring without a separate privileged broker. Other local processes
+or users may be able to open the object while it exists. Do not place secrets,
+credentials, account identifiers, or authorization decisions in the ring.
+
+Current protection is limited to format/build integrity checks: ABI version,
+object size, build id, and generation fields let the daemon reject stale or
+malformed rings. These checks do not prevent another local process from opening
+the shm object.
+
+Future hardening options include per-user shm naming, tighter owner/group
+permissions installed by a privileged helper, launchd-managed ring setup,
+XPC-mediated coordination, or moving sensitive control state out of shared
+memory.
+
 Build Release binaries before signing:
 
 ```bash
@@ -41,9 +75,7 @@ export NOTARY_PROFILE="AC_NOTARY"
 bash scripts/release-all.sh
 ```
 
-The public artifact is `build/signing/APM44Bridge-<version>.dmg`. The PKG
-path is optional maintainer tooling; set `APM44_BUILD_PKG=1` only when the
-Developer ID Installer keychain is configured and you want to test the package.
+The public artifact is `build/signing/APM44Bridge-<version>.dmg`.
 
 Manual steps (after Release build):
 

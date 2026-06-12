@@ -61,6 +61,29 @@ The helper and driver both include an `APM44_BUILD_ID` fingerprint. The driver w
 - Ring ABI version and driver build ID are stored in the shm header; mismatches fail fast instead of waiting for DAW playback.
 - Tests must construct `MmapShmRing` with a short per-test shm name and must never create/unlink the production `/apm44_bridge_ring`.
 
+### Security / local IPC
+
+`/apm44_bridge_ring` is local-machine IPC. It is not an authentication or privilege boundary, and it should not be described as one.
+
+The shm object currently uses mode **0666** so the HAL plug-in running in
+`coreaudiod` and the user-space daemon can open the same ring without a separate
+installer-owned broker. That means other local users or processes may be able to
+open the object while it exists. The ring must contain audio/control state only;
+do not put secrets, credentials, account identifiers, or authorization decisions
+in shared memory.
+
+Current mitigations are integrity-oriented rather than access-control-oriented:
+the ring header carries ABI, build-id, size, and generation fields, and consumers
+fail fast on mismatches or stale mappings.
+
+Future hardening options:
+
+- per-user or per-session shm names,
+- tighter owner/group permissions installed by a privileged helper,
+- launchd-managed setup that creates the ring before the HAL plug-in opens it,
+- XPC-mediated coordination between the app, helper, and driver install path,
+- moving more state out of shared memory and into authenticated local IPC.
+
 ### Build ID sync check
 
 Before a DAW session, confirm all four build fingerprints agree:

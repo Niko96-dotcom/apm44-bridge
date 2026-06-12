@@ -8,17 +8,19 @@ From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
 
 | Artifact | Use when |
 |----------|----------|
-| **`APM44Bridge-0.1.1.dmg`** | Notarized installer disk image; run **Install APM44 Bridge.command** inside the DMG |
+| **`APM44Bridge-0.1.1.dmg`** | DMG-primary public release artifact; run **Install APM44 Bridge.command** inside the DMG |
 
 Maintainer build: `bash scripts/release-all.sh` produces the signed,
-notarized, stapled DMG. The PKG flow is maintainer-only until installer
-signing is fixed.
+notarized, stapled DMG. The PKG flow is maintainer-only until Developer ID
+Installer signing, installer UX, and validation are complete.
 
 ## Install
 
 1. Download `APM44Bridge-0.1.1.dmg` from the release page.
 2. Open the DMG and run **Install APM44 Bridge.command**.
-3. Enter your Mac admin password in Terminal when asked.
+3. Enter your Mac admin password in Terminal when asked. This is expected:
+   APM44 Bridge installs a HAL audio driver under
+   `/Library/Audio/Plug-Ins/HAL/`, which macOS protects as an admin location.
 4. **Reboot once** if **APM44 Bridge** does not appear in **Audio MIDI Setup** (first HAL install).
 
 ## After install — every session
