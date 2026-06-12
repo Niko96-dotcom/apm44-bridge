@@ -111,7 +111,7 @@ public release is strict, race-free, and professionally shippable.
   safely without null IOProc cleanup or buffer overreads.
 - [ ] Release scripts and signing workflows fail closed for notarization and app
   build failures unless an explicit local-development override is set.
-- [ ] Shared-memory mode `0666` has a clear public threat model and no security
+- [x] Shared-memory mode `0666` has a clear public threat model and no security
   overclaiming.
 - [ ] Realtime helper names/comments match actual drop-new behavior; unused
   silence helpers are deleted or corrected.
@@ -181,6 +181,7 @@ public release is strict, race-free, and professionally shippable.
 | macOS shm_dev=0 uses driver_generation for stale detection | st_ino unreliable on macOS shm objects | ✓ Good — Phase 7 |
 | Treat v0.3 as hardening before feature expansion | The attached risk list points to correctness issues in realtime and IPC paths | — Pending |
 | Treat v0.4 as public-release blocker closure before publishing | The attached blocker review identifies correctness, release automation, and security-posture issues that should not ship silently | — Pending |
+| Keep v0.4 DMG-primary for public distribution | The DMG install flow is already shipped and can be made honest/professional now; PKG-primary needs Developer ID Installer validation before becoming public | ✓ Good — PKG remains maintainer-only/future |
 
 ## Evolution
 

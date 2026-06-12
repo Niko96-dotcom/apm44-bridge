@@ -108,7 +108,7 @@ Planned work:
 4. Release docs and scripts agree on when inner app/driver artifacts and the final public container are stapled and validated.
 5. Critical GitHub Actions near release artifacts, credentials, or signing are either pinned to full-length SHAs or covered by an explicit trust decision.
 
-**Plans:** 0/2 plans complete
+**Plans:** 1/2 plans complete
 
 Planned work:
 - 15-01 - Document local IPC threat model and installer UX decision
@@ -153,7 +153,7 @@ Planned work:
 | 12. Verification Closure | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 13. Runtime Correctness Blockers | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 14. Release Automation Fail-Closed | v0.4 | 2/2 | Complete    | 2026-06-12 |
-| 15. Public Distribution UX and Security Posture | v0.4 | 0/2 | Pending | - |
+| 15. Public Distribution UX and Security Posture | v0.4 | 1/2 | Executing | - |
 | 16. Release Validation Closure | v0.4 | 0/2 | Pending | - |
 
 ## Coverage

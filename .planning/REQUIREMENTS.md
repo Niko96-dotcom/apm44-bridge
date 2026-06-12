@@ -56,18 +56,18 @@ mystery relaunches.
 
 ### Public Trust and Distribution UX
 
-- [ ] **DOC-01**: Public docs include a Security / Local IPC section explaining
+- [x] **DOC-01**: Public docs include a Security / Local IPC section explaining
   that the shared-memory ring is local-machine IPC and not an authentication or
   privilege boundary.
-- [ ] **DOC-02**: Docs explicitly describe the implications of shm mode `0666`
+- [x] **DOC-02**: Docs explicitly describe the implications of shm mode `0666`
   and avoid overclaiming protection against other local users or processes.
-- [ ] **DOC-03**: Docs list future hardening options for local IPC, such as
+- [x] **DOC-03**: Docs list future hardening options for local IPC, such as
   per-user naming, tighter ownership, a privileged installer/helper, or an
   XPC-mediated setup path.
-- [ ] **PKG-01**: The milestone records a clear decision on whether v0.4 makes a
+- [x] **PKG-01**: The milestone records a clear decision on whether v0.4 makes a
   signed PKG the primary installer or keeps DMG-primary with PKG as a tracked
   release follow-up.
-- [ ] **PKG-02**: If DMG remains primary, release docs make the admin install
+- [x] **PKG-02**: If DMG remains primary, release docs make the admin install
   flow explicit and professional for a HAL driver.
 - [ ] **PKG-03**: Release automation staples and validates inner app/driver
   artifacts and the final public container in an order that matches the
@@ -147,11 +147,11 @@ Roadmap phase mapping for v0.4.
 | REL-05 | Phase 14 | Complete |
 | REL-06 | Phase 14 | Complete |
 | REL-07 | Phase 14 | Complete |
-| DOC-01 | Phase 15 | Pending |
-| DOC-02 | Phase 15 | Pending |
-| DOC-03 | Phase 15 | Pending |
-| PKG-01 | Phase 15 | Pending |
-| PKG-02 | Phase 15 | Pending |
+| DOC-01 | Phase 15 | Complete |
+| DOC-02 | Phase 15 | Complete |
+| DOC-03 | Phase 15 | Complete |
+| PKG-01 | Phase 15 | Complete |
+| PKG-02 | Phase 15 | Complete |
 | PKG-03 | Phase 15 | Pending |
 | GHA-01 | Phase 15 | Pending |
 | QA-01 | Phase 16 | Pending |
