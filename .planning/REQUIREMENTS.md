@@ -69,10 +69,10 @@ mystery relaunches.
   release follow-up.
 - [x] **PKG-02**: If DMG remains primary, release docs make the admin install
   flow explicit and professional for a HAL driver.
-- [ ] **PKG-03**: Release automation staples and validates inner app/driver
+- [x] **PKG-03**: Release automation staples and validates inner app/driver
   artifacts and the final public container in an order that matches the
   distributed artifact.
-- [ ] **GHA-01**: Critical GitHub Actions used near release artifacts,
+- [x] **GHA-01**: Critical GitHub Actions used near release artifacts,
   credentials, or signing are pinned to full-length commit SHAs or have an
   explicit documented trust decision.
 
@@ -152,8 +152,8 @@ Roadmap phase mapping for v0.4.
 | DOC-03 | Phase 15 | Complete |
 | PKG-01 | Phase 15 | Complete |
 | PKG-02 | Phase 15 | Complete |
-| PKG-03 | Phase 15 | Pending |
-| GHA-01 | Phase 15 | Pending |
+| PKG-03 | Phase 15 | Complete |
+| GHA-01 | Phase 15 | Complete |
 | QA-01 | Phase 16 | Pending |
 | QA-02 | Phase 16 | Pending |
 | QA-03 | Phase 16 | Pending |

@@ -115,10 +115,10 @@ public release is strict, race-free, and professionally shippable.
   overclaiming.
 - [ ] Realtime helper names/comments match actual drop-new behavior; unused
   silence helpers are deleted or corrected.
-- [ ] Public distribution path documents or implements professional installer
+- [x] Public distribution path documents or implements professional installer
   expectations: stapled inner artifacts, strict DMG notarization, and signed PKG
   direction.
-- [ ] Release GitHub Actions near credentials/artifacts are pinned or explicitly
+- [x] Release GitHub Actions near credentials/artifacts are pinned or explicitly
   tracked as a release-hardening decision.
 - [ ] Public-release regression and validation gates cover all blocker fixes.
 
@@ -182,6 +182,7 @@ public release is strict, race-free, and professionally shippable.
 | Treat v0.3 as hardening before feature expansion | The attached risk list points to correctness issues in realtime and IPC paths | — Pending |
 | Treat v0.4 as public-release blocker closure before publishing | The attached blocker review identifies correctness, release automation, and security-posture issues that should not ship silently | — Pending |
 | Keep v0.4 DMG-primary for public distribution | The DMG install flow is already shipped and can be made honest/professional now; PKG-primary needs Developer ID Installer validation before becoming public | ✓ Good — PKG remains maintainer-only/future |
+| GitHub Actions trust decision for v0.4 | Official actions remain tag-pinned with Dependabot monitoring; full-length SHA pinning becomes required before moving more signing/notarization/release publication into CI | ✓ Good — documented release-hardening decision |
 
 ## Evolution
 
