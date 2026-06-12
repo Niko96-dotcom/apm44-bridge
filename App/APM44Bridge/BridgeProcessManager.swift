@@ -86,10 +86,10 @@ final class BridgeProcessManager: ObservableObject {
             return "Not selected"
         }
         if let row = devices.first(where: { $0.uid == uid }) {
-            lastKnownDeviceName = row.name
-            lastKnownDeviceUid = uid
             return row.name
         }
+        // Fall back to the name cached by applyRefreshedDeviceList while the
+        // device was last present (e.g. during a disconnect).
         if lastKnownDeviceUid == uid, let name = lastKnownDeviceName {
             return name
         }
