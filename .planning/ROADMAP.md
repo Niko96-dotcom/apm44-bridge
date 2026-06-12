@@ -154,7 +154,7 @@ Planned work:
 | 13. Runtime Correctness Blockers | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 14. Release Automation Fail-Closed | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 15. Public Distribution UX and Security Posture | v0.4 | 2/2 | Complete    | 2026-06-12 |
-| 16. Release Validation Closure | v0.4 | 2/2 | Complete   | 2026-06-12 |
+| 16. Release Validation Closure | v0.4 | 2/2 | Complete    | 2026-06-12 |
 
 ## Coverage
 
