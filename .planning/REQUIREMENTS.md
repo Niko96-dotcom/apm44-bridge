@@ -78,10 +78,10 @@ mystery relaunches.
 
 ### Validation Closure
 
-- [ ] **QA-01**: Final automated verification includes secret scan, CMake/Catch2
+- [x] **QA-01**: Final automated verification includes secret scan, CMake/Catch2
   tests, Swift app tests, app build verification, and release-script regression
   tests.
-- [ ] **QA-02**: Final release validation records the exact command sequence from
+- [x] **QA-02**: Final release validation records the exact command sequence from
   clean build through signing, notarization, stapling, and Gatekeeper assessment.
 - [ ] **QA-03**: Final validation checks the current release artifact path with
   `codesign`, `stapler validate`, and `spctl` or `pkgutil` as appropriate for
@@ -154,8 +154,8 @@ Roadmap phase mapping for v0.4.
 | PKG-02 | Phase 15 | Complete |
 | PKG-03 | Phase 15 | Complete |
 | GHA-01 | Phase 15 | Complete |
-| QA-01 | Phase 16 | Pending |
-| QA-02 | Phase 16 | Pending |
+| QA-01 | Phase 16 | Complete |
+| QA-02 | Phase 16 | Complete |
 | QA-03 | Phase 16 | Pending |
 | QA-04 | Phase 16 | Pending |
 | QA-05 | Phase 16 | Pending |

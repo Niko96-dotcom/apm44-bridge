@@ -77,6 +77,10 @@ bash scripts/release-all.sh
 
 The public artifact is `build/signing/APM44Bridge-<version>.dmg`.
 
+Use [release-validation.md](release-validation.md) for the final automated
+gate, artifact assessment commands, Gatekeeper assessment, and exact unblock
+commands for Apple credential or hardware-dependent checks.
+
 `release-all.sh` uses this order:
 
 1. Build Release app, daemon, and driver.
