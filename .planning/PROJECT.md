@@ -10,6 +10,9 @@ driver that exposes an APM44 Bridge virtual output device upstream.
 v0.1.1 established the shipped product path. v0.2 made that path reliable under
 real daily lifecycle events: app errors, daemon exits, AirPods hotplug,
 coreaudiod reloads, shared-memory ring recreation, and operator-facing recovery.
+v0.3 hardened the realtime callback, process-stop, metrics, and shared-memory
+validation paths with automated regression coverage before returning to public
+release packaging.
 
 ## Core Value
 
@@ -17,45 +20,47 @@ A producer can start monitoring once and trust Cubase at 44.1 kHz to keep
 playing through USB-C AirPods at 48 kHz without silent wedges or mystery
 relaunches.
 
-## Current State (v0.2 shipped 2026-06-11)
+## Current State (v0.3 shipped 2026-06-12)
 
-**Shipped:** Reliability and Self-Healing milestone — 4 phases, 11 plans.
+**Shipped:** Realtime Audio Hardening milestone — 4 phases, 8 plans.
 
 **What works now:**
-- Deterministic app state machine: Start after errors, explicit Restart, user
-  Stop distinct from crashes.
-- Awaitable settings restarts that wait for real daemon termination.
-- Always-on hotplug monitoring with bounded auto-retry and reconnecting UI.
-- Daemon stale shared-memory ring detection (exit 42) with app-side recovery.
-- Audit hardening: CLI idle loop, IOProc clamp, SPSC overrun, shm guards,
-  seqlock metrics, stop escalation, HAL-truthful latency labels.
-- Automated Swift and Catch2 regression suites for lifecycle and hardening paths.
+- v0.2 deterministic app lifecycle, restart, hotplug, and stale-ring recovery.
+- Realtime SPSC ownership is preserved under input overrun; new input is dropped
+  without producer-side consumption.
+- Oversized interleaved and non-interleaved output callbacks render or silence
+  every Core Audio frame.
+- Swift process-stop waiters complete independently and escalation reaches the
+  timeout path.
+- Metrics publication no longer relies on bare cross-thread `MetricsSnapshot`
+  copies.
+- Shared-memory opening rejects truncated, lying, or corrupt mappings before
+  trusting capacity or build-ID strings.
+- `scripts/ci.sh` includes the installed-sync dry-run gate.
 
 **Known gaps (accepted at close):**
-- QA-03 live operator checklist (hotplug smoke, Cubase HAL soak) pending hardware
-  sign-off.
-- IPC-04 installed build-ID agreement unproven until driver reinstall on target
-  machine.
-- `verify-installed-sync.sh` not yet CI-gated.
+- QA-03 live installed-system build-ID sync remains partial until driver
+  reinstall on real hardware.
+- QA-04 live operator evidence remains hardware-blocked: USB-C AirPods hotplug,
+  Cubase HAL smoke, and Cubase soak.
 
-## Current Milestone: v0.3 Realtime Audio Hardening
+## Current Milestone: v0.4 Public Release Blocker Closure
 
-**Goal:** Make the realtime audio, process-stop, metrics, and shared-memory
-paths race-free and defensive before expanding packaging or DAW coverage.
+**Goal:** Close the publishing blockers in the attached review so the next
+public release is strict, race-free, and professionally shippable.
 
 **Target features:**
-- Preserve the `PlanarRingBuffer` single-producer / single-consumer contract by
-  removing producer-side consumer behavior or moving oldest-frame dropping to the
-  output side.
-- Ensure output callbacks larger than the internal scratch size render or
-  silence every frame.
-- Make Swift process-stop waiting timeout-safe, escalation-safe, and safe for
-  concurrent waiters.
-- Publish bridge metrics through a C++ data-race-free path.
-- Reject truncated, inconsistent, or corrupt shared-memory mappings before any
-  ring read/write path trusts header capacity or build-ID strings.
-- Close deferred installed-system proof: QA-03 live DAW/hotplug soak, IPC-04
-  build-ID sync, and CI-gating for `verify-installed-sync.sh`.
+- Make `MetricsPublisher` C++ data-race-free and ThreadSanitizer-clean.
+- Fix `BridgeMetrics::ToJsonLine` truncation safety with regression coverage.
+- Harden Core Audio failure paths: virtual-device output-start cleanup and
+  non-interleaved input buffer sizing.
+- Make notarization, signing, and release automation fail hard unless explicitly
+  opted out.
+- Document the local shared-memory threat model and remove misleading or dead
+  realtime helpers.
+- Recheck distribution UX: DMG stapling order, signed PKG direction, and
+  SHA-pinned release workflows.
+- Add blocker-list regression tests and run a clean release validation sequence.
 
 ## Requirements
 
@@ -86,31 +91,46 @@ paths race-free and defensive before expanding packaging or DAW coverage.
 - [x] Low-level audio/process hardening (AUD-01–07). — v0.2
 - [x] Automated Swift transition tests (QA-01) and Catch2 hardening suite
   (QA-02). — v0.2
+- [x] Realtime callback ownership and oversized output callback handling. —
+  v0.3 (RT-01–05)
+- [x] Process-stop waiter and escalation hardening. — v0.3 (PROC-01–04)
+- [x] Metrics publication no longer uses bare cross-thread snapshot copies. —
+  v0.3 (METR-01–03)
+- [x] Shared-memory validation rejects malformed mappings and bounded build-ID
+  diagnostics. — v0.3 (SHM-01–05)
+- [x] Installed-sync dry-run is CI-gated and automated hardening evidence is
+  captured. — v0.3 (QA-01, QA-02, QA-05)
 
 ### Active
 
-- [ ] Realtime ring ownership: `PlanarRingBuffer` remains SPSC under overrun and
-  normal callback flow.
-- [ ] Output callback coverage: every Core Audio output frame is rendered or
-  explicitly silenced, including callbacks larger than scratch buffers.
-- [ ] Stop escalation: timed-out process termination reliably reaches SIGKILL
-  and concurrent termination waiters do not overwrite each other.
-- [ ] Metrics publication: UI metrics snapshots are C++ data-race-free.
-- [ ] Shared-memory validation: malformed/truncated shm objects and unterminated
-  build-ID fields are rejected or safely described.
-- [ ] Live installed-system proof: hotplug smoke, Cubase HAL soak, build-ID sync
-  on operator hardware (QA-03, IPC-04 - deferred from v0.2 close).
-- [ ] Commit and CI-gate `scripts/verify-installed-sync.sh`.
+- [ ] Metrics publication is demonstrably data-race-free under standard C++ and
+  ThreadSanitizer.
+- [ ] Metrics JSON serialization cannot read past its fixed stack buffer when
+  output is truncated.
+- [ ] Core Audio virtual-device and non-interleaved callback error paths fail
+  safely without null IOProc cleanup or buffer overreads.
+- [ ] Release scripts and signing workflows fail closed for notarization and app
+  build failures unless an explicit local-development override is set.
+- [ ] Shared-memory mode `0666` has a clear public threat model and no security
+  overclaiming.
+- [ ] Realtime helper names/comments match actual drop-new behavior; unused
+  silence helpers are deleted or corrected.
+- [ ] Public distribution path documents or implements professional installer
+  expectations: stapled inner artifacts, strict DMG notarization, and signed PKG
+  direction.
+- [ ] Release GitHub Actions near credentials/artifacts are pinned or explicitly
+  tracked as a release-hardening decision.
+- [ ] Public-release regression and validation gates cover all blocker fixes.
 
 ### Out of Scope
 
 - LaunchAgent daemon auto-start — superseded for now by the menu bar app and
   Open at login.
-- PKG installer signing — intentionally maintainer-only until installer signing
-  is ready.
 - Bluetooth-only AirPods reliability — USB-C AirPods Max is the product target
   for this bridge.
 - Broad DAW expansion — Cubase 15 HAL path remains the validation anchor.
+- New DSP/resampler architecture — v0.4 is about release-blocking correctness
+  and distribution hardening, not audio-engine replacement.
 - Public repository planning artifacts — `.planning/` remains local/ignored
   unless explicitly force-added later.
 
@@ -130,6 +150,9 @@ paths race-free and defensive before expanding packaging or DAW coverage.
 - v0.3 was seeded from a focused highest-priority bug/risk review covering SPSC
   ring ownership, large callbacks, stop-timeout continuation handling, metrics
   races, and shm mapping validation.
+- v0.4 is seeded from the "Blockers before publishing" review attached on
+  2026-06-12. It focuses on release-blocking correctness, security posture, and
+  packaging automation, not new audio/DSP features.
 - `.planning/` is gitignored by default; selected artifacts are force-added for
   local GSD state.
 
@@ -157,6 +180,7 @@ paths race-free and defensive before expanding packaging or DAW coverage.
 | Accept QA-03/IPC-04 gaps at milestone close | Operator hardware and sudo driver reinstall required for live proof | ⚠️ Revisit — next milestone or ops task |
 | macOS shm_dev=0 uses driver_generation for stale detection | st_ino unreliable on macOS shm objects | ✓ Good — Phase 7 |
 | Treat v0.3 as hardening before feature expansion | The attached risk list points to correctness issues in realtime and IPC paths | — Pending |
+| Treat v0.4 as public-release blocker closure before publishing | The attached blocker review identifies correctness, release automation, and security-posture issues that should not ship silently | — Pending |
 
 ## Evolution
 
@@ -176,4 +200,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-12 after v0.3 Realtime Audio Hardening milestone start*
+*Last updated: 2026-06-12 after v0.4 Public Release Blocker Closure milestone start*

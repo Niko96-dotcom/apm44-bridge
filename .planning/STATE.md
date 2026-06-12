@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.3
-milestone_name: Realtime Audio Hardening
-status: complete
-last_updated: "2026-06-12T01:55:00+02:00"
+milestone: v0.4
+milestone_name: Public Release Blocker Closure
+status: planning
+last_updated: "2026-06-12T08:18:23.292Z"
 last_activity: 2026-06-12
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -23,13 +23,14 @@ See: .planning/PROJECT.md (updated 2026-06-12)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** v0.3 milestone archived. Ready for `$gsd-new-milestone` to plan v0.4.
+**Current focus:** Defining requirements for v0.4 Public Release Blocker Closure.
 
 ## Current Position
 
-Phase: All v0.3 phases archived under `.planning/milestones/v0.3/`.
-Status: Milestone audit complete. v0.3 SHIPPED with accepted hardware gaps.
-Last activity: 2026-06-12 - Milestone v0.3 audit + archive complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-12 — Milestone v0.4 started
 
 ## Performance Metrics
 
@@ -74,15 +75,19 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Milestone close: Accepted QA-03 and IPC-04 gaps as operator-dependent tech debt.
 - v0.3: Keep scope to realtime callback safety, process/metrics races, shm
   validation, and proof closure before packaging or DAW expansion.
+
 - v0.3 Phase 9: Producer overrun policy is "drop new input" (RT-02). Oldest-frame
   trimming remains an output-consumer responsibility only.
+
 - v0.3 Phase 10: Metrics publication uses a seqlock on a standalone
   MetricsPublisher type; the source-level regression guard
   `NoBareMetricsSnapshotCopyInSource` enforces no plain `MetricsSnapshot`
   copies.
+
 - v0.3 Phase 11: macOS shm page-rounding prevents functional exercise of the
   `HeaderTruncated` and live size-change checks on this platform; source-level
   guard tests assert the invariants.
+
 - v0.3 Phase 12: First CI run with the new dry-run gate caught a real
   build-ID drift between repo daemon and embedded helper; re-embedded via
   `scripts/embed-daemon-in-app.sh` and CI went green.
@@ -93,7 +98,7 @@ None.
 
 ### Blockers/Concerns
 
-None blocking Phase 9 planning.
+None blocking Phase 13 planning.
 
 ## Deferred Items
 
