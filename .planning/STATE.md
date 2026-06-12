@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Public Release Blocker Closure
-status: milestone_complete
-stopped_at: Milestone complete (Phase 16 was final phase)
-last_updated: 2026-06-12T13:05:00.197Z
-last_activity: 2026-06-12 -- Phase 16 execution complete
+status: Awaiting next milestone
+stopped_at: Milestone v0.4 completed and archived
+last_updated: "2026-06-12T13:07:36.936Z"
+last_activity: 2026-06-12 — Milestone v0.4 completed and archived
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 8
   completed_plans: 8
-  percent: 75
+  percent: 100
 ---
 
 # Project State
@@ -24,16 +24,25 @@ See: .planning/PROJECT.md (updated 2026-06-12)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Milestone complete
+**Current focus:** Awaiting next milestone
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-06-12
+Phase: Milestone v0.4 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-12 — Milestone v0.4 completed and archived
 
 ## Performance Metrics
+
+**Velocity (v0.4):**
+
+- Total plans completed: 8
+- Phases: 13-16 (4 phases)
+- Timeline: 2026-06-12 (single-day execution)
+- 29/29 requirements satisfied by automated evidence or recorded release
+  validation proof
+- Public artifact path validated as DMG-first; PKG remains future/maintainer-only
 
 **Velocity (v0.3):**
 
@@ -99,14 +108,17 @@ None.
 
 ### Blockers/Concerns
 
-None blocking Phase 13 planning.
+None blocking next milestone planning.
 
 ## Deferred Items
 
-Items acknowledged and deferred at v0.3 milestone close on 2026-06-12:
+Items acknowledged and deferred at milestone close:
 
 | Category | Item | Status |
 |----------|------|--------|
+| publication | GitHub release publication/upload for the final DMG | operator action |
+| packaging | Signed PKG installer | future/maintainer-only |
+| live soak | USB-C AirPods/Cubase validation on target hardware | operator-dependent |
 | requirement | v0.2 QA-03 live DAW soak | deferred (carried from v0.2) |
 | requirement | v0.2 IPC-04 installed build-ID sync | partial (carried from v0.2) |
 | requirement | v0.3 QA-03 live installed-system build-ID sync | partial (hardware-blocked; repo+helper sync captured, full sync requires driver reinstall) |
@@ -126,4 +138,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Run `$gsd-plan-phase 13` to start Runtime Correctness Blockers.
+- Start the next milestone with /gsd-new-milestone
