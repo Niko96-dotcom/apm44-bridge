@@ -1,137 +1,151 @@
-# Project Research Summary: v0.3 Realtime Audio Hardening
+# Project Research Summary
 
 **Project:** APM44 Bridge
-**Domain:** macOS realtime audio bridge hardening
+**Domain:** macOS audio bridge public-release hardening
 **Researched:** 2026-06-12
 **Confidence:** HIGH
 
 ## Executive Summary
 
-v0.3 should stay narrowly focused on correctness in the realtime audio, process lifecycle, metrics, and shared-memory paths. The product stack is already appropriate: C++20 for daemon/shared low-level code, Swift 6 for the menu bar process manager, Core Audio/HAL for callbacks, POSIX shm for driver-daemon IPC, Catch2 and XCTest for regression coverage. No new dependencies are recommended.
+v0.4 should be treated as a release-blocker closure milestone, not a new feature milestone. The attached review and source scan identify concrete correctness and trust boundaries that should be resolved before publishing: metrics publication must be standards-compliant under C++, JSON serialization must not read beyond fixed buffers, Core Audio edge/error paths must fail safely, and release automation must not silently publish unsigned or unnotarized artifacts.
 
-The highest risks are not missing features; they are ownership and validation bugs that can produce rare audio glitches, undefined behavior, or false confidence from CI. The roadmap should begin with the realtime callback contract, then repair Swift stop escalation and metrics publication, then harden shm validation, and finish by closing the installed-system proof gaps from v0.2.
+The recommended approach is to keep the implementation tightly scoped to the existing repo seams: `MetricsPublisher`, `BridgeMetrics::ToJsonLine`, `IoProcHandlers`, `BridgeEngine::start`, release shell scripts, GitHub workflows, and public docs. Apple and GitHub official guidance reinforce two release themes: use Developer ID/notarization/stapling as a strict artifact gate, and harden workflows near secrets/artifacts with immutable action references or explicit trust decisions.
+
+The main risk is false confidence. Several current paths look "done" in ordinary cases but fail under adversarial or edge conditions: a seqlock stress test can pass while the C++ payload access is still a data race, notary scripts can accept everything except `Invalid`, and release commands can print artifacts after skipping notarization. v0.4 should make these failure modes boring, explicit, and testable.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No stack additions. Keep the existing stack and harden in place.
+Keep the existing stack: C++20, Catch2, XCTest, shell release scripts, GitHub Actions, and Apple Developer ID tools. Add or expose a ThreadSanitizer-oriented native metrics proof using Clang/Xcode's `-fsanitize=thread` where practical.
 
 **Core technologies:**
-- C++20: daemon/shared realtime and IPC code.
-- Apple Swift 6.3.2: menu bar lifecycle and process management.
-- Core Audio/HAL: callback and virtual device integration.
-- POSIX shm: existing driver-daemon audio transport.
-- Catch2/XCTest: regression coverage for the relevant code paths.
+- C++20 atomics: race-free metrics publication without locks in realtime paths.
+- Clang ThreadSanitizer: test-only dynamic data-race detection on Darwin.
+- Apple `notarytool`/`stapler`: strict notarization and ticket validation for ZIP/PKG/DMG artifacts.
+- GitHub Actions full SHA pins: preferred immutable references for critical workflow dependencies.
 
 ### Expected Features
 
-**Must have:**
-- Strict `PlanarRingBuffer` SPSC ownership.
-- Full output callback coverage for actual buffer length.
-- Swift stop timeout and SIGKILL escalation that cannot hang.
-- C++ data-race-free metrics publication.
-- Shm open/identity validation that rejects truncated and inconsistent mappings.
-- Regression coverage for every hardening fix.
-- Installed-system proof for QA-03/IPC-04 or explicit hardware-blocker record.
+**Must have (table stakes):**
+- Race-free metrics publisher.
+- Safe JSON truncation behavior.
+- Core Audio virtual-device output-start failure cleanup.
+- Non-interleaved input min-buffer sizing.
+- Fail-closed notarization and release scripts.
+- Strict signing workflow with no masked app-build failure.
+- Public local IPC threat model for `0666` shm.
+- Regression tests for every blocker.
 
-**Should have:**
-- `scripts/ci.sh` dry-run gate for `scripts/verify-installed-sync.sh`.
-- Bounded corrupt-header diagnostics that are safe and operator-readable.
+**Should have (competitive):**
+- Signed PKG installer direction for a HAL driver.
+- Stapled inner app/driver artifacts before final DMG/PKG validation.
+- SHA-pinned critical release workflow actions or explicit exception record.
+- Mocked release-script failure matrix in CI.
 
-**Defer:**
-- Signed PKG installer.
-- Logic/Ableton validation expansion.
+**Defer (v0.5+):**
+- Logic/Ableton compatibility matrix.
 - Support bundle export.
+- Per-user/group-owned shm or XPC-mediated IPC setup.
+- New DSP/resampler architecture.
 
 ### Architecture Approach
 
-Keep changes within existing module boundaries. Input callbacks and virtual feed remain producer paths; output callbacks remain consumer paths. Metrics should publish through atomics or a race-free buffer pattern. Swift process waiting should use explicit waiter bookkeeping instead of a single continuation. Shm readers should validate size before trusting capacity or build-ID fields.
+Use four focused implementation lanes: runtime correctness, release automation, public distribution/security posture, and final validation. Runtime fixes should land first because release validation is not meaningful while undefined behavior and callback overread risks remain. Release automation comes next so every later artifact proof is fail-closed. Public docs/installer decisions come after the scripts are strict, then final validation records a clean release command sequence.
 
 **Major components:**
-1. `BridgeInputOverrun` / `PlanarRingBuffer` - preserve SPSC ownership.
-2. `IoProcHandlers` / `BridgeEngine` - process or silence complete output callbacks.
-3. `BridgeProcessManager` - deterministic stop timeout and escalation.
-4. `BridgeEngine` metrics - race-free UI/control publication.
-5. `MmapShmRing` / `ShmObjectIdentity` - robust mapping validation and diagnostics.
-6. Verification scripts - CI dry-run plus manual live proof.
+1. Runtime correctness layer - `MetricsPublisher`, `BridgeMetrics`, `IoProcHandlers`, `BridgeEngine`.
+2. Release automation layer - `notarize-release-dmg.sh`, `notarize-release-pkg.sh`, `release-all.sh`, `sign-notarize.yml`.
+3. Public distribution layer - release/install/HAL docs, DMG/PKG decision, local IPC threat model.
+4. Validation layer - CI, TSan/local proof, mocked script tests, codesign/stapler/spctl checks.
 
 ### Critical Pitfalls
 
-1. **Keeping producer-side drop-oldest** - remove input-side `pop()` or move oldest trimming to output thread.
-2. **Clamping callbacks without touching the tail** - render or silence all actual output frames.
-3. **Continuation cancellation deadlock** - use explicit waiters and resume on timeout or termination.
-4. **Seqlock over non-atomic payload** - replace with atomics or a genuinely race-free buffer scheme.
-5. **Header-only shm validation** - compare mapped size with `ShmTotalSize(capacity_frames)` and bound build-ID formatting.
-6. **CI-only sign-off** - finish with installed helper/driver/live ring evidence.
+1. **Seqlock around a plain payload** - replace with atomic fields or a buffer scheme that avoids concurrent non-atomic access.
+2. **`snprintf` truncation overread** - reject or reallocate on `written >= sizeof(buffer)`.
+3. **Virtual-mode cleanup using non-created input IOProc** - guard cleanup by mode and non-null IOProc.
+4. **Non-interleaved input buffer mismatch** - use the minimum frame count across channel buffers.
+5. **Notary status masking** - require return code 0 and `status: Accepted`, not merely "not Invalid".
+6. **Silent unnotarized release artifact** - hard fail unless explicit local-only override is set.
+7. **Undocumented world-writable shm** - explain local IPC assumptions and non-boundary.
 
 ## Implications for Roadmap
 
-### Phase 9: Realtime Callback Ownership
+Based on research, suggested phase structure:
 
-**Rationale:** The SPSC violation and output-tail behavior are closest to the audio callback and highest risk for glitches.
-**Delivers:** Safe overrun policy, full output callback coverage, updated C++ tests.
-**Addresses:** Ring ownership and large callback table stakes.
-**Avoids:** Locks/allocations in IOProc and stale test assumptions.
+### Phase 13: Runtime Correctness Blockers
+**Rationale:** Undefined behavior and callback overread risks undermine any release proof.
+**Delivers:** Metrics race fix, JSON truncation fix, virtual cleanup guard, input min-frame clamp, helper rename/dead helper cleanup.
+**Addresses:** metrics, JSON, Core Audio error paths, realtime helper clarity.
+**Avoids:** TSan false confidence and edge-case Core Audio failures.
 
-### Phase 10: Process and Metrics Races
+### Phase 14: Release Automation Fail-Closed
+**Rationale:** Public artifacts must not be generated by permissive scripts.
+**Delivers:** Strict notary parsing, missing-profile hard failure with explicit override, workflow build failure unmasked, shell tests with mocked `xcrun`.
+**Uses:** Apple notarytool/stapler, existing scripts, GitHub Actions workflow.
+**Avoids:** unnotarized or stale artifacts that look releasable.
 
-**Rationale:** Stop escalation and metrics publication are cross-thread correctness problems with bounded scope.
-**Delivers:** Swift waiter registry, SIGKILL timeout coverage, race-free metrics publication.
-**Uses:** XCTest plus Catch2/source-level C++ validation.
-**Implements:** Lifecycle and control-plane hardening.
+### Phase 15: Public Distribution UX and Security Posture
+**Rationale:** A professional release must explain install/security assumptions and converge on DMG/PKG behavior.
+**Delivers:** Local IPC threat model, DMG/stapling order decision, signed PKG direction, workflow pinning/trust decision.
+**Implements:** public docs and release UX changes.
+**Avoids:** hidden `0666` shm assumptions and installer trust gaps.
 
-### Phase 11: Shared-Memory Validation
-
-**Rationale:** Shm validation should be hardened before final installed proof because live verification depends on safe readers.
-**Delivers:** Size checks, bounded build-ID diagnostics, corrupt/truncated shm tests.
-**Implements:** IPC safety hardening.
-
-### Phase 12: Verification Closure
-
-**Rationale:** v0.2 accepted QA-03/IPC-04 as gaps; v0.3 should close or explicitly re-record hardware blockers after code hardening.
-**Delivers:** CI dry-run installed-sync gate, full repo verification, live installed app/helper/driver/ring proof, Cubase/hotplug soak evidence where hardware is available.
+### Phase 16: Release Validation Closure
+**Rationale:** Final proof should validate the exact artifact path after the scripts and docs are strict.
+**Delivers:** Clean validation run, release checklist, documented live/hardware blockers if any remain.
+**Implements:** final command sequence from secret scan through Gatekeeper assessment.
 
 ### Phase Ordering Rationale
 
-- Realtime callback ownership comes first because later metrics and live soak evidence are not trustworthy while the audio ring contract is violated.
-- Swift stop and metrics fit together because both are race/coordination fixes with existing test harnesses.
-- Shm validation follows because it is the remaining IPC correctness layer and feeds final live proof.
-- Verification closes last so it reflects the hardened code, not the pre-v0.3 baseline.
+- Runtime UB and callback safety come first because release automation cannot prove a broken runtime safe.
+- Release scripts come before docs finalization so public docs match actual command behavior.
+- Distribution/security posture comes before final validation so validation covers the chosen artifact and trust model.
+- Final validation is last so it can exercise all blocker fixes together.
 
 ### Research Flags
 
-- **Phase 9:** Decide drop-newest versus output-owned drop-oldest before implementation planning.
-- **Phase 9:** Decide tail silence versus chunked output; tail silence is the smallest defensive fix, chunking is more complete.
-- **Phase 10:** Choose independent atomics versus double-buffer metrics during planning.
-- **Phase 12:** Live proof depends on target hardware, HAL reinstall permissions, and Cubase availability.
+Phases likely needing deeper research during planning:
+- **Phase 13:** exact metrics representation tradeoff - atomic fields vs triple buffer.
+- **Phase 14:** shell-test harness pattern for mocked `xcrun` without new dependencies.
+- **Phase 15:** whether signed PKG becomes primary artifact or explicitly documented next-release direction.
+
+Phases with standard patterns:
+- **Phase 13 JSON/callback fixes:** straightforward local source changes and tests.
+- **Phase 14 workflow `|| true` removal:** straightforward.
+- **Phase 16 validation:** existing scripts already provide most commands.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Verified from local CMake, Swift, clang, tests, and scripts. |
-| Features | HIGH | Directly derived from attached bug/risk list and v0.2 deferred items. |
-| Architecture | HIGH | Grounded in local source paths and existing module boundaries. |
-| Pitfalls | HIGH | Each pitfall maps to a named current code path or deferred verification gap. |
+| Stack | HIGH | Existing repo stack is sufficient; official docs confirm TSan, notarytool/stapler, and SHA-pinning practices. |
+| Features | HIGH | Derived from attached blocker review and confirmed against source/workflows. |
+| Architecture | HIGH | Integration points are narrow and present in current repo. |
+| Pitfalls | HIGH | Each major pitfall maps to a concrete code/script/doc location. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Overrun policy choice:** Plan Phase 9 should explicitly choose drop-newest or output-owned drop-oldest.
-- **Callback strategy:** Plan Phase 9 should choose tail silence or chunking with converter/input-demand implications.
-- **Live hardware availability:** Phase 12 may need a blocker record if Cubase/AirPods/HAL reinstall cannot be run in this session.
+- **Metrics design choice:** Decide atomic fields vs triple buffer during Phase 13 planning.
+- **TSan availability in CI:** If GitHub macOS runner cannot reliably run TSan for this project, require a documented local TSan command plus source-level guard.
+- **PKG primary artifact:** Decide in Phase 15 whether v0.4 ships PKG-primary or documents it as the next release track.
+- **Apple credentials:** Live notarization still depends on maintainer keychain/cert availability; mocked tests should cover logic without credentials.
 
 ## Sources
 
-### Primary
+### Primary (HIGH confidence)
 
-- User-provided highest-priority bug/risk list.
-- Local source audit: `BridgeInputOverrun.h`, `PlanarRingBuffer.cpp`, `IoProcHandlers.cpp`, `BridgeEngine.cpp`, `MmapShmRing.cpp`, `ShmObjectIdentity.h`, `BridgeProcessManager.swift`.
-- Existing tests: `test_hardening_audit.cpp`, `test_mmap_shm_ring.cpp`, `test_bridge_process_manager.swift`, `tests/CMakeLists.txt`.
-- Existing verification scripts: `scripts/ci.sh`, `scripts/verify-installed-sync.sh`, `scripts/verify-hal-driver.sh`.
-- Current planning context: `.planning/PROJECT.md`, `.planning/STATE.md`.
+- https://clang.llvm.org/docs/ThreadSanitizer.html - ThreadSanitizer purpose, Darwin support, usage, and non-production runtime note.
+- https://developer.apple.com/developer-id/ - Developer ID signing, notarytool, stapler, and ZIP/PKG/DMG support.
+- https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution - signed installer package expectation.
+- https://docs.github.com/en/actions/reference/security/secure-use - full-length commit SHA pinning and GitHub Actions security guidance.
+- APM44 Bridge source/workflow scan on 2026-06-12.
+
+### Secondary (MEDIUM confidence)
+
+- Attached "Blockers before publishing" review, 2026-06-12 - scoped blocker list and suggested tests.
 
 ---
 *Research completed: 2026-06-12*

@@ -1,187 +1,229 @@
-# Pitfalls Research: v0.3 Realtime Audio Hardening
+# Pitfalls Research
 
-**Domain:** realtime audio, process lifecycle, and shm IPC hardening
+**Domain:** macOS audio bridge public-release hardening
 **Researched:** 2026-06-12
 **Confidence:** HIGH
 
 ## Critical Pitfalls
 
-### Pitfall 1: Violating SPSC Ownership While Preserving the Test
+### Pitfall 1: Seqlock Around Plain C++ Object
 
 **What goes wrong:**
-The input callback calls `ring.pop()` to drop old frames while the output callback also pops. This can lose read-index updates or make glitches timing-dependent.
+The writer stores a plain `MetricsSnapshot` while readers concurrently copy it. The sequence counter can detect torn reads, but it does not remove the data race on the non-atomic payload.
 
 **Why it happens:**
-The producer-side drop-oldest helper is convenient and has an existing test that makes the behavior look intentional.
+Seqlock patterns are common in low-level systems code, but standard C++ still treats concurrent non-atomic read/write of the same object as undefined behavior.
 
 **How to avoid:**
-Choose an overrun policy that keeps input as producer only: drop-newest on input overflow, or move oldest trimming to the output side. Rewrite `test_hardening_audit.cpp` to assert the new policy.
+Use atomic fields, atomic bit-cast storage for doubles, or a preallocated buffer scheme where the writer never overwrites a buffer currently being copied by a reader.
 
 **Warning signs:**
-Any input-side code calls `PlanarRingBuffer::pop()` or mutates consumer-side state.
+`MetricsPublisherState` contains `std::atomic` metadata plus a plain `MetricsSnapshot snapshot{}`; `ReadMetrics` copies `state.snapshot` while `PublishMetrics` assigns it.
 
 **Phase to address:**
-First phase of v0.3.
+Phase 13: Runtime Correctness Blockers.
 
 ---
 
-### Pitfall 2: Fixing Large Callbacks by Clamping Only
+### Pitfall 2: `snprintf` Truncation Treated as Written Length
 
 **What goes wrong:**
-The first 1024 frames are processed and the tail of a larger output buffer remains stale or uninitialized.
+`std::string(buffer, written)` reads past the stack buffer if `snprintf` truncates and returns the would-have-written length.
 
 **Why it happens:**
-Scratch buffers are fixed at `kMaxCallbackFrames`, and clamping is easy.
+The `snprintf` return contract is easy to misremember: a non-negative return can still exceed the supplied buffer.
 
 **How to avoid:**
-Use the actual callback frame count as the contract. Either explicitly silence the tail after the processed chunk or process output in bounded chunks.
+Return `{}` or allocate/retry when `written >= sizeof(buffer)`. Add a long `srcQuality` regression test.
 
 **Warning signs:**
-`OutputIoProc()` computes `actualFrames`, clamps to `frames`, and returns without touching `[frames, actualFrames)`.
+Fixed char buffer plus string construction from the raw `written` value.
 
 **Phase to address:**
-First or second phase of v0.3.
+Phase 13: Runtime Correctness Blockers.
 
 ---
 
-### Pitfall 3: Swift Continuation Cancellation Deadlock
+### Pitfall 3: Error-Path Cleanup Uses Resources That Do Not Exist
 
 **What goes wrong:**
-A timeout child throws, the task group cancels the continuation child, but the checked continuation never resumes. SIGKILL escalation may never run or finish.
+Virtual-device mode can call input-device cleanup when no input IOProc was created after output start fails.
 
 **Why it happens:**
-`withCheckedContinuation` is not automatically resumed by task cancellation, and only one stored continuation can be overwritten by concurrent waits.
+Common start/stop cleanup logic assumes physical input mode and virtual-device mode have the same resource graph.
 
 **How to avoid:**
-Implement explicit waiter bookkeeping. Each waiter should be resumed exactly once on termination or timeout; `handleTermination()` should resume all pending waiters.
+Guard input cleanup with `!virtualDevice_ && inputProc_ != nullptr`, then call the shared `stop()` cleanup.
 
 **Warning signs:**
-A test can start a stop/restart path and never observe SIGKILL or final failure when termination does not arrive.
+`AudioDeviceStop(devices_.input.deviceId, inputProc_)` on an output-start failure path regardless of mode.
 
 **Phase to address:**
-Second phase of v0.3.
+Phase 13: Runtime Correctness Blockers.
 
 ---
 
-### Pitfall 4: Logical Seqlock That Is Still a C++ Data Race
+### Pitfall 4: Per-Channel Frame Mismatch in Non-Interleaved Input
 
 **What goes wrong:**
-Readers copy `MetricsSnapshot` while the output callback writes its non-atomic fields. The sequence counter may make the algorithm look coherent, but the payload access remains undefined behavior.
+Input uses buffer 0 frame count for both channels. If buffer 1 is shorter, the engine can read past it.
 
 **Why it happens:**
-Seqlock examples often omit that payload races still need atomics or a carefully designed data-race-free buffer scheme in standard C++.
+Stereo non-interleaved buffers are usually same-sized in practice, so malformed/test cases are easy to overlook.
 
 **How to avoid:**
-Publish independent atomic fields for metrics, or implement a real double-buffer pattern where readers never touch the buffer currently being written.
+Compute `b0Frames`, `b1Frames`, use `std::min`, then clamp.
 
 **Warning signs:**
-Plain `MetricsSnapshot metricsSnapshot_` is written by one thread and copied by another.
+The output callback already uses min-buffer sizing, but the input callback does not.
 
 **Phase to address:**
-Second or third phase of v0.3.
+Phase 13: Runtime Correctness Blockers.
 
 ---
 
-### Pitfall 5: Trusting Corrupt Shm Headers Too Early
+### Pitfall 5: Notary Scripts Only Fail on One Failure String
 
 **What goes wrong:**
-A small shm object claims a large capacity; push/pop trusts `capacity_frames` and reads or writes beyond the mapped object. Diagnostics can also read beyond `producer_build_id`.
+Auth failures, network errors, malformed output, future status strings, or other non-accepted states can be treated as success.
 
 **Why it happens:**
-Header fields are validated before total mapped size and bounded string handling are enforced.
+Script captures `notarytool` output with `|| true` and greps only for `status: Invalid`.
 
 **How to avoid:**
-Check `fstat` size before mapping/reading headers, validate `mappedSize >= ShmTotalSize(capacity)`, and format build IDs with bounded string conversion.
+Capture return code, require return code 0 and `status: Accepted`, and print/fetch logs on failure when an id is available.
 
 **Warning signs:**
-`MmapShmRing::open()` accepts a header without comparing `st_size` to `ShmTotalSize()`, or `ReadLiveDriverGeneration()` mmaps a header without checking `st_size`.
+`RESULT=$(xcrun notarytool submit ... 2>&1) || true` followed by only an `Invalid` grep.
 
 **Phase to address:**
-Third phase of v0.3.
+Phase 14: Release Automation Fail-Closed.
 
 ---
 
-### Pitfall 6: Declaring the Milestone Done Without Live Proof
+### Pitfall 6: Release Commands Emit Artifacts After Skipping Notarization
 
 **What goes wrong:**
-CI passes but the installed app helper, driver bundle, or live shm ring is stale.
+Maintainers can accidentally publish artifacts that were never notarized.
 
 **Why it happens:**
-Hardware and sudo reinstall steps are easy to defer, and `.planning/` already records QA-03/IPC-04 as accepted gaps.
+The script is convenient for local development but named and documented like a release command.
 
 **How to avoid:**
-CI-gate the dry-run installed-sync script, then perform the live `verify-hal-driver.sh` / `--shm-status` / Cubase soak checklist before closing or explicitly record hardware blockers.
+Make missing credentials a hard failure unless `APM44_ALLOW_UNNOTARIZED=1` is set.
 
 **Warning signs:**
-Only `scripts/ci.sh` is run before milestone close; no installed helper/driver build-ID evidence is captured.
+`release-all.sh` prints `SKIP notarization` and still lists release artifacts.
 
 **Phase to address:**
-Final phase of v0.3.
+Phase 14: Release Automation Fail-Closed.
+
+---
+
+### Pitfall 7: Public Security Posture Hidden in Implementation Details
+
+**What goes wrong:**
+`0666` shared memory can be read/written/DoSed by other local users/processes, but users do not see that assumption.
+
+**Why it happens:**
+The mode is technically useful because the HAL driver runs in `coreaudiod` and the daemon runs as the user; the trust model was encoded in code/docs only briefly.
+
+**How to avoid:**
+Add a public Security / Local IPC section describing the local-machine assumption and non-boundary. Track per-user/group/XPC options for later.
+
+**Warning signs:**
+Docs mention `0666` as a fact but do not explain threat implications.
+
+**Phase to address:**
+Phase 15: Public Distribution UX and Security Posture.
+
+---
 
 ## Technical Debt Patterns
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Preserve producer-side drop-oldest | Minimal code churn | Undefined SPSC behavior remains | Never for v0.3 |
-| Silence callback tail only | Fast defensive fix | Large callbacks may still under-render audio | Acceptable if documented and tested; chunking can follow if needed |
-| Independent metric atomics | Simple race-free path | Snapshots may mix adjacent callback values | Acceptable for UI metrics |
-| Dry-run only installed sync in CI | No hardware needed | Does not prove live ring | Acceptable as CI layer, not final sign-off |
+| Keep misleading helper name | Avoids broad rename | Future realtime bug from trusting the name | Only with a temporary compatibility wrapper and TODO removed in same milestone. |
+| Leave unused `WriteSilence` helper | No code movement | Dead helper has wrong byte assumptions and can be revived incorrectly | Not acceptable in realtime code. |
+| Continue on missing notary credentials | Easier local builds | Public-release command loses meaning | Only with explicit opt-out variable and loud artifact labeling. |
+| Pin actions by major tags in release workflow | Easy updates | Mutable action supply-chain risk near secrets | Accept only with documented trust decision and Dependabot/watch process. |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| `BridgeInputOverrun` with tests | Update implementation but leave old test expectations | Rewrite tests to encode the selected ownership policy. |
-| `IoProcHandlers` interleaved output | Zero tail with wrong byte count | Account for channel count and interleaved/non-interleaved layouts. |
-| Swift process tests | Use real long sleeps | Use mock launcher hooks and short deterministic timeouts/test seams. |
-| Shm tests | Use production `/apm44_bridge_ring` | Continue using isolated short per-process shm names. |
-| Live verification | Rebuild driver but not app helper | Verify repo daemon, embedded helper, and live shm-status build IDs match. |
+| `notarytool` | Assume only `Invalid` means failure | Require `Accepted` plus successful exit status. |
+| `stapler` | Staple after building final container only | Ensure final distributed container includes the exact signed/stapled inner artifacts where feasible, then staple final container. |
+| GitHub Actions | Use tags in signing jobs without review | Pin critical actions to full SHA or record an explicit exception. |
+| Core Audio virtual mode | Share cleanup path with physical input mode blindly | Check which IOProcs were actually created. |
+| Shared memory | Treat local shm as private | Document local access and future hardening. |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Locks/allocations in IOProc | Clicks, dropouts, deadlock | Preallocate, use bounded loops, avoid blocking | Under callback pressure |
-| Oversized callback tail untouched | Stale audio or random output beyond first chunk | Tail silence or chunk processing | Devices with >1024 frame buffers |
-| Metrics publication with UB | Rare nonsense UI values or sanitizer findings | Atomics/double buffer | Under concurrent callback/control reads |
-| Shm capacity mismatch | Crash or memory corruption | Validate mapped size | Malformed/stale shm object |
+| Mutex in realtime metrics publisher | Rare callback jitter or priority inversion | Use lock-free/atomic publication | Under audio callback load. |
+| Allocating JSON fallback in hot path | CLI/UI jitter less critical, but accidental RT use risky | Keep serialization outside realtime path; use bounded formatting | If metrics serialization moves into callback path. |
+| Script tests require Apple credentials | CI cannot run blocker checks | Mock `xcrun`/PATH for parser tests | Every PR without notary profile. |
+
+## Security Mistakes
+
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| Undocumented `0666` shm | Local users/processes may read/write/DoS audio ring without users knowing | Public Local IPC threat model. |
+| Mutable actions in signing workflow | Third-party action compromise near secrets/artifacts | Full-length SHA pins or documented exception. |
+| Silent unsigned/unnotarized artifacts | Users hit Gatekeeper failures or lose trust | Fail release commands by default. |
+| TSan runtime in production | Sanitizer runtime not designed for production security constraints | Use TSan only in test builds. |
+
+## UX Pitfalls
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| Terminal-looking installer as primary path | Audio users may distrust or abandon install | Prefer signed PKG or make DMG/admin command explicit and polished. |
+| DMG notarized but inner tickets unclear | Offline Gatekeeper/support confusion | Staple/validate inner artifacts and final container. |
+| Docs overclaim security | User trust damage if assumptions surface later | Honest threat model with future hardening options. |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Ring fix:** No input-side path can call `PlanarRingBuffer::pop()`; tests assert this behavior.
-- [ ] **Callback fix:** Tests cover output buffers larger than `kMaxCallbackFrames` for interleaved and non-interleaved layouts.
-- [ ] **Stop fix:** Tests prove timeout reaches escalation and concurrent waiters complete without overwriting each other.
-- [ ] **Metrics fix:** `MetricsSnapshot` is not shared as a plain cross-thread payload.
-- [ ] **Shm fix:** Tests cover tiny/truncated shm object, header-size object, huge claimed capacity, and unterminated build ID.
-- [ ] **CI/live proof:** `scripts/ci.sh` includes non-hardware installed-sync dry-run, and final close records live installed evidence or explicit hardware blocker.
+- [ ] **Metrics race:** Stress test passes but source still copies a plain shared snapshot - verify no concurrent non-atomic payload access remains.
+- [ ] **JSON fix:** Normal src quality passes - verify intentionally long string truncation.
+- [ ] **Output-start failure:** Physical input mode tested - verify virtual-device mode with null input IOProc.
+- [ ] **Notary script:** Invalid status fails - verify auth error, network error, malformed output, and non-Accepted status.
+- [ ] **Release-all:** Builds artifacts - verify missing notary credentials fail unless explicit override is set.
+- [ ] **Workflow strictness:** Build step compiles - verify `verify-app-build.sh` is not masked.
+- [ ] **Docs:** Install page exists - verify local IPC threat model and installer UX are visible to public users.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Ring ownership regression | MEDIUM | Revert helper usage, restore push-only input path, rerun ring and soak tests. |
-| Output tail bug | LOW/MEDIUM | Add tail silence immediately, then evaluate chunking if audio behavior needs it. |
-| Stop wait deadlock | MEDIUM | Replace continuation singleton with waiter registry, add timeout tests. |
-| Metrics data race | MEDIUM | Convert fields to atomics or double-buffer; rerun hardening tests. |
-| Shm validation gap | MEDIUM | Add size checks and corrupt-object tests; verify no production shm name is touched. |
+| Metrics UB ships | HIGH | Replace publisher, add TSan proof, cut patch release, explain fix. |
+| Bad notarization script ships unnotarized artifact | HIGH | Pull artifact, rebuild with strict script, replace release asset. |
+| SHM threat model omitted | MEDIUM | Publish docs update and create tracked hardening issue. |
+| Misleading helper name causes future bug | MEDIUM | Rename helper, update tests, add code-owner review for realtime changes. |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| SPSC ownership violation | Phase 9 | Ring tests plus source search for producer-side `pop()`. |
-| Large callback tail | Phase 9 or 10 | Callback unit tests for >1024 frames. |
-| Swift stop deadlock | Phase 10 | XCTest stop timeout/concurrent waiter tests. |
-| Metrics data race | Phase 10 or 11 | Native tests/source audit proving atomic/double-buffer publication. |
-| Shm validation gap | Phase 11 | Corrupt shm Catch2 tests. |
-| Missing live proof | Phase 12 | `scripts/ci.sh`, `verify-installed-sync.sh`, `verify-hal-driver.sh`, `--shm-status`, and Cubase soak evidence. |
+| Metrics seqlock data race | Phase 13 | TSan-clean metrics test or equivalent source-level proof plus no plain payload copy. |
+| JSON truncation overread | Phase 13 | Long `srcQuality` test returns safe output. |
+| Core Audio failure path cleanup | Phase 13 | Virtual output-start failure test does not stop null input proc. |
+| Non-interleaved input overread | Phase 13 | Mismatched buffer-size test uses min frame count. |
+| Notary status masking | Phase 14 | Mocked `notarytool` failure matrix. |
+| Unnotarized release command | Phase 14 | Missing-profile test fails unless override set. |
+| Hidden shm threat model | Phase 15 | Public docs include Local IPC/security section. |
+| Installer UX ambiguity | Phase 15 | Release docs and scripts agree on DMG/PKG artifact sequence. |
+| Final validation drift | Phase 16 | Clean release validation command sequence recorded. |
 
 ## Sources
 
-- User-provided highest-priority bug/risk list.
-- Local source audit and tests listed in `STACK.md`.
-- v0.2 deferred items in `.planning/STATE.md`.
+- Attached "Blockers before publishing" review, 2026-06-12.
+- https://clang.llvm.org/docs/ThreadSanitizer.html
+- https://developer.apple.com/developer-id/
+- https://docs.github.com/en/actions/reference/security/secure-use
+- Repo source scan, 2026-06-12.
 
 ---
-*Pitfalls research for: v0.3 Realtime Audio Hardening*
+*Pitfalls research for: APM44 Bridge v0.4 Public Release Blocker Closure*
 *Researched: 2026-06-12*

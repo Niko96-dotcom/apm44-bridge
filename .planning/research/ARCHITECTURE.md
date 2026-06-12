@@ -1,212 +1,216 @@
-# Architecture Research: v0.3 Realtime Audio Hardening
+# Architecture Research
 
-**Domain:** macOS realtime audio bridge hardening
+**Domain:** macOS audio bridge public-release hardening
 **Researched:** 2026-06-12
-**Confidence:** HIGH for local architecture, MEDIUM for final phase split
+**Confidence:** HIGH
 
 ## Standard Architecture
 
 ### System Overview
 
 ```text
-Cubase / DAW @ 44.1 kHz
-        |
-        v
-APM44 HAL virtual output in coreaudiod
-        |
-        v
-POSIX shm ring `/apm44_bridge_ring`
-        |
-        v
-Bridge daemon
-  - virtual feed drains shm
-  - planar ring buffers input-rate audio
-  - SRC converts 44.1 -> 48 kHz
-  - output IOProc writes monitoring device
-        |
-        v
-USB-C AirPods Max @ 48 kHz
-
-Menu bar app
-  - launches/stops daemon
-  - watches devices/hotplug
-  - parses metrics
-  - guides live verification
++-------------------------------------------------------------+
+|                 Release Validation Surface                  |
+|  scripts/ci.sh  release-all.sh  sign-notarize.yml  docs     |
++-------------------------------------------------------------+
+|                  Public Artifact Pipeline                   |
+|  app build -> sign app/driver -> staple inner artifacts      |
+|  -> build/notarize/staple DMG or PKG -> spctl validation     |
++-------------------------------------------------------------+
+|                  Runtime Correctness Layer                  |
+|  MetricsPublisher  BridgeMetrics JSON  IOProc callbacks     |
+|  BridgeEngine start/stop error paths                        |
++-------------------------------------------------------------+
+|                  HAL / Shared-Memory Boundary               |
+|  APM44Bridge.driver -> /apm44_bridge_ring -> daemon          |
+|  local IPC threat model, shm mode, build-ID sync             |
++-------------------------------------------------------------+
 ```
 
 ### Component Responsibilities
 
-| Component | Responsibility | Current Risk |
-|-----------|----------------|--------------|
-| `PlanarRingBuffer` | Lock-free SPSC planar audio storage | Contract says SPSC, but producer path can also pop. |
-| `BridgeInputOverrun` | Overrun policy when input cannot push full callback | Current drop-oldest policy mutates consumer index from producer thread. |
-| `IoProcHandlers` | Convert Core Audio buffers to engine callbacks | Current clamp can leave unprocessed output tail. |
-| `BridgeEngine` metrics | Publish fill/ratio/xrun counters to control loop | Current seqlock copies a non-atomic payload across threads. |
-| `BridgeProcessManager` | App process lifecycle and restart/stop escalation | Current timeout path can hang if continuation child is cancelled. |
-| `MmapShmRing` / `ShmObjectIdentity` | Map and validate HAL shared-memory ring | Current validation omits total-size checks and bounded build-ID formatting. |
-| `scripts/ci.sh` | Non-hardware gate | Does not yet gate `verify-installed-sync.sh --dry-run`. |
+| Component | Responsibility | Typical Implementation |
+|-----------|----------------|------------------------|
+| `MetricsPublisher` | Transfer metrics from realtime/control paths to CLI/UI readers without data races | Atomic field representation or proven triple-buffer ownership. |
+| `BridgeMetrics::ToJsonLine` | Serialize daemon metrics safely for CLI/app consumption | Check `snprintf` return and never construct strings past buffer length. |
+| `IoProcHandlers` | Convert Core Audio buffers into engine input/output safely | Clamp by every channel buffer; silence all output tails. |
+| `BridgeEngine::start/stop` | Create/start/cleanup IOProcs symmetrically | Cleanup only resources created for the active mode. |
+| Release shell scripts | Build/sign/notarize/staple artifacts | Fail closed, print logs, require explicit override for local-only unsigned output. |
+| GitHub workflows | CI/release automation | No masked build failures; pin or justify critical actions. |
+| Docs | Public release trust model | Describe install UX, shm local IPC assumptions, and validation commands. |
 
 ## Recommended Project Structure
 
-Keep changes inside existing ownership boundaries:
+Keep the existing structure. v0.4 should patch in place:
 
 ```text
 BridgeDaemon/src/engine/
-  BridgeInputOverrun.h       # Replace or retire producer-side drop-oldest policy
-  IoProcHandlers.cpp         # Full callback coverage and tail silence/chunking
-  BridgeEngine.{h,cpp}       # Race-free metrics publication
-
-Shared/include/apm44/
-  PlanarRingBuffer.h         # Clarify SPSC contract if needed
-  ShmRingLayout.h            # Size validation helpers and bounded build-ID utilities
-  ShmObjectIdentity.h        # Header-size guard before mmap/read generation
-
-Shared/src/
-  MmapShmRing.cpp            # Mapping size validation and safe diagnostics
-
-App/APM44Bridge/
-  BridgeProcessManager.swift # Explicit termination waiter bookkeeping
++-- MetricsPublisher.h       # atomic metrics publication contract
++-- BridgeMetrics.cpp        # JSON truncation guard
++-- BridgeEngine.cpp         # virtual-device output-start failure cleanup
++-- IoProcHandlers.cpp       # non-interleaved input min-frame sizing, dead helper cleanup
++-- BridgeInputOverrun.h     # rename or compatibility wrapper for drop-new policy
 
 tests/
-  test_hardening_audit.cpp
-  test_mmap_shm_ring.cpp
-  test_shm_object_identity.cpp
-  test_bridge_process_manager.swift
++-- test_bridge_metrics.cpp  # JSON truncation regression
++-- test_metrics_publisher*  # race-free/TSan/source guard coverage
++-- test_io_proc_callbacks.cpp
++-- release script tests     # mocked xcrun/notarytool where repo convention supports it
+
+scripts/
++-- notarize-release-dmg.sh
++-- notarize-release-pkg.sh
++-- release-all.sh
++-- ci.sh
+
+.github/workflows/
++-- sign-notarize.yml
++-- release.yml
++-- ci.yml
++-- codeql.yml
+
+docs/
++-- release.md
++-- hal-driver.md
++-- install.md
 ```
+
+### Structure Rationale
+
+- **Patch existing release scripts:** avoids competing release paths.
+- **Keep metrics fix behind `MetricsPublisher`:** reduces blast radius and keeps `BridgeEngine` behavior stable.
+- **Use docs for security posture:** world-writable local shm may be acceptable for v0.4 only if it is not invisible.
+- **Keep public UX decisions near release docs/scripts:** roadmapping can decide whether PKG becomes primary without mixing that into realtime callback work.
 
 ## Architectural Patterns
 
-### Pattern 1: Preserve Callback Ownership
+### Pattern 1: Atomic Metrics Record
 
-**What:** Each IOProc owns only the operations assigned by the lock-free contract.
-Input may push, output may pop; no side owns both indices unless the buffer is redesigned.
+**What:** Store counters as `std::atomic<uint64_t>` and doubles as `std::atomic<uint64_t>` bit patterns. Readers reconstruct a `MetricsSnapshot` value from atomics.
 
-**When to use:** `PlanarRingBuffer` overrun handling.
+**When to use:** Single writer/multiple readers where values are telemetry and exact cross-field simultaneity is less important than race-free publication.
 
-**Trade-offs:** Drop-newest may lose incoming frames; output-owned drop-oldest is more complex. Both are safer than cross-thread consumer-index mutation.
+**Trade-offs:** Simple and RT-friendly; may need a generation counter if readers require all fields from one publication.
 
-### Pattern 2: Whole-Buffer Output Guarantees
+### Pattern 2: Triple Buffer With Ownership
 
-**What:** Treat Core Audio's actual buffer length as the output contract. If the engine can only process a chunk, explicitly silence or process subsequent chunks.
+**What:** Writer publishes into a buffer that no reader can concurrently copy; readers acquire a stable buffer index.
 
-**When to use:** `OutputIoProc()` for interleaved and non-interleaved output.
+**When to use:** If cross-field snapshot consistency is mandatory and atomics for each field are too cumbersome.
 
-**Trade-offs:** Tail silence is simpler and safe; chunking is more complete but can disturb input-demand accounting and converter continuity if done casually.
+**Trade-offs:** More complex lifetime rules; still RT-friendly when preallocated.
 
-### Pattern 3: Race-Free Metrics by Construction
+### Pattern 3: Fail-Closed Release Command
 
-**What:** Publish metrics via independent atomics or a double-buffer scheme where readers never observe a buffer being written.
+**What:** Release scripts treat any unexpected return code or non-accepted notary status as failure. Local development escape hatches are explicit and named.
 
-**When to use:** `BridgeEngine::publishMetricsSnapshot()` and `readMetricsSnapshot()`.
+**When to use:** Any command that can produce public artifacts.
 
-**Trade-offs:** Independent atomics may produce slightly inconsistent snapshots, but that is acceptable for UI metrics and avoids undefined behavior.
+**Trade-offs:** More annoying for maintainers; much safer for public publishing.
 
-### Pattern 4: Explicit Swift Waiter Registry
+### Pattern 4: Mock External CLIs in Script Tests
 
-**What:** Store termination waiters as individual entries; timeout removes/resumes its own waiter, termination resumes all pending waiters.
+**What:** Put a fake `xcrun` earlier on PATH and feed controlled `notarytool` output/exit codes.
 
-**When to use:** `BridgeProcessManager.waitForTermination()`.
+**When to use:** Release-script regression tests that should run without Apple credentials.
 
-**Trade-offs:** Slightly more bookkeeping, but deterministic timeout and supports concurrent waits.
-
-### Pattern 5: Validate Before Trust
-
-**What:** Validate shm object size before mapping header reads and before trusting `capacity_frames`.
-
-**When to use:** `MmapShmRing::open()`, `ReadLiveDriverGeneration()`, and header mismatch reporting.
-
-**Trade-offs:** More explicit failure paths, but safer diagnostics and no out-of-bounds access on malformed objects.
+**Trade-offs:** Does not replace live notarization, but catches parser and failure-mode bugs cheaply.
 
 ## Data Flow
-
-### Realtime Audio Flow
-
-```text
-Input callback / virtual feed
-    -> push only
-    -> PlanarRingBuffer write index
-
-Output callback
-    -> optional output-owned trim/rebuffer policy
-    -> pop only
-    -> SRC
-    -> full Core Audio output buffer
-```
 
 ### Metrics Flow
 
 ```text
-Output callback
-    -> publish atomic metric fields
-Control loop / CLI JSON
-    -> read latest atomics
-Menu bar app
-    -> parse stdout JSON
-    -> display metrics/staleness
+Audio/control path
+    -> MetricsPublisher atomic publish
+    -> BridgeEngine readMetricsSnapshot()
+    -> BridgeMetrics::ToJsonLine()
+    -> CLI stdout / app parser
 ```
 
-### Stop/Restart Flow
+### Release Flow
 
 ```text
-User/settings/hotplug action
-    -> initiateStop(reason)
-    -> waitForTermination(timeout)
-    -> terminate, then SIGKILL on timeout
-    -> handleTermination resumes waiters
-    -> restart or idle/error transition
+secret scan
+    -> app/native build
+    -> verify-app-build
+    -> sign app + driver
+    -> staple app + driver
+    -> build final DMG or PKG
+    -> notarytool submit --wait
+    -> require status: Accepted
+    -> stapler validate
+    -> spctl/pkgutil assessment
 ```
 
-### Shared-Memory Validation Flow
+### Local IPC Trust Flow
 
 ```text
-shm_open
-    -> fstat size >= sizeof(ShmRingHeader)
-    -> mmap header or full object
-    -> validate magic/version/header/channels/capacity
-    -> validate mapped size >= ShmTotalSize(capacity)
-    -> capture identity/generation
-    -> only then push/pop
+coreaudiod HAL driver
+    -> shm object /apm44_bridge_ring mode 0666
+    -> user daemon maps ring
+    -> docs describe local read/write/DoS assumptions
+    -> future hardening tracks per-user/group/XPC alternatives
 ```
+
+## Scaling Considerations
+
+This is a local audio utility, not a server. The important scale is operational and temporal:
+
+| Scale | Architecture Adjustments |
+|-------|--------------------------|
+| Single maintainer local build | Scripts may allow explicit unnotarized override. |
+| Public GitHub release | Scripts must fail closed and validation must prove exact artifacts. |
+| Multiple maintainers | SHA-pinned actions and documented certificate/keychain setup become more important. |
+| Broader DAW/device matrix | Add compatibility milestone after release blockers are closed. |
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Fixing Real-Time Races with Locks
+### Anti-Pattern 1: Telemetry Is "Only Metrics"
 
-**What people do:** Add a mutex around ring operations.
-**Why it's wrong:** Locks in IO callbacks can block the audio device.
-**Do this instead:** Preserve single-owner operations and use atomics for scalar cross-thread publication.
+**What people do:** Accept data races because metrics are not audio payload.
+**Why it's wrong:** Undefined behavior can miscompile, fail under TSan, or create unstable release behavior.
+**Do this instead:** Make the publication mechanism standards-compliant and test it under TSan where possible.
 
-### Anti-Pattern 2: Treating Tests as the Spec When Tests Encode a Bug
+### Anti-Pattern 2: Notarization Best-Effort in a Release Command
 
-**What people do:** Keep `test_hardening_audit.cpp` expecting producer-side drop-oldest.
-**Why it's wrong:** That test verifies a behavior that violates the SPSC contract.
-**Do this instead:** Rewrite the test around the new ownership policy.
+**What people do:** Continue when credentials are missing or output is not exactly rejected.
+**Why it's wrong:** Produces artifacts that look releasable but may fail Gatekeeper.
+**Do this instead:** Hard fail unless an explicit local-only override is present.
 
-### Anti-Pattern 3: Header Validation Without Size Validation
+### Anti-Pattern 3: Security by Omission
 
-**What people do:** Accept a valid-looking header from a tiny shm object.
-**Why it's wrong:** Ring operations then index beyond the mapped object.
-**Do this instead:** Validate `st_size` against `ShmTotalSize(capacity_frames)`.
+**What people do:** Leave `0666` shm mode undocumented because changing it is larger work.
+**Why it's wrong:** Users and contributors infer a stronger boundary than exists.
+**Do this instead:** Document the threat model now and track stronger ownership as future work.
 
 ## Integration Points
+
+### External Services
+
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| Apple notary service | `xcrun notarytool submit --wait`, then parse accepted status | Check return code and accepted status; fetch log when id is available. |
+| Gatekeeper | `spctl`, `stapler validate`, `codesign --verify` | Validate the final public container and inner artifacts. |
+| GitHub Actions | workflow dispatch and CI jobs | Release/signing workflows should not mask failures and should pin critical actions or document exceptions. |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| Input IOProc -> `PlanarRingBuffer` | Push-only SPSC producer | Do not call `pop()` from input path. |
-| Output IOProc -> `PlanarRingBuffer` | Pop-only SPSC consumer | Any oldest-drop policy belongs here if retained. |
-| Output IOProc -> metrics | Atomic publication | Avoid non-atomic shared struct payload. |
-| App -> daemon process | `Process`, pipes, termination handler | Explicit waiters must survive timeout/cancellation paths. |
-| HAL driver -> daemon | POSIX shm | Validate size/header/build IDs before trusting payload layout. |
-| CI -> installed sync | shell script dry-run | Add non-hardware check to `scripts/ci.sh`; keep live check manual. |
+| Realtime/control -> metrics readers | `MetricsPublisher` | Must be race-free and RT-safe. |
+| Core Audio -> engine input | `InputIoProc` channel pointers | Non-interleaved frame count must use the minimum available channel length. |
+| Engine start error -> cleanup | `BridgeEngine::start()` | Virtual-device mode should not stop a null/nonexistent input IOProc. |
+| Release scripts -> docs | command sequence | Docs must match actual strict behavior and artifact order. |
 
 ## Sources
 
-- Local source audit of the files listed in Recommended Project Structure.
-- Existing v0.2 research and current `.planning/PROJECT.md` state.
-- Existing test inventory from `tests/CMakeLists.txt` and Swift app tests.
+- https://clang.llvm.org/docs/ThreadSanitizer.html
+- https://developer.apple.com/developer-id/
+- https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution
+- https://docs.github.com/en/actions/reference/security/secure-use
+- Repo source scan, 2026-06-12.
 
 ---
-*Architecture research for: v0.3 Realtime Audio Hardening*
+*Architecture research for: APM44 Bridge v0.4 Public Release Blocker Closure*
 *Researched: 2026-06-12*

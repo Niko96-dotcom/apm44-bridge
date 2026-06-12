@@ -1,8 +1,8 @@
-# Stack Research: v0.3 Realtime Audio Hardening
+# Stack Research
 
-**Domain:** macOS Core Audio HAL bridge hardening
+**Domain:** macOS audio bridge public-release hardening
 **Researched:** 2026-06-12
-**Confidence:** HIGH for local stack, MEDIUM for implementation ordering
+**Confidence:** HIGH
 
 ## Recommended Stack
 
@@ -10,80 +10,102 @@
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| C++ | C++20 via CMake | Daemon, shared memory, ring buffers, metrics | Existing daemon/shared code is C++; C++20 atomics and standard library are enough for race-free snapshots without new dependencies. |
-| Swift | Apple Swift 6.3.2 | Menu bar app process lifecycle | Existing app uses Swift concurrency and `Process`; the stop-timeout fix should stay in this layer. |
-| Core Audio | macOS 14+ deployment target | Input/output IOProcs and HAL virtual device | Existing product contract depends on Core Audio callbacks and HAL driver behavior. |
-| POSIX shm | macOS POSIX shared memory | HAL driver to daemon audio transport | Existing IPC path is shm-based; v0.3 should harden validation rather than replace transport. |
-| Catch2 | v3.5.4 | C++ regression tests | Already integrated by `tests/CMakeLists.txt`; ideal for ring, callback, metrics, and shm edge cases. |
-| XCTest | Xcode macOS scheme | Swift process manager tests | Existing tests cover lifecycle; add stop-timeout/concurrent-waiter coverage here. |
+| C++20 atomics | current repo standard | Race-free metrics publication | The existing seqlock wraps a plain `MetricsSnapshot`; v0.4 should publish each shared field atomically or use a buffer ownership scheme that prevents concurrent non-atomic access. |
+| `std::atomic<uint64_t>` + bit-cast double storage | C++20 | Atomic representation for double metrics | Keeps CLI/UI metrics available without locking the realtime path. Store counters as atomics directly and floating fields as bit patterns. |
+| Clang ThreadSanitizer | Xcode/LLVM toolchain, `-fsanitize=thread` | Dynamic race detection | LLVM documents ThreadSanitizer as a data-race detector supported on Darwin arm64/x86_64. Use it for tests only, not production binaries. |
+| Catch2 | existing native test stack | C++ regression coverage | Already used by this repo for ring, callback, shm, metrics, and script-adjacent guards. |
+| XCTest | existing Swift test stack | App/process lifecycle regression coverage | Already verifies process manager and UI-adjacent state behavior. Keep using it for app workflow checks. |
+| `xcrun notarytool` + `xcrun stapler` | Xcode 14+ path | Developer ID notarization and ticket stapling | Apple supports custom workflows through `notarytool`; notarized artifacts receive tickets that Gatekeeper can evaluate. |
+| `codesign`, `pkgbuild`, `productsign`, `spctl`, `pkgutil` | Xcode/macOS tools | Release signing, installer construction, and assessment | Required for professional app/driver/PKG/DMG distribution validation. |
+| GitHub Actions pinned by commit SHA | GitHub-hosted workflow model | CI/release supply-chain hardening | GitHub states full-length commit SHAs are the immutable action reference option. |
 
 ### Supporting Libraries
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| libsamplerate | vendored | SRC processing | Keep unchanged; v0.3 should avoid converter churn unless callback chunking exposes a direct issue. |
-| libASPL | vendored | HAL driver scaffolding | Keep existing Float32 HAL contract; this milestone is IPC/callback hardening, not stream-format redesign. |
-| Darwin/POSIX | system | `kill`, `shm_open`, `fstat`, `mmap`, `munmap` | Required for process escalation and shm validation. |
+| Existing `MetricsPublisher` wrapper | repo-local | Single integration point for metrics publication | Replace its internals while preserving `BridgeEngine` call sites. |
+| Existing shell scripts under `scripts/` | repo-local | Release automation | Patch scripts rather than adding a second release path. |
+| Mock shell harness or lightweight fixture scripts | repo-local | Test notary/release failure cases | Use for `notarytool` output variants, missing credentials, and explicit unnotarized override checks. |
 
 ### Development Tools
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| `scripts/ci.sh` | Full non-hardware verification | Runs secret scan, CMake build/tests, Swift app build, Swift unit tests. |
-| `ctest --test-dir build --output-on-failure` | Native regression loop | Use for ring/callback/metrics/shm tests. |
-| `xcodebuild ... -only-testing:APM44BridgeTests` | Swift lifecycle regression loop | Use for stop escalation and concurrent waiter tests. |
-| `scripts/verify-installed-sync.sh` | Installed helper/repo/live shm build-ID proof | Exists but is not CI-gated yet; v0.3 should wire at least dry-run coverage into CI. |
-| `scripts/verify-hal-driver.sh` | Live driver verification | Still required for final live proof on operator hardware. |
+| `cmake`/`ctest` | Native build and tests | Add a TSan-capable build target or documented local command for metrics tests. |
+| `xcodebuild test` | Swift app tests | Keep as part of `scripts/ci.sh`. |
+| `bash scripts/ci.sh` | Repo gate | Should include non-hardware release-script checks where possible. |
+| `bash scripts/verify-app-build.sh` | App artifact gate | Must not be masked in signing/notarization workflows. |
+| `bash scripts/release-all.sh` | Maintainer release command | Should fail when notarization credentials are missing unless an explicit opt-out is set. |
 
 ## Installation
 
-No stack additions are recommended.
+No new runtime dependency is required. v0.4 should use the existing repo stack:
 
 ```bash
-bash scripts/ci.sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel 4
 ctest --test-dir build --output-on-failure
-xcodebuild -project App/APM44Bridge.xcodeproj \
-  -scheme APM44Bridge \
-  -destination 'platform=macOS' \
-  test -only-testing:APM44BridgeTests \
-  CODE_SIGNING_ALLOWED=NO
+
+# TSan-capable local proof, exact CMake switch to be defined during implementation.
+cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DAPM44_ENABLE_TSAN=1
+cmake --build build-tsan --parallel 4
+ctest --test-dir build-tsan --output-on-failure -R Metrics
 ```
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| Independent atomic metric fields | Seqlock over plain struct payload | Do not use the current seqlock pattern unless the payload buffer is made race-free. Plain non-atomic payload reads/writes are the issue. |
-| Keep SPSC ring ownership strict | Producer-side drop-oldest by calling `pop()` | Avoid; it violates the documented ring contract when output is also the consumer. |
-| Chunk/zero whole output callback | Keep clamping to 1024 frames | Avoid; a larger Core Audio buffer can leave the tail stale or untouched. |
-| Explicit waiter bookkeeping in Swift | `withThrowingTaskGroup` plus one stored continuation | Avoid; cancellation does not resume a checked continuation, and one continuation can be overwritten. |
-| Validate mapped size before trusting shm capacity | Header-only validation | Avoid; a small shm object can claim a large capacity. |
+| Atomic field publication | Seqlock around plain struct copy | Do not use for cross-thread non-atomic payloads; it is not data-race safe in standard C++. |
+| Atomic bit-cast doubles | Mutex-protected metrics snapshot | Use a mutex only outside realtime paths; avoid it where an audio callback can publish. |
+| Explicit fail-closed notary scripts | Grep only for `status: Invalid` | Do not use for release commands; misses auth, network, malformed output, and non-Accepted states. |
+| Signed/notarized PKG direction | DMG with `.command` installer only | DMG can remain an artifact, but HAL driver install UX should prefer a proper signed installer path. |
+| Full-length SHA pins | Major tags like `actions/checkout@v6` | Tags are acceptable only with a documented trust decision; release/signing workflows should prefer SHA pins. |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Mutexes or blocking repair inside IOProcs | Real-time callback path must not block or allocate. | Preallocated scratch, bounded loops, non-RT control-path recovery. |
-| Producer-side consumer operations on `PlanarRingBuffer` | Breaks single-consumer ownership of `readIndex_`. | Drop-newest on input overflow or move oldest-drop policy to output thread. |
-| Raw C-string formatting for shm build IDs | Corrupt headers may not contain a NUL terminator. | Bounded string conversion over the 64-byte array. |
-| Tests using `/apm44_bridge_ring` | Can destroy the production live ring. | Isolated short shm names per test process. |
-| Replacing the audio stack to fix local races | Adds risk and scope without addressing root causes. | Keep stack; harden ownership, validation, and verification. |
+| Plain `MetricsSnapshot` shared under seqlock | Reader and writer still access non-atomic fields concurrently | Atomic field representation or proven buffer handoff. |
+| `std::string(buffer, written)` after truncated `snprintf` | `snprintf` returns the would-have-written size, which can exceed the stack buffer | Return `{}` or allocate a correctly sized string after detecting truncation. |
+| `|| true` in signing/release workflows | Masks app build failures near credentials and artifacts | Fail the job, or require an explicit manual skip variable. |
+| Silent unnotarized release path | Produces artifacts that can look publishable but are not public-release ready | Hard fail unless `APM44_ALLOW_UNNOTARIZED=1` or equivalent is set. |
+| Undocumented world-writable shm | Looks like a security boundary while local users/processes can interfere | Document local IPC assumptions and future hardening options. |
+
+## Stack Patterns by Variant
+
+**If publishing a public DMG remains primary:**
+- Staple inner `.app` and `.driver` before final DMG construction where possible.
+- Notarize and staple the final DMG.
+- Validate app, driver, and DMG with `codesign`, `stapler`, and `spctl`.
+
+**If moving to PKG-primary install UX:**
+- Keep app signed with Developer ID Application.
+- Sign the installer package with Developer ID Installer.
+- Notarize and staple the PKG.
+- Keep DMG either as a container for the PKG or as a secondary artifact.
+
+**If GitHub signing/notarization stays manual:**
+- Keep workflow dispatch.
+- Fail hard when prerequisites are missing.
+- Make "local only, unsigned/unnotarized" an explicit opt-in path, never the default release command.
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
 |-----------|-----------------|-------|
-| CMake 4.3.3 | C++20 project | Local `cmake --version` reports 4.3.3; `CMakeLists.txt` requires CMake 3.28 minimum. |
-| Apple clang 21.0.0 | C++20 daemon/shared tests | Local `clang++ --version` reports Apple clang 21.0.0. |
-| Apple Swift 6.3.2 | macOS app tests | Local `swift --version` reports Swift 6.3.2. |
-| Catch2 v3.5.4 | CMake native tests | Fetched by `tests/CMakeLists.txt`. |
+| ThreadSanitizer | Darwin arm64/x86_64 | LLVM documents support on Darwin; use only in test binaries. |
+| Apple notarization | Xcode 14+ `notarytool` | Apple stopped accepting `altool`/older Xcode uploads on 2023-11-01. |
+| GitHub Actions | Full-length action SHA pins | GitHub documents SHA pinning as the immutable action reference model. |
 
 ## Sources
 
-- Local source audit: `BridgeInputOverrun.h`, `PlanarRingBuffer.cpp`, `IoProcHandlers.cpp`, `BridgeEngine.cpp`, `MmapShmRing.cpp`, `ShmObjectIdentity.h`, `BridgeProcessManager.swift`.
-- Local verification scripts: `scripts/ci.sh`, `scripts/verify-installed-sync.sh`, `scripts/verify-hal-driver.sh`.
-- Local toolchain commands: `swift --version`, `clang++ --version`, `cmake --version`.
+- https://clang.llvm.org/docs/ThreadSanitizer.html - TSan support, usage, and non-production runtime note.
+- https://developer.apple.com/developer-id/ - Developer ID signing, notarytool, stapler, ZIP/PKG/DMG support.
+- https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution - Installer package signing expectation.
+- https://docs.github.com/en/actions/reference/security/secure-use - GitHub Actions SHA-pinning and workflow security guidance.
+- Repo source scan: `MetricsPublisher.h`, `BridgeMetrics.cpp`, `BridgeEngine.cpp`, `IoProcHandlers.cpp`, `scripts/*`, `.github/workflows/*`.
 
 ---
-*Stack research for: v0.3 Realtime Audio Hardening*
+*Stack research for: APM44 Bridge v0.4 Public Release Blocker Closure*
 *Researched: 2026-06-12*
