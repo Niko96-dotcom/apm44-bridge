@@ -3,6 +3,8 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <string>
 
 namespace apm44 {
 
@@ -48,6 +50,24 @@ inline std::size_t ShmSamplesOffset() {
 inline std::size_t ShmTotalSize(uint32_t capacityFrames) {
   return ShmSamplesOffset() + static_cast<std::size_t>(capacityFrames) * kShmChannels *
                                sizeof(float);
+}
+
+// Bounded rendering of a build-ID field. The on-wire field is a
+// fixed-size `char[kShmBuildIdBytes]` that a buggy or hostile producer
+// may leave without a NUL terminator — never stream it raw. `strnlen`
+// reads at most `kShmBuildIdBytes` bytes (and stops early at the first
+// NUL, so short C-strings like `kBuildId` are not over-read), then we
+// copy exactly that many bytes. Returns "<unterminated>" when the field
+// is empty or all-zero.
+inline std::string RenderShmBuildId(const char* field) {
+  if (field == nullptr) {
+    return "<unterminated>";
+  }
+  const std::size_t len = ::strnlen(field, kShmBuildIdBytes);
+  if (len == 0) {
+    return "<unterminated>";
+  }
+  return std::string(field, len);
 }
 
 inline bool ValidateShmHeader(const ShmRingHeader& header) {
