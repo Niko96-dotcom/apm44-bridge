@@ -16,17 +16,6 @@ std::size_t ClampCallbackFrames(std::size_t frames) {
   return std::min(frames, kMaxCallbackFrames);
 }
 
-void WriteSilence(AudioBufferList* bufferList, std::size_t frames) {
-  if (bufferList == nullptr) {
-    return;
-  }
-  for (UInt32 i = 0; i < bufferList->mNumberBuffers; ++i) {
-    if (bufferList->mBuffers[i].mData != nullptr) {
-      std::memset(bufferList->mBuffers[i].mData, 0, frames * sizeof(float));
-    }
-  }
-}
-
 }  // namespace
 
 OSStatus InputIoProc(AudioDeviceID,
@@ -66,8 +55,9 @@ OSStatus InputIoProc(AudioDeviceID,
   if (b0 == nullptr || b1 == nullptr) {
     return noErr;
   }
-  std::size_t frames = inputData->mBuffers[0].mDataByteSize / sizeof(float);
-  frames = ClampCallbackFrames(frames);
+  const std::size_t b0Frames = inputData->mBuffers[0].mDataByteSize / sizeof(float);
+  const std::size_t b1Frames = inputData->mBuffers[1].mDataByteSize / sizeof(float);
+  std::size_t frames = ClampCallbackFrames(std::min(b0Frames, b1Frames));
   const float* channels[2] = {b0, b1};
   engine->onInput(channels, frames);
   return noErr;

@@ -19,11 +19,11 @@ namespace apm44 {
 //
 // `dropScratch` is retained in the signature for ABI stability with the
 // existing call site in `BridgeEngine.cpp`; it is no longer read.
-inline void DropOldestThenPush(PlanarRingBuffer& ring,
-                               float* /*dropScratch*/[2],
-                               DriftController& drift,
-                               const float* const channels[2],
-                               std::size_t frames) {
+inline void PushDroppingNewInput(PlanarRingBuffer& ring,
+                                 float* /*dropScratch*/[2],
+                                 DriftController& drift,
+                                 const float* const channels[2],
+                                 std::size_t frames) {
   const std::size_t accepted = ring.push(channels, frames);
   if (accepted < frames) {
     drift.notifyOverrun();

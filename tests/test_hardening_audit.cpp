@@ -7,7 +7,28 @@
 #include "engine/BridgeInputOverrun.h"
 
 #include <chrono>
+#include <fstream>
+#include <iterator>
+#include <string>
 #include <vector>
+
+namespace {
+
+std::string ReadFile(const char* path) {
+  for (const std::string prefix : {"", "../", "../../"}) {
+    std::ifstream in(prefix + path);
+    if (in) {
+      return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+  }
+  return {};
+}
+
+bool Contains(const std::string& haystack, const std::string& needle) {
+  return haystack.find(needle) != std::string::npos;
+}
+
+}  // namespace
 
 TEST_CASE("MmapShmRing closed ring returns zero safely", "[hardening_audit]") {
   apm44::MmapShmRing ring;
@@ -46,7 +67,7 @@ TEST_CASE("PlanarRingBuffer drop-input overrun preserves consumer-visible fill",
   const float new0[2] = {90, 91};
   const float new1[2] = {92, 93};
   const float* incoming[2] = {new0, new1};
-  apm44::DropOldestThenPush(ring, dropScratch, drift, incoming, 2);
+  apm44::PushDroppingNewInput(ring, dropScratch, drift, incoming, 2);
 
   // Overrun was reported, fill preserved at 3 (no producer-side pop).
   REQUIRE(ring.availableToRead() == 3);
@@ -72,4 +93,13 @@ TEST_CASE("kMaxCallbackFrames matches scratch capacity constant", "[hardening_au
 
 TEST_CASE("kControlLoopInterval blocks at least 100ms", "[hardening_audit]") {
   STATIC_REQUIRE(apm44::kControlLoopInterval >= std::chrono::milliseconds(100));
+}
+
+TEST_CASE("virtual-device output-start failure cleanup avoids null input stop",
+          "[hardening_audit][AUD-01][AUD-03]") {
+  const std::string source = ReadFile("BridgeDaemon/src/engine/BridgeEngine.cpp");
+
+  REQUIRE(Contains(source, "bool inputStarted = false;"));
+  REQUIRE(Contains(source, "cleanupIOProcs(inputStarted, false);"));
+  REQUIRE_FALSE(Contains(source, "AudioDeviceStop(devices_.input.deviceId, inputProc_);\n    stop();"));
 }

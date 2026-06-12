@@ -82,7 +82,7 @@ TEST_CASE("PlanarRingBuffer 10k push pop alternation", "[planar_ring]") {
 // unaccepted tail and notify the drift controller without ever calling
 // `pop` from the producer path. The test instantiates a non-production
 // `PlanarRingBuffer` directly — no `/apm44_bridge_ring` is touched.
-TEST_CASE("ProducerDropOldestThenPushDropsUnacceptedAndNotifiesOverrun",
+TEST_CASE("ProducerPushDroppingNewInputDropsUnacceptedAndNotifiesOverrun",
           "[planar_ring][rt][RT-01][RT-02]") {
   apm44::PlanarRingBuffer ring;
   ring.prepare(8);  // capacity 8, max writable 7
@@ -108,7 +108,7 @@ TEST_CASE("ProducerDropOldestThenPushDropsUnacceptedAndNotifiesOverrun",
   float* dropScratch[2] = {unusedDropScratch, unusedDropScratch};
   const std::uint64_t overrunsBefore = drift.overrunCount();
 
-  apm44::DropOldestThenPush(ring, dropScratch, drift, incIn, 4);
+  apm44::PushDroppingNewInput(ring, dropScratch, drift, incIn, 4);
 
   REQUIRE(drift.overrunCount() == overrunsBefore + 1);
   // Consumer-visible fill is unchanged: 7 frames still pending read.
@@ -130,7 +130,7 @@ TEST_CASE("ProducerPathSucceedsWhenRingHasCapacity",
   float* dropScratch[2] = {scratch, scratch};
 
   const std::uint64_t overrunsBefore = drift.overrunCount();
-  apm44::DropOldestThenPush(ring, dropScratch, drift, in, 4);
+  apm44::PushDroppingNewInput(ring, dropScratch, drift, in, 4);
 
   // No overrun, and the consumer can read exactly the 4 pushed frames.
   REQUIRE(drift.overrunCount() == overrunsBefore);

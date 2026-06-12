@@ -67,6 +67,7 @@ class BridgeEngine {
   float* outputScratch1() { return outputScratch1_.data(); }
 
  private:
+  void cleanupIOProcs(bool inputStarted, bool outputStarted);
   void publishMetricsSnapshot();
   MetricsSnapshot readMetricsSnapshot() const;
 

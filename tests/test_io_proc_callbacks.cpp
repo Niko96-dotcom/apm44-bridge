@@ -59,6 +59,17 @@ void RenderNonInterleavedOutput(std::vector<float>& b0,
   }
 }
 
+// Mirrors the mismatched non-interleaved input buffer sizing in
+// IoProcHandlers.cpp. The input callback must never process more frames
+// than the shortest channel buffer actually contains.
+std::size_t MismatchedNonInterleavedInputFrames(std::size_t b0Bytes,
+                                                std::size_t b1Bytes,
+                                                std::size_t scratchCapacity) {
+  const std::size_t b0Frames = b0Bytes / sizeof(float);
+  const std::size_t b1Frames = b1Bytes / sizeof(float);
+  return std::min(std::min(b0Frames, b1Frames), scratchCapacity);
+}
+
 }  // namespace
 
 TEST_CASE("OversizedInterleavedOutputSilencesTail", "[io_proc][rt][RT-03][RT-04]") {
@@ -126,4 +137,12 @@ TEST_CASE("InterleavedOutputAtScratchCapacityBoundary", "[io_proc][rt][RT-03][RT
     REQUIRE(interleaved[i * 2 + 0] == static_cast<float>(i));
     REQUIRE(interleaved[i * 2 + 1] == -static_cast<float>(i));
   }
+}
+
+TEST_CASE("mismatched non-interleaved input buffer sizes use shortest channel",
+          "[io_proc][rt][AUD-02][AUD-03]") {
+  const std::size_t b0Bytes = 512 * sizeof(float);
+  const std::size_t b1Bytes = 128 * sizeof(float);
+
+  REQUIRE(MismatchedNonInterleavedInputFrames(b0Bytes, b1Bytes, kMaxCallbackFrames) == 128);
 }

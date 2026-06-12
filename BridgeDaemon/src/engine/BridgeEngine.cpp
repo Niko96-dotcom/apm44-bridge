@@ -159,7 +159,7 @@ double BridgeEngine::converterRatio() const {
 
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
   float* dropCh[2] = {inputDropScratch0_.data(), inputDropScratch1_.data()};
-  DropOldestThenPush(ring_, dropCh, drift_, channels, frames);
+  PushDroppingNewInput(ring_, dropCh, drift_, channels, frames);
 }
 
 void BridgeEngine::publishMetricsSnapshot() {
@@ -295,6 +295,7 @@ bool BridgeEngine::start() {
             << " converter_ratio=" << converterRatio() << "\n";
 
   OSStatus status = noErr;
+  bool inputStarted = false;
   if (!virtualDevice_) {
     status = AudioDeviceCreateIOProcID(devices_.input.deviceId, InputIoProc, this, &inputProc_);
     if (status != noErr) {
@@ -313,14 +314,14 @@ bool BridgeEngine::start() {
   if (!virtualDevice_) {
     status = AudioDeviceStart(devices_.input.deviceId, inputProc_);
     if (status != noErr) {
-      stop();
+      cleanupIOProcs(false, false);
       return false;
     }
+    inputStarted = true;
   }
   status = AudioDeviceStart(devices_.output.deviceId, outputProc_);
   if (status != noErr) {
-    AudioDeviceStop(devices_.input.deviceId, inputProc_);
-    stop();
+    cleanupIOProcs(inputStarted, false);
     return false;
   }
 
@@ -328,17 +329,25 @@ bool BridgeEngine::start() {
   return true;
 }
 
-void BridgeEngine::stop() {
+void BridgeEngine::cleanupIOProcs(bool inputStarted, bool outputStarted) {
   if (outputProc_ != nullptr) {
-    AudioDeviceStop(devices_.output.deviceId, outputProc_);
+    if (outputStarted) {
+      AudioDeviceStop(devices_.output.deviceId, outputProc_);
+    }
     AudioDeviceDestroyIOProcID(devices_.output.deviceId, outputProc_);
     outputProc_ = nullptr;
   }
   if (inputProc_ != nullptr) {
-    AudioDeviceStop(devices_.input.deviceId, inputProc_);
+    if (inputStarted) {
+      AudioDeviceStop(devices_.input.deviceId, inputProc_);
+    }
     AudioDeviceDestroyIOProcID(devices_.input.deviceId, inputProc_);
     inputProc_ = nullptr;
   }
+}
+
+void BridgeEngine::stop() {
+  cleanupIOProcs(inputProc_ != nullptr, outputProc_ != nullptr);
   if (virtualDevice_) {
     virtualFeed_.close();
   }
