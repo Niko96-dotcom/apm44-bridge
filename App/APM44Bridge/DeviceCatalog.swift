@@ -80,6 +80,10 @@ enum DeviceCatalog {
         process.standardOutput = pipe
         process.standardError = Pipe()
         try process.run()
+        // Drain stdout before waiting. A child that fills the ~64 KB pipe
+        // buffer blocks on write until the reader consumes it, so reading
+        // only after waitUntilExit() can deadlock on a large device list.
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             throw NSError(
@@ -88,7 +92,6 @@ enum DeviceCatalog {
                 userInfo: [NSLocalizedDescriptionKey: "apm44-bridge --list-devices failed"]
             )
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let text = String(data: data, encoding: .utf8) ?? ""
         return parseListDevicesOutput(text)
     }
