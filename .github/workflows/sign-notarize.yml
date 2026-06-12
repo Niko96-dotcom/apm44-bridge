@@ -44,7 +44,7 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --target apm44-bridge APM44Bridge
-          bash scripts/verify-app-build.sh || true
+          bash scripts/verify-app-build.sh
 
       - name: Sign (requires SIGN_ID secret)
         env:

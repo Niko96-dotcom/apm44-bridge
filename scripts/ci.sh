@@ -23,6 +23,9 @@ cmake --build "$BUILD_DIR" --parallel
 echo "== Native tests =="
 ctest --test-dir "$BUILD_DIR" --output-on-failure
 
+echo "== Release script tests =="
+bash tests/test_release_scripts.sh
+
 if [[ "${APM44_RUN_SOAK:-0}" == "1" ]]; then
   echo "== Offline soak =="
   "$BUILD_DIR/BridgeDaemon/apm44-soak" --duration-sec "${APM44_SOAK_SECONDS:-60}"
@@ -49,7 +52,12 @@ fi
 # non-fatal — the script exits 0 with a WARN if the embedded
 # helper is missing, which is the expected state until
 # scripts/embed-daemon-in-app.sh has been run.
+if [[ -d "$BUILD_DIR/$CONFIG/APM44 Bridge.app" ]]; then
+  echo "== Embed daemon in app bundle =="
+  APM44_BUILD_CONFIG="$CONFIG" bash scripts/embed-daemon-in-app.sh
+fi
+
 echo "== Installed-sync dry-run =="
-bash scripts/verify-installed-sync.sh --dry-run
+APM44_BUILD_CONFIG="$CONFIG" bash scripts/verify-installed-sync.sh --dry-run
 
 echo "ci: OK"
