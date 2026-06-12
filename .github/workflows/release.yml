@@ -1,5 +1,7 @@
 name: Release
 
+# GitHub Actions trust decision: official actions stay tag-pinned for v0.4;
+# see docs/release.md before moving more release publication into CI.
 on:
   push:
     tags:

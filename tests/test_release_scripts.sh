@@ -108,7 +108,11 @@ fi
 
 case "$script" in
   scripts/build-release-dmg.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh)
-    printf '%s\n' "bash $script $*" >>"${APM44_FAKE_XCRUN_LOG:?}"
+    prefix=""
+    if [[ "${APM44_DMG_PACKAGE_ONLY:-0}" == "1" ]]; then
+      prefix="APM44_DMG_PACKAGE_ONLY=1 "
+    fi
+    printf '%s\n' "${prefix}bash $script $*" >>"${APM44_FAKE_XCRUN_LOG:?}"
     exit 0
     ;;
   *)
@@ -244,6 +248,26 @@ run_release_all_unnotarized_override() {
   assert_not_contains "$LOG" "notarytool submit"
 }
 
+run_release_all_notary_ready_sequence() {
+  local out="$TMP/release-all-notary-ready.out"
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_NOTARY_HISTORY=ok \
+    /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
+
+  assert_contains "$LOG" "bash scripts/build-release-dmg.sh"
+  assert_contains "$LOG" "bash scripts/notary-dry-run.sh"
+  assert_contains "$LOG" "xcrun stapler staple build/Release/APM44 Bridge.app"
+  assert_contains "$LOG" "xcrun stapler validate build/Release/APM44 Bridge.app"
+  assert_contains "$LOG" "xcrun stapler staple build/Driver/APM44Bridge.driver"
+  assert_contains "$LOG" "xcrun stapler validate build/Driver/APM44Bridge.driver"
+  assert_contains "$LOG" "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh"
+  assert_contains "$LOG" "bash scripts/notarize-release-dmg.sh"
+}
+
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" accepted success "dmg-accepted"
 run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" accepted success "pkg-accepted"
 
@@ -256,5 +280,6 @@ run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" malforme
 
 run_release_all_missing_credentials
 run_release_all_unnotarized_override
+run_release_all_notary_ready_sequence
 
 echo "release script tests: OK"

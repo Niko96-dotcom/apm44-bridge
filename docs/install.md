@@ -11,8 +11,9 @@ From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
 | **`APM44Bridge-0.1.1.dmg`** | DMG-primary public release artifact; run **Install APM44 Bridge.command** inside the DMG |
 
 Maintainer build: `bash scripts/release-all.sh` produces the signed,
-notarized, stapled DMG. The PKG flow is maintainer-only until Developer ID
-Installer signing, installer UX, and validation are complete.
+notarized, stapled DMG. The final DMG is packaged after the inner app and HAL
+driver are stapled and validated. The PKG flow is maintainer-only until
+Developer ID Installer signing, installer UX, and validation are complete.
 
 ## Install
 

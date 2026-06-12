@@ -77,6 +77,19 @@ bash scripts/release-all.sh
 
 The public artifact is `build/signing/APM44Bridge-<version>.dmg`.
 
+`release-all.sh` uses this order:
+
+1. Build Release app, daemon, and driver.
+2. Embed the current daemon into `APM44 Bridge.app`.
+3. Sign the daemon, app, and driver.
+4. Submit a signed app/driver evidence zip with `notarytool --wait`.
+5. Staple and validate the inner app and driver.
+6. Repackage the final DMG from those stapled inner artifacts.
+7. Notarize, staple, and validate the final public DMG.
+
+This order matters: the distributed DMG should contain the same stapled app and
+driver that were validated immediately before the final container was created.
+
 Manual steps (after Release build):
 
 ```bash
@@ -85,7 +98,10 @@ bash scripts/sign-release.sh
 bash scripts/codesign-verify-release.sh
 bash scripts/notary-dry-run.sh          # full zip submit (SHIP-02 evidence)
 xcrun stapler staple "build/Release/APM44 Bridge.app"
+xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler staple build/Driver/APM44Bridge.driver
+xcrun stapler validate build/Driver/APM44Bridge.driver
+APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh
 bash scripts/notarize-release-dmg.sh
 # optional maintainer-only pkg:
 APM44_BUILD_PKG=1 bash scripts/release-all.sh
@@ -231,6 +247,27 @@ Current repo CI expectation (see [daw-matrix.md](daw-matrix.md)):
 - **Manual:** DAW matrix, export bounce QA-02, 30+ min hardware soak, notarization with real Developer ID credentials
 
 Optional future: GitHub Actions `macos-latest` job compiling daemon + tests only (no HAL install, no notary secrets).
+
+## GitHub Actions trust decision
+
+v0.4 keeps official GitHub actions tag-pinned instead of full-length SHA pinned
+for the release-adjacent workflows:
+
+- `.github/workflows/release.yml`: `actions/checkout`, `actions/upload-artifact`
+- `.github/workflows/sign-notarize.yml`: `actions/checkout`
+- `.github/workflows/ci.yml`: `actions/checkout`, `actions/dependency-review-action`
+
+Rationale:
+
+- These are official GitHub-maintained actions.
+- Dependabot (`.github/dependabot.yml`) checks GitHub Actions weekly.
+- Signing/notarization remains local-maintainer controlled unless a runner is
+  explicitly provisioned with Apple credentials.
+- Release publication still requires maintainer review of the produced artifact.
+
+Future hardening trigger: before moving more signing, notarization, or release
+publication into GitHub-hosted automation, pin critical actions to full-length
+SHA revisions and document the refresh procedure.
 
 ## Related
 

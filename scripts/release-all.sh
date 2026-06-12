@@ -37,7 +37,12 @@ if [[ "$NOTARY_READY" == "1" ]]; then
 
   echo "== Staple app and driver =="
   xcrun stapler staple "build/Release/APM44 Bridge.app"
+  xcrun stapler validate "build/Release/APM44 Bridge.app"
   xcrun stapler staple build/Driver/APM44Bridge.driver
+  xcrun stapler validate build/Driver/APM44Bridge.driver
+
+  echo "== Package final DMG from stapled artifacts =="
+  APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh
 
   echo "== Notarize DMG (primary distribution) =="
   bash scripts/notarize-release-dmg.sh

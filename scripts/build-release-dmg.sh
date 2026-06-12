@@ -7,6 +7,7 @@ CONFIG="${APM44_BUILD_CONFIG:-Release}"
 VERSION="${APM44_VERSION:-0.1.1}"
 OUT="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 STAGING="${APM44_DMG_STAGING:-$ROOT/build/signing/dmg-staging}"
+PACKAGE_ONLY="${APM44_DMG_PACKAGE_ONLY:-0}"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<EOF
@@ -15,6 +16,9 @@ Usage: build-release-dmg.sh [--help]
 Build Release artifacts, embed daemon, sign, and create a DMG for distribution.
 
 Prerequisites: Developer ID cert, optional notarization (scripts/notary-dry-run.sh)
+
+Environment:
+  APM44_DMG_PACKAGE_ONLY=1  package existing app/driver without rebuilding or re-signing
 
 Output: build/signing/APM44Bridge-<version>.dmg
 EOF
@@ -36,23 +40,34 @@ resolve_sign_id() {
   fi
 }
 
-echo "Building Release…"
-cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release
-cmake --build "$ROOT/build" --target apm44-bridge APM44Bridge
+if [[ "$PACKAGE_ONLY" != "1" ]]; then
+  echo "Building Release..."
+  cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release
+  cmake --build "$ROOT/build" --target apm44-bridge APM44Bridge
 
-(cd "$ROOT/App" && xcodegen generate)
-xcodebuild -project "$ROOT/App/APM44Bridge.xcodeproj" -scheme APM44Bridge \
-  -configuration "$CONFIG" build CODE_SIGNING_ALLOWED=NO \
-  CONFIGURATION_BUILD_DIR="$ROOT/build/$CONFIG"
+  (cd "$ROOT/App" && xcodegen generate)
+  xcodebuild -project "$ROOT/App/APM44Bridge.xcodeproj" -scheme APM44Bridge \
+    -configuration "$CONFIG" build CODE_SIGNING_ALLOWED=NO \
+    CONFIGURATION_BUILD_DIR="$ROOT/build/$CONFIG"
 
-bash "$ROOT/scripts/embed-daemon-in-app.sh"
+  bash "$ROOT/scripts/embed-daemon-in-app.sh"
 
-if [[ -n "${SIGN_ID:-}" ]] || security find-identity -v -p codesigning | grep -q 'Developer ID Application'; then
-  bash "$ROOT/scripts/sign-release.sh"
+  if [[ -n "${SIGN_ID:-}" ]] || security find-identity -v -p codesigning | grep -q 'Developer ID Application'; then
+    bash "$ROOT/scripts/sign-release.sh"
+  fi
+else
+  echo "Packaging existing app and driver into DMG..."
 fi
 
 APP="$ROOT/build/$CONFIG/APM44 Bridge.app"
 DRIVER="${APM44_DRIVER_PATH:-$ROOT/build/Driver/APM44Bridge.driver}"
+
+for artifact in "$APP" "$DRIVER"; do
+  if [[ ! -e "$artifact" ]]; then
+    echo "error: missing $artifact — run scripts/build-release-dmg.sh before package-only mode" >&2
+    exit 1
+  fi
+done
 
 rm -rf "$STAGING"
 mkdir -p "$STAGING"

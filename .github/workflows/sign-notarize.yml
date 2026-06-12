@@ -2,6 +2,8 @@ name: Sign and Notarize
 
 # Manual release signing — requires Apple Developer credentials on the runner.
 # Local path: scripts/sign-release.sh + scripts/notary-dry-run.sh
+# GitHub Actions trust decision: official actions stay tag-pinned for v0.4;
+# see docs/release.md before moving more signing/notarization into CI.
 on:
   workflow_dispatch:
     inputs:
