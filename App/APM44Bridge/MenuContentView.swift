@@ -162,7 +162,6 @@ struct MenuContentView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .onChange(of: settings.latencyPreset) { _, _ in
-                settings.onPresetChanged()
                 Task { await manager.restartForSettingsChange() }
             }
             Text(settings.latencyPreset.targetDescription(halMode: manager.routingMode == .halVirtualDevice))

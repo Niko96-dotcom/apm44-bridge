@@ -54,16 +54,4 @@ final class BridgeSettings: ObservableObject {
             srcQualityOverride = nil
         }
     }
-
-    func applyPresetDefaultsIfNeeded() {
-        if srcQualityOverride == nil {
-            srcQualityOverride = nil
-        }
-    }
-
-    func onPresetChanged() {
-        if srcQualityOverride == nil {
-            // Preset default quality applies via effectiveSrcQuality.
-        }
-    }
 }
