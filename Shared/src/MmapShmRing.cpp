@@ -44,28 +44,6 @@ void CopyBuildId(char (&dst)[kShmBuildIdBytes]) {
   std::strncpy(dst, kBuildId, sizeof(dst) - 1);
 }
 
-// SHM-04: bounded build-ID rendering. The build-ID field is a
-// fixed-size `char[kShmBuildIdBytes]` array. A producer that fills
-// the field with non-null bytes (e.g., `strncpy` truncated the
-// source) leaves no null terminator. Streaming the field directly
-// into an `ostringstream` would either stop at the first embedded
-// null or — depending on the platform — read past the field into
-// adjacent header memory. This helper bounds the read explicitly:
-// copy at most `kShmBuildIdBytes` bytes, find the real length with
-// `strnlen`, and substitute a sentinel string if no null was found
-// within the field.
-std::string RenderBoundedBuildId(const char* field) {
-  char buf[kShmBuildIdBytes + 1] = {};
-  if (field != nullptr) {
-    std::memcpy(buf, field, kShmBuildIdBytes);
-  }
-  const std::size_t len = ::strnlen(buf, kShmBuildIdBytes);
-  if (len == 0) {
-    return "<unterminated>";
-  }
-  return std::string(buf, len);
-}
-
 std::string DescribeHeaderMismatch(const ShmRingHeader& header) {
   std::ostringstream out;
   out << "invalid shm ring header"
@@ -76,8 +54,8 @@ std::string DescribeHeaderMismatch(const ShmRingHeader& header) {
       << " expected_header_bytes>=" << sizeof(ShmRingHeader)
       << " channels=" << header.channels
       << " expected_channels=" << kShmChannels
-      << " producer_build_id='" << RenderBoundedBuildId(header.producer_build_id) << "'"
-      << " consumer_build_id='" << RenderBoundedBuildId(kBuildId) << "'";
+      << " producer_build_id='" << RenderShmBuildId(header.producer_build_id) << "'"
+      << " consumer_build_id='" << RenderShmBuildId(kBuildId) << "'";
   return out.str();
 }
 

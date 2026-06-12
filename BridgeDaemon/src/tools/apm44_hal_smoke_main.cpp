@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
   std::cout << "device_rate=" << device->nominalRate << "\n";
   std::cout << "shm_name=" << apm44::kShmRingName << "\n";
   std::cout << "helper_build_id=" << apm44::kBuildId << "\n";
-  std::cout << "driver_build_id=" << header->producer_build_id << "\n";
+  std::cout << "driver_build_id=" << apm44::RenderShmBuildId(header->producer_build_id) << "\n";
   std::cout << "capacity_frames=" << header->capacity_frames << "\n";
 
   ring.close();

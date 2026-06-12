@@ -183,7 +183,7 @@ int RunShmStatus() {
   std::cout << "shm_status=ok\n";
   std::cout << "shm_name=" << apm44::kShmRingName << "\n";
   std::cout << "helper_build_id=" << apm44::kBuildId << "\n";
-  std::cout << "driver_build_id=" << header->producer_build_id << "\n";
+  std::cout << "driver_build_id=" << apm44::RenderShmBuildId(header->producer_build_id) << "\n";
   std::cout << "version=" << header->version << "\n";
   std::cout << "capacity_frames=" << header->capacity_frames << "\n";
   std::cout << "sample_rate=" << header->sample_rate << "\n";
