@@ -7,6 +7,9 @@ VERSION="${APM44_VERSION:-0.1.1}"
 PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 PROFILE="${NOTARY_PROFILE:-AC_NOTARY}"
 
+# shellcheck source=scripts/notary-result.sh
+source "$ROOT/scripts/notary-result.sh"
+
 if [[ ! -f "$PKG" ]]; then
   echo "error: pkg not found at $PKG — run scripts/build-release-pkg.sh first" >&2
   exit 1
@@ -14,7 +17,11 @@ fi
 
 INSTALLER_ID="${INSTALLER_SIGN_ID:-}"
 if [[ -z "$INSTALLER_ID" ]]; then
-  INSTALLER_ID="$(security find-identity -v -p basic 2>/dev/null | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' | head -1 || true)"
+  if INSTALLER_ID="$(security find-identity -v -p basic 2>/dev/null | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' | head -1)"; then
+    :
+  else
+    INSTALLER_ID=""
+  fi
 fi
 
 if [[ -z "$INSTALLER_ID" ]] || ! security find-identity -v | grep -qF "$INSTALLER_ID"; then
@@ -24,14 +31,7 @@ if [[ -z "$INSTALLER_ID" ]] || ! security find-identity -v | grep -qF "$INSTALLE
   exit 1
 fi
 
-echo "Submitting pkg to notary (profile: $PROFILE)..."
-RESULT=$(xcrun notarytool submit "$PKG" --keychain-profile "$PROFILE" --wait 2>&1) || true
-echo "$RESULT"
-if echo "$RESULT" | grep -q "status: Invalid"; then
-  ID=$(echo "$RESULT" | sed -n 's/.*id: \([^ ]*\).*/\1/p' | head -1)
-  [[ -n "$ID" ]] && xcrun notarytool log "$ID" --keychain-profile "$PROFILE" 2>&1 | head -40
-  exit 1
-fi
+require_notary_accepted "$PKG" "$PROFILE" "pkg"
 
 echo "Stapling pkg..."
 xcrun stapler staple "$PKG"

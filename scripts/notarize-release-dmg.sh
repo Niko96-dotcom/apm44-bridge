@@ -7,19 +7,15 @@ VERSION="${APM44_VERSION:-0.1.1}"
 DMG="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 PROFILE="${NOTARY_PROFILE:-AC_NOTARY}"
 
+# shellcheck source=scripts/notary-result.sh
+source "$ROOT/scripts/notary-result.sh"
+
 if [[ ! -f "$DMG" ]]; then
   echo "error: DMG not found at $DMG — run scripts/build-release-dmg.sh first" >&2
   exit 1
 fi
 
-echo "Submitting DMG to notary (profile: $PROFILE)..."
-RESULT=$(xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait 2>&1) || true
-echo "$RESULT"
-if echo "$RESULT" | grep -q "status: Invalid"; then
-  echo "error: notarization failed — fetch log with:" >&2
-  echo "  xcrun notarytool log <id> --keychain-profile $PROFILE" >&2
-  exit 1
-fi
+require_notary_accepted "$DMG" "$PROFILE" "DMG"
 
 echo "Stapling DMG..."
 xcrun stapler staple "$DMG"
