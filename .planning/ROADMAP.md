@@ -151,7 +151,7 @@ Planned work:
 | 10. Process and Metrics Race Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 11. Shared-Memory Validation Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 12. Verification Closure | v0.3 | 2/2 | Complete | 2026-06-12 |
-| 13. Runtime Correctness Blockers | v0.4 | 2/2 | Complete   | 2026-06-12 |
+| 13. Runtime Correctness Blockers | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 14. Release Automation Fail-Closed | v0.4 | 0/2 | Pending | - |
 | 15. Public Distribution UX and Security Posture | v0.4 | 0/2 | Pending | - |
 | 16. Release Validation Closure | v0.4 | 0/2 | Pending | - |
