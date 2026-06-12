@@ -8,6 +8,9 @@ CONFIG="${APM44_BUILD_CONFIG:-Release}"
 STAGING="${APM44_RELEASE_STAGING:-$ROOT/build/signing/release-staging}"
 ZIP="${APM44_RELEASE_ZIP:-$ROOT/build/signing/APM44Bridge-release.zip}"
 
+# shellcheck source=scripts/notary-result.sh
+source "$ROOT/scripts/notary-result.sh"
+
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<EOF
 Usage: notary-dry-run.sh [--help]
@@ -52,8 +55,7 @@ rm -f "$ZIP"
 echo "Creating release zip: $ZIP"
 ditto -c -k --keepParent "$STAGING" "$ZIP"
 
-echo "Submitting to notary service (profile: $PROFILE)..."
-xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait
+require_notary_accepted "$ZIP" "$PROFILE" "release zip"
 
 echo ""
 echo "Notary dry-run complete. Staple individual bundles after acceptance:"

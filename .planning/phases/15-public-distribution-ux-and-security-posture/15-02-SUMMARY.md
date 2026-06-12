@@ -10,6 +10,8 @@
   or re-signing them.
 - Updated `scripts/release-all.sh` to staple and validate the inner app and HAL
   driver before packaging the final public DMG.
+- Updated `scripts/notary-dry-run.sh` to require accepted notary status for the
+  app/driver evidence zip before `release-all.sh` staples inner artifacts.
 - Updated `release-all.sh` to package that final DMG from the stapled inner
   artifacts before notarizing/stapling/validating the final container.
 - Extended `tests/test_release_scripts.sh` to cover the notary-ready
