@@ -34,7 +34,7 @@ Phase numbering continues from shipped history:
 - [x] **Phase 13: Runtime Correctness Blockers** - Remove the standards-level (completed 2026-06-12)
   metrics data race, make metrics JSON truncation safe, and close Core Audio
   edge/error path blockers.
-- [ ] **Phase 14: Release Automation Fail-Closed** - Make release scripts and
+- [x] **Phase 14: Release Automation Fail-Closed** - Make release scripts and (completed 2026-06-12)
   signing workflows strict by default, with credential-free regression tests for
   failure modes.
 - [ ] **Phase 15: Public Distribution UX and Security Posture** - Publish the
@@ -152,7 +152,7 @@ Planned work:
 | 11. Shared-Memory Validation Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 12. Verification Closure | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 13. Runtime Correctness Blockers | v0.4 | 2/2 | Complete    | 2026-06-12 |
-| 14. Release Automation Fail-Closed | v0.4 | 2/2 | Verifying | - |
+| 14. Release Automation Fail-Closed | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 15. Public Distribution UX and Security Posture | v0.4 | 0/2 | Pending | - |
 | 16. Release Validation Closure | v0.4 | 0/2 | Pending | - |
 
