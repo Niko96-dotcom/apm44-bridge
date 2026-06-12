@@ -10,18 +10,18 @@ mystery relaunches.
 
 ### Runtime Correctness
 
-- [ ] **METR-01**: Metrics publication is standard C++ data-race-free; readers
+- [x] **METR-01**: Metrics publication is standard C++ data-race-free; readers
   and writers no longer concurrently access a non-atomic `MetricsSnapshot`
   payload.
-- [ ] **METR-02**: Metrics values remain available to CLI JSON and app UI after
+- [x] **METR-02**: Metrics values remain available to CLI JSON and app UI after
   the publication mechanism changes, including fill, ratio, ppm, underruns,
   overruns, xruns, estimated realtime latency, target fill, and SRC quality.
-- [ ] **METR-03**: Metrics regression coverage proves the race-free contract
+- [x] **METR-03**: Metrics regression coverage proves the race-free contract
   with ThreadSanitizer where practical, or with an explicit source-level guard
   when sanitizer execution is not available in CI.
-- [ ] **JSON-01**: `BridgeMetrics::ToJsonLine` handles `snprintf` failure and
+- [x] **JSON-01**: `BridgeMetrics::ToJsonLine` handles `snprintf` failure and
   truncation without reading past its fixed stack buffer.
-- [ ] **JSON-02**: A regression test uses an intentionally long `src_quality`
+- [x] **JSON-02**: A regression test uses an intentionally long `src_quality`
   value to prove JSON serialization returns safe output on truncation.
 - [ ] **AUD-01**: Virtual-device output-start failure cleanup never stops a null
   or nonexistent input IOProc.
@@ -130,11 +130,11 @@ Roadmap phase mapping for v0.4.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| METR-01 | Phase 13 | Pending |
-| METR-02 | Phase 13 | Pending |
-| METR-03 | Phase 13 | Pending |
-| JSON-01 | Phase 13 | Pending |
-| JSON-02 | Phase 13 | Pending |
+| METR-01 | Phase 13 | Complete |
+| METR-02 | Phase 13 | Complete |
+| METR-03 | Phase 13 | Complete |
+| JSON-01 | Phase 13 | Complete |
+| JSON-02 | Phase 13 | Complete |
 | AUD-01 | Phase 13 | Pending |
 | AUD-02 | Phase 13 | Pending |
 | AUD-03 | Phase 13 | Pending |

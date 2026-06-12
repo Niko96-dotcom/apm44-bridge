@@ -62,7 +62,7 @@ AUD-03, RT-01, RT-02
 4. Virtual-device output-start failure and mismatched non-interleaved input buffers are covered by regression tests.
 5. Realtime helper names/comments and dead helper code no longer contradict the implemented drop-new-input policy.
 
-**Plans:** 0/2 plans complete
+**Plans:** 1/2 plans executed
 
 Planned work:
 - 13-01 - Replace metrics publication and JSON truncation behavior with
@@ -151,7 +151,7 @@ Planned work:
 | 10. Process and Metrics Race Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 11. Shared-Memory Validation Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 12. Verification Closure | v0.3 | 2/2 | Complete | 2026-06-12 |
-| 13. Runtime Correctness Blockers | v0.4 | 0/2 | Pending | - |
+| 13. Runtime Correctness Blockers | v0.4 | 1/2 | In Progress | - |
 | 14. Release Automation Fail-Closed | v0.4 | 0/2 | Pending | - |
 | 15. Public Distribution UX and Security Posture | v0.4 | 0/2 | Pending | - |
 | 16. Release Validation Closure | v0.4 | 0/2 | Pending | - |
