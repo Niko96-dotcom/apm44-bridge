@@ -29,8 +29,21 @@ TEST_CASE("BridgeMetrics JSON contains required fields") {
   REQUIRE(Contains(line, "\"underruns\""));
   REQUIRE(Contains(line, "\"overruns\""));
   REQUIRE(Contains(line, "\"ppm\""));
+  REQUIRE(Contains(line, "\"estimated_rt_ms\""));
+  REQUIRE(Contains(line, "\"target_fill_ms\""));
+  REQUIRE(Contains(line, "\"src_quality\""));
   REQUIRE(Contains(line, "15.200"));
   REQUIRE(line.find('\n') == std::string::npos);
+}
+
+TEST_CASE("BridgeMetrics JSON truncation fails closed without overreading buffer",
+          "[metrics][JSON-01][JSON-02]") {
+  const std::string longQuality(4096, 'q');
+  const auto metrics =
+      apm44::MakeBridgeMetrics(15.2, 1.088435, 12.0, 1, 2, 3, 15.0, longQuality);
+  const std::string line = apm44::ToJsonLine(metrics);
+
+  REQUIRE(line == "{}");
 }
 
 TEST_CASE("estimated_rt_ms equals fill_ms plus group delay") {
@@ -39,11 +52,11 @@ TEST_CASE("estimated_rt_ms equals fill_ms plus group delay") {
   REQUIRE(metrics.estimatedRtMs > 0.0);
 }
 
-// METR-01/03: prove the metrics seqlock is data-race-free. Spawn one
-// writer thread and four reader threads, exercise the publisher for
-// many iterations, then assert the seqlock never delivered a torn
-// snapshot (counters observed by readers are monotonically non-
-// decreasing — the writer only ever increments).
+// METR-01/03: prove the metrics publisher is data-race-free. Spawn
+// one writer thread and four reader threads, exercise the publisher
+// for many iterations, then assert the sequence retry never delivered
+// a torn snapshot (counters observed by readers are monotonically
+// non-decreasing — the writer only ever increments).
 TEST_CASE("MetricsPublisherSeqlockNeverDeliversTornSnapshot",
           "[metrics][rt][METR-01][METR-03]") {
   apm44::MetricsPublisherState state;
@@ -79,7 +92,7 @@ TEST_CASE("MetricsPublisherSeqlockNeverDeliversTornSnapshot",
   // counter values they ever observed. A torn snapshot would be
   // visible as a regression (a smaller counter value than the
   // reader's local max) — which must never happen because the
-  // seqlock retries on a seq change.
+  // sequence check retries on concurrent publication.
   constexpr int kReaderCount = 4;
   std::vector<std::thread> readers;
   readers.reserve(kReaderCount);
@@ -137,7 +150,7 @@ TEST_CASE("MetricsPublisherSeqlockNeverDeliversTornSnapshot",
     t.join();
   }
 
-  // The seqlock guarantees that the final published value is
+  // The sequence retry guarantees that the final published value is
   // eventually visible to readers; the writer's last value must be
   // observed by at least one reader.
   REQUIRE(maxObservedUnderruns.load() ==
@@ -155,7 +168,7 @@ TEST_CASE("NoBareMetricsSnapshotCopyInSource",
           "[metrics][rt][METR-03]") {
   namespace fs = std;
   // The allow-list of files where MetricsSnapshot is expected to
-  // appear alongside the seqlock free functions. The test reads
+  // appear alongside the publisher free functions. The test reads
   // each file and asserts any reference to `MetricsSnapshot` is
   // near a call to `PublishMetrics` or `ReadMetrics`.
   const std::vector<std::string> files = {
@@ -175,7 +188,7 @@ TEST_CASE("NoBareMetricsSnapshotCopyInSource",
                          std::istreambuf_iterator<char>());
     // Check that any non-comment, non-include mention of
     // MetricsSnapshot is preceded within the same file by either
-    // PublishMetrics or ReadMetrics (the seqlock pair). The check
+    // PublishMetrics or ReadMetrics (the publisher pair). The check
     // is intentionally loose: it only fails if a file uses
     // MetricsSnapshot without ever going through the publisher.
     const bool usesSeqlock =
@@ -187,7 +200,7 @@ TEST_CASE("NoBareMetricsSnapshotCopyInSource",
         contents.find("MetricsSnapshot") != std::string::npos;
     if (usesSnapshot && !usesSeqlock) {
       FAIL(rel << " uses MetricsSnapshot without going through the "
-                  "MetricsPublisher seqlock — bare cross-thread copy");
+                  "MetricsPublisher — bare cross-thread copy");
     }
   }
   SUCCEED("All MetricsSnapshot references are seqlock-mediated");

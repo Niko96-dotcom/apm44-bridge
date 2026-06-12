@@ -49,6 +49,9 @@ std::string ToJsonLine(const BridgeMetrics& metrics) {
   if (written < 0) {
     return "{}";
   }
+  if (written >= static_cast<int>(sizeof(buffer))) {
+    return "{}";
+  }
   return std::string(buffer, static_cast<std::size_t>(written));
 }
 
