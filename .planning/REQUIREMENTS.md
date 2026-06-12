@@ -48,9 +48,9 @@ mystery relaunches.
   `APM44_ALLOW_UNNOTARIZED=1` local-development override is set.
 - [x] **REL-05**: Any unnotarized override path labels artifacts clearly as
   local-only and not public-release-ready.
-- [ ] **REL-06**: `.github/workflows/sign-notarize.yml` does not mask app build
+- [x] **REL-06**: `.github/workflows/sign-notarize.yml` does not mask app build
   verification failure with `|| true` or an equivalent soft-fail pattern.
-- [ ] **REL-07**: Release-script regression coverage simulates accepted,
+- [x] **REL-07**: Release-script regression coverage simulates accepted,
   rejected, auth-failure, network-failure, and malformed `notarytool` output
   without requiring Apple credentials.
 
@@ -145,8 +145,8 @@ Roadmap phase mapping for v0.4.
 | REL-03 | Phase 14 | Complete |
 | REL-04 | Phase 14 | Complete |
 | REL-05 | Phase 14 | Complete |
-| REL-06 | Phase 14 | Pending |
-| REL-07 | Phase 14 | Pending |
+| REL-06 | Phase 14 | Complete |
+| REL-07 | Phase 14 | Complete |
 | DOC-01 | Phase 15 | Pending |
 | DOC-02 | Phase 15 | Pending |
 | DOC-03 | Phase 15 | Pending |
