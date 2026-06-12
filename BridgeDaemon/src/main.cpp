@@ -154,6 +154,10 @@ const char* ShmErrorCodeName(apm44::ShmRingErrorCode code) {
       return "map_failed";
     case apm44::ShmRingErrorCode::InvalidHeader:
       return "invalid_header";
+    case apm44::ShmRingErrorCode::HeaderTruncated:
+      return "header_truncated";
+    case apm44::ShmRingErrorCode::CapacityExceedsObject:
+      return "capacity_exceeds_object";
   }
   return "unknown";
 }
