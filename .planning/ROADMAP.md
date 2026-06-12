@@ -85,7 +85,7 @@ Planned work:
 4. The signing workflow no longer masks app build verification failure.
 5. Credential-free script tests cover accepted, rejected, auth-failure, network-failure, and malformed notary output.
 
-**Plans:** 0/2 plans complete
+**Plans:** 1/2 plans complete
 
 Planned work:
 - 14-01 - Make notarization and release-all scripts fail closed by default
@@ -152,7 +152,7 @@ Planned work:
 | 11. Shared-Memory Validation Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 12. Verification Closure | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 13. Runtime Correctness Blockers | v0.4 | 2/2 | Complete    | 2026-06-12 |
-| 14. Release Automation Fail-Closed | v0.4 | 0/2 | Pending | - |
+| 14. Release Automation Fail-Closed | v0.4 | 1/2 | Executing | - |
 | 15. Public Distribution UX and Security Posture | v0.4 | 0/2 | Pending | - |
 | 16. Release Validation Closure | v0.4 | 0/2 | Pending | - |
 

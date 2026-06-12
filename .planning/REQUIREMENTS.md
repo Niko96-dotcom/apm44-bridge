@@ -37,16 +37,16 @@ mystery relaunches.
 
 ### Release Automation
 
-- [ ] **REL-01**: `scripts/notarize-release-dmg.sh` fails unless `notarytool`
+- [x] **REL-01**: `scripts/notarize-release-dmg.sh` fails unless `notarytool`
   exits successfully and reports `status: Accepted`.
-- [ ] **REL-02**: `scripts/notarize-release-pkg.sh` follows the same
+- [x] **REL-02**: `scripts/notarize-release-pkg.sh` follows the same
   fail-closed notarization contract as the DMG script.
-- [ ] **REL-03**: Notarization scripts print the submission output and attempt to
+- [x] **REL-03**: Notarization scripts print the submission output and attempt to
   fetch the notary log when a failed submission id is available.
-- [ ] **REL-04**: `scripts/release-all.sh` treats missing notarization
+- [x] **REL-04**: `scripts/release-all.sh` treats missing notarization
   credentials as a release-blocking failure unless an explicit
   `APM44_ALLOW_UNNOTARIZED=1` local-development override is set.
-- [ ] **REL-05**: Any unnotarized override path labels artifacts clearly as
+- [x] **REL-05**: Any unnotarized override path labels artifacts clearly as
   local-only and not public-release-ready.
 - [ ] **REL-06**: `.github/workflows/sign-notarize.yml` does not mask app build
   verification failure with `|| true` or an equivalent soft-fail pattern.
@@ -140,11 +140,11 @@ Roadmap phase mapping for v0.4.
 | AUD-03 | Phase 13 | Complete |
 | RT-01 | Phase 13 | Complete |
 | RT-02 | Phase 13 | Complete |
-| REL-01 | Phase 14 | Pending |
-| REL-02 | Phase 14 | Pending |
-| REL-03 | Phase 14 | Pending |
-| REL-04 | Phase 14 | Pending |
-| REL-05 | Phase 14 | Pending |
+| REL-01 | Phase 14 | Complete |
+| REL-02 | Phase 14 | Complete |
+| REL-03 | Phase 14 | Complete |
+| REL-04 | Phase 14 | Complete |
+| REL-05 | Phase 14 | Complete |
 | REL-06 | Phase 14 | Pending |
 | REL-07 | Phase 14 | Pending |
 | DOC-01 | Phase 15 | Pending |
