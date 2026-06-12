@@ -49,7 +49,12 @@ final class HotplugMonitor {
             Unmanaged.passUnretained(self).toOpaque()
         )
         listenerProc = nil
-        debounceWork?.cancel()
+        // Serialize the cancel on `queue` so it can't race a scheduleDebounced
+        // block still in flight from the Core Audio listener thread.
+        queue.sync {
+            debounceWork?.cancel()
+            debounceWork = nil
+        }
     }
 
     deinit {
@@ -57,11 +62,17 @@ final class HotplugMonitor {
     }
 
     private func scheduleDebounced() {
-        debounceWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            self?.onFire()
+        // The Core Audio property listener fires on an arbitrary thread; route
+        // every read/write of `debounceWork` through the serial `queue` so the
+        // field is only ever touched from one place.
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.debounceWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                self?.onFire()
+            }
+            self.debounceWork = work
+            self.queue.asyncAfter(deadline: .now() + 1.0, execute: work)
         }
-        debounceWork = work
-        queue.asyncAfter(deadline: .now() + 1.0, execute: work)
     }
 }
