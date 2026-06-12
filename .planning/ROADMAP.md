@@ -9,13 +9,16 @@
   2026-06-11) - [archive](milestones/v0.2-ROADMAP.md)
 - Complete **v0.3 Realtime Audio Hardening** - Phases 9-12 (shipped
   2026-06-12) - [archive](milestones/v0.3-ROADMAP.md)
+- Planned **v0.4 Public Release Blocker Closure** - Phases 13-16
 
 ## Overview
 
-The v0.3 journey hardens the shipped Cubase -> APM44 HAL -> daemon -> USB-C
-AirPods path before new packaging or DAW expansion. It starts at the realtime
-callback boundary, then fixes process/metrics races, then validates shared
-memory defensively, and closes with automated and live installed-system proof.
+The v0.4 journey closes the remaining blockers before the next public release.
+It starts with runtime correctness issues that could invalidate release proof,
+then makes signing/notarization automation fail closed, then cleans up public
+distribution trust and installer posture, and finally records a complete release
+validation sequence with exact caveats for anything blocked by credentials or
+hardware.
 
 ## Phase Numbering
 
@@ -24,131 +27,116 @@ Phase numbering continues from shipped history:
 - Phases 1-4: v0.1/v0.1.1 shipped product path.
 - Phases 5-8: v0.2 Reliability and Self-Healing.
 - Phases 9-12: v0.3 Realtime Audio Hardening.
+- Phases 13-16: v0.4 Public Release Blocker Closure.
 
 ## Phases
 
-- [x] **Phase 9: Realtime Callback Ownership** (shipped 2026-06-12) - Preserve
-  SPSC ring ownership and make oversized output callbacks deterministic.
-- [x] **Phase 10: Process and Metrics Race Hardening** (shipped 2026-06-12) -
-  Make stop escalation timeout-safe and publish metrics through a C++
-  race-free path.
-- [x] **Phase 11: Shared-Memory Validation Hardening** (shipped 2026-06-12) -
-  Reject truncated or corrupt shm mappings before trusting header capacity or
-  build IDs.
-- [x] **Phase 12: Verification Closure** (shipped 2026-06-12) - Gate
-  non-hardware sync checks and capture live installed-system evidence or
-  exact hardware blockers.
+- [ ] **Phase 13: Runtime Correctness Blockers** - Remove the standards-level
+  metrics data race, make metrics JSON truncation safe, and close Core Audio
+  edge/error path blockers.
+- [ ] **Phase 14: Release Automation Fail-Closed** - Make release scripts and
+  signing workflows strict by default, with credential-free regression tests for
+  failure modes.
+- [ ] **Phase 15: Public Distribution UX and Security Posture** - Publish the
+  local IPC threat model, settle DMG/PKG release posture, and harden critical
+  workflow trust decisions.
+- [ ] **Phase 16: Release Validation Closure** - Run and record the final
+  public-release validation sequence, including exact blockers for anything that
+  cannot be completed locally.
 
 ## Phase Details
 
-### Phase 9: Realtime Callback Ownership
+### Phase 13: Runtime Correctness Blockers
 
-**Goal:** The realtime audio callbacks obey their ownership contracts and never
-leave Core Audio output frames stale.
+**Goal:** The runtime paths called out by the publishing review are standards-safe, bounded, and regression-tested before release automation is trusted.
 
-**Depends on:** v0.2 shipped baseline
+**Depends on:** v0.3 shipped baseline
 
-**Requirements:** RT-01, RT-02, RT-03, RT-04, RT-05
-
-**Success Criteria** (what must be TRUE):
-1. Input overrun handling never calls `PlanarRingBuffer::pop()` or otherwise
-   mutates consumer-owned state from the producer path.
-2. The chosen overrun behavior is documented in code/tests and either drops
-   incoming frames or performs oldest-frame trimming only from the output side.
-3. Interleaved and non-interleaved output callbacks larger than the scratch
-   capacity render or explicitly silence every actual frame.
-4. Native regression tests cover the selected overrun policy and oversized
-   callback behavior without touching `/apm44_bridge_ring`.
-
-**Plans:** 2/2 plans complete
-
-Planned work:
-- 09-01 - Replace producer-side drop-oldest policy and update SPSC tests
-  (RT-01, RT-02, RT-05)
-- 09-02 - Make oversized output callbacks render/silence the whole buffer
-  (RT-03, RT-04, RT-05)
-
-### Phase 10: Process and Metrics Race Hardening
-
-**Goal:** Process-stop/restart coordination and metrics publication are
-deterministic under timeout and cross-thread access.
-
-**Depends on:** Phase 9
-
-**Requirements:** PROC-01, PROC-02, PROC-03, PROC-04, METR-01, METR-02, METR-03
+**Requirements:** METR-01, METR-02, METR-03, JSON-01, JSON-02, AUD-01, AUD-02,
+AUD-03, RT-01, RT-02
 
 **Success Criteria** (what must be TRUE):
-1. A daemon that ignores graceful termination reaches the SIGKILL escalation path
-   and returns a final result instead of hanging.
-2. Concurrent stop/restart waiters complete independently without one waiter
-   overwriting another.
-3. Metrics read by CLI/control/UI paths are published with no C++ data race.
-4. Swift and native tests cover termination timeout/escalation, concurrent
-   waiters, and the metrics publication contract.
+1. `MetricsPublisher` no longer relies on concurrent non-atomic `MetricsSnapshot` reads/writes.
+2. CLI/app metrics preserve all currently exposed fields after the publisher change.
+3. `BridgeMetrics::ToJsonLine` handles formatting failure and truncation without reading past the stack buffer.
+4. Virtual-device output-start failure and mismatched non-interleaved input buffers are covered by regression tests.
+5. Realtime helper names/comments and dead helper code no longer contradict the implemented drop-new-input policy.
 
-**Plans:** 2/2 plans complete
+**Plans:** 0/2 plans complete
 
 Planned work:
-- 10-01 - Replace single termination continuation with explicit waiter
-  bookkeeping and escalation tests (PROC-01, PROC-02, PROC-03, PROC-04)
-- 10-02 - Replace metrics seqlock/plain payload with race-free publication and
-  regression coverage (METR-01, METR-02, METR-03)
+- 13-01 - Replace metrics publication and JSON truncation behavior with
+  regression proof (METR-01, METR-02, METR-03, JSON-01, JSON-02)
+- 13-02 - Harden Core Audio edge paths and clean realtime helper naming/dead
+  code (AUD-01, AUD-02, AUD-03, RT-01, RT-02)
 
-### Phase 11: Shared-Memory Validation Hardening
+### Phase 14: Release Automation Fail-Closed
 
-**Goal:** The daemon rejects malformed HAL shared-memory objects safely before
-any ring operation trusts their declared layout.
+**Goal:** Release commands and workflows cannot silently produce stale, unnotarized, or weakly validated public artifacts.
 
-**Depends on:** Phase 10
+**Depends on:** Phase 13
 
-**Requirements:** SHM-01, SHM-02, SHM-03, SHM-04, SHM-05
+**Requirements:** REL-01, REL-02, REL-03, REL-04, REL-05, REL-06, REL-07
 
 **Success Criteria** (what must be TRUE):
-1. `MmapShmRing::open()` rejects objects smaller than `ShmRingHeader` before
-   reading header fields.
-2. `MmapShmRing::open()` rejects valid-looking headers whose mapped size is
-   smaller than `ShmTotalSize(capacity_frames)`.
-3. Live generation reads check object size before mapping or reading a header.
-4. Header mismatch diagnostics use bounded build-ID rendering.
-5. Catch2 tests cover truncated, header-only, huge-capacity, and unterminated
-   build-ID cases with isolated test shm names.
+1. DMG and PKG notarization scripts require both successful `notarytool` exit and `status: Accepted`.
+2. Notary failure paths preserve submission output and fetch logs when a submission id is available.
+3. `release-all.sh` fails without notary credentials unless an explicit local-only unnotarized override is set.
+4. The signing workflow no longer masks app build verification failure.
+5. Credential-free script tests cover accepted, rejected, auth-failure, network-failure, and malformed notary output.
 
-**Plans:** 2/2 plans complete
+**Plans:** 0/2 plans complete
 
 Planned work:
-- 11-01 - Add shm size validation before header/capacity trust (SHM-01, SHM-02,
-  SHM-03)
-- 11-02 - Add bounded corrupt-header diagnostics and isolated shm regression
-  tests (SHM-04, SHM-05)
+- 14-01 - Make notarization and release-all scripts fail closed by default
+  (REL-01, REL-02, REL-03, REL-04, REL-05)
+- 14-02 - Tighten signing workflow and add mocked notary regression tests
+  (REL-06, REL-07)
 
-### Phase 12: Verification Closure
+### Phase 15: Public Distribution UX and Security Posture
 
-**Goal:** v0.3 closes with automated hardening evidence and live installed-system
-proof, or with precise hardware blockers recorded.
+**Goal:** The public release surface is honest about local IPC assumptions and clear about the installer/artifact trust story.
 
-**Depends on:** Phase 11
+**Depends on:** Phase 14
+
+**Requirements:** DOC-01, DOC-02, DOC-03, PKG-01, PKG-02, PKG-03, GHA-01
+
+**Success Criteria** (what must be TRUE):
+1. Public docs explain that `/apm44_bridge_ring` is local-machine IPC and not an authentication or privilege boundary.
+2. Docs describe the implications of shm mode `0666` and list future hardening options without overclaiming current protection.
+3. The milestone records a clear DMG-primary versus PKG-primary installer decision.
+4. Release docs and scripts agree on when inner app/driver artifacts and the final public container are stapled and validated.
+5. Critical GitHub Actions near release artifacts, credentials, or signing are either pinned to full-length SHAs or covered by an explicit trust decision.
+
+**Plans:** 0/2 plans complete
+
+Planned work:
+- 15-01 - Document local IPC threat model and installer UX decision
+  (DOC-01, DOC-02, DOC-03, PKG-01, PKG-02)
+- 15-02 - Align artifact stapling order and release workflow trust posture
+  (PKG-03, GHA-01)
+
+### Phase 16: Release Validation Closure
+
+**Goal:** v0.4 closes with a clean, repeatable public-release validation record or exact unblock commands for external blockers.
+
+**Depends on:** Phase 15
 
 **Requirements:** QA-01, QA-02, QA-03, QA-04, QA-05
 
 **Success Criteria** (what must be TRUE):
-1. `scripts/ci.sh` includes a non-hardware dry-run check for
-   `scripts/verify-installed-sync.sh`.
-2. Final automated verification includes secret scan, CMake/Catch2 tests, Swift
-   app build/tests, and installed-sync dry-run.
-3. Live verification records repo daemon, embedded app helper, installed HAL
-   driver, and live shm ring build-ID agreement, or the exact blocker.
-4. Operator evidence covers `verify-hal-driver.sh`, `--shm-status`, USB-C
-   AirPods hotplug smoke, and Cubase HAL smoke/soak where hardware is available.
-5. Milestone close records any remaining hardware-only caveat instead of
-   treating CI-only proof as complete.
+1. Final automated verification includes secret scan, native tests, Swift tests, app build verification, and release-script regression tests.
+2. The release validation sequence is recorded from clean build through signing, notarization, stapling, and Gatekeeper assessment.
+3. The selected DMG/PKG public artifact path is assessed with the appropriate `codesign`, `stapler`, `spctl`, or `pkgutil` commands.
+4. Apple credential, installer certificate, hardware, or operator blockers are recorded with exact unblock commands.
+5. Planning state is updated with satisfied requirements, accepted gaps, and remaining public-release caveats.
 
-**Plans:** 2/2 plans complete
+**Plans:** 0/2 plans complete
 
 Planned work:
-- 12-01 - Add installed-sync dry-run to CI and run full automated gates
-  (QA-01, QA-02)
-- 12-02 - Capture live installed-system and operator proof, or precise blocker
-  record (QA-03, QA-04, QA-05)
+- 16-01 - Run full automated and release validation gates (QA-01, QA-02)
+- 16-02 - Assess final artifacts and record closeout caveats (QA-03, QA-04,
+  QA-05)
 
 ## Progress
 
@@ -163,13 +151,17 @@ Planned work:
 | 10. Process and Metrics Race Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 11. Shared-Memory Validation Hardening | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 12. Verification Closure | v0.3 | 2/2 | Complete | 2026-06-12 |
+| 13. Runtime Correctness Blockers | v0.4 | 0/2 | Pending | - |
+| 14. Release Automation Fail-Closed | v0.4 | 0/2 | Pending | - |
+| 15. Public Distribution UX and Security Posture | v0.4 | 0/2 | Pending | - |
+| 16. Release Validation Closure | v0.4 | 0/2 | Pending | - |
 
 ## Coverage
 
-- Requirements mapped: 22/22
+- Requirements mapped: 29/29
 - Phases: 4
 - Plans: 8 proposed
 - Unmapped requirements: 0
 
 ---
-*Roadmap updated: 2026-06-12 after Phase 12 verification*
+*Roadmap updated: 2026-06-12 after v0.4 roadmap creation*

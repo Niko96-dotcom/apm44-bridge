@@ -6,9 +6,9 @@ status: planning
 last_updated: "2026-06-12T08:18:23.292Z"
 last_activity: 2026-06-12
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 8
   completed_plans: 0
   percent: 0
 ---
@@ -23,21 +23,21 @@ See: .planning/PROJECT.md (updated 2026-06-12)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Defining requirements for v0.4 Public Release Blocker Closure.
+**Current focus:** Phase 13 Runtime Correctness Blockers.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-12 — Milestone v0.4 started
+Phase: 13 - Runtime Correctness Blockers
+Plan: -
+Status: Roadmap approved; ready to plan Phase 13
+Last activity: 2026-06-12 - Milestone v0.4 roadmap approved
 
 ## Performance Metrics
 
 **Velocity (v0.3):**
 
 - Total plans completed: 8
-- Phases: 9–12 (4 phases)
+- Phases: 9-12 (4 phases)
 - Timeline: 2026-06-12 (single-day execution)
 - 20/22 requirements satisfied by automated evidence
 - 2/22 accepted gaps: QA-03, QA-04 (both hardware-blocked on dev machine)
@@ -45,7 +45,7 @@ Last activity: 2026-06-12 — Milestone v0.4 started
 **Velocity (v0.2):**
 
 - Total plans completed: 11
-- Phases: 5–8 (4 phases)
+- Phases: 5-8 (4 phases)
 - Timeline: 2026-06-11 (single-day execution)
 
 **By Phase (v0.3):**
@@ -125,5 +125,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Run `$gsd-new-milestone` to start v0.4 (likely Packaging or
-  Broader Compatibility given the v0.3 closure).
+- Run `$gsd-plan-phase 13` to start Runtime Correctness Blockers.

@@ -126,45 +126,45 @@ mystery relaunches.
 
 ## Traceability
 
-Roadmap phase mapping will be filled after roadmap approval.
+Roadmap phase mapping for v0.4.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| METR-01 | TBD | Pending |
-| METR-02 | TBD | Pending |
-| METR-03 | TBD | Pending |
-| JSON-01 | TBD | Pending |
-| JSON-02 | TBD | Pending |
-| AUD-01 | TBD | Pending |
-| AUD-02 | TBD | Pending |
-| AUD-03 | TBD | Pending |
-| RT-01 | TBD | Pending |
-| RT-02 | TBD | Pending |
-| REL-01 | TBD | Pending |
-| REL-02 | TBD | Pending |
-| REL-03 | TBD | Pending |
-| REL-04 | TBD | Pending |
-| REL-05 | TBD | Pending |
-| REL-06 | TBD | Pending |
-| REL-07 | TBD | Pending |
-| DOC-01 | TBD | Pending |
-| DOC-02 | TBD | Pending |
-| DOC-03 | TBD | Pending |
-| PKG-01 | TBD | Pending |
-| PKG-02 | TBD | Pending |
-| PKG-03 | TBD | Pending |
-| GHA-01 | TBD | Pending |
-| QA-01 | TBD | Pending |
-| QA-02 | TBD | Pending |
-| QA-03 | TBD | Pending |
-| QA-04 | TBD | Pending |
-| QA-05 | TBD | Pending |
+| METR-01 | Phase 13 | Pending |
+| METR-02 | Phase 13 | Pending |
+| METR-03 | Phase 13 | Pending |
+| JSON-01 | Phase 13 | Pending |
+| JSON-02 | Phase 13 | Pending |
+| AUD-01 | Phase 13 | Pending |
+| AUD-02 | Phase 13 | Pending |
+| AUD-03 | Phase 13 | Pending |
+| RT-01 | Phase 13 | Pending |
+| RT-02 | Phase 13 | Pending |
+| REL-01 | Phase 14 | Pending |
+| REL-02 | Phase 14 | Pending |
+| REL-03 | Phase 14 | Pending |
+| REL-04 | Phase 14 | Pending |
+| REL-05 | Phase 14 | Pending |
+| REL-06 | Phase 14 | Pending |
+| REL-07 | Phase 14 | Pending |
+| DOC-01 | Phase 15 | Pending |
+| DOC-02 | Phase 15 | Pending |
+| DOC-03 | Phase 15 | Pending |
+| PKG-01 | Phase 15 | Pending |
+| PKG-02 | Phase 15 | Pending |
+| PKG-03 | Phase 15 | Pending |
+| GHA-01 | Phase 15 | Pending |
+| QA-01 | Phase 16 | Pending |
+| QA-02 | Phase 16 | Pending |
+| QA-03 | Phase 16 | Pending |
+| QA-04 | Phase 16 | Pending |
+| QA-05 | Phase 16 | Pending |
 
 **Coverage:**
 - v0.4 requirements: 29 total
-- Mapped to phases: 0
-- Unmapped: 29
+- Mapped to phases: 29
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-12*
-*Last updated: 2026-06-12 after v0.4 requirements definition*
+*Last updated: 2026-06-12 after v0.4 roadmap creation*
