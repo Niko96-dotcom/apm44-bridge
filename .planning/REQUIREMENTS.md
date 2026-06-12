@@ -23,16 +23,16 @@ mystery relaunches.
   truncation without reading past its fixed stack buffer.
 - [x] **JSON-02**: A regression test uses an intentionally long `src_quality`
   value to prove JSON serialization returns safe output on truncation.
-- [ ] **AUD-01**: Virtual-device output-start failure cleanup never stops a null
+- [x] **AUD-01**: Virtual-device output-start failure cleanup never stops a null
   or nonexistent input IOProc.
-- [ ] **AUD-02**: Non-interleaved input callbacks use the minimum available
+- [x] **AUD-02**: Non-interleaved input callbacks use the minimum available
   frame count across channel buffers before clamping, preventing overread of a
   shorter second buffer.
-- [ ] **AUD-03**: Core Audio regression tests cover virtual-device output-start
+- [x] **AUD-03**: Core Audio regression tests cover virtual-device output-start
   failure cleanup and mismatched non-interleaved input buffer sizes.
-- [ ] **RT-01**: The input overrun helper name and comments match the actual
+- [x] **RT-01**: The input overrun helper name and comments match the actual
   drop-new-input behavior.
-- [ ] **RT-02**: The unused `WriteSilence` helper is deleted or rewritten so no
+- [x] **RT-02**: The unused `WriteSilence` helper is deleted or rewritten so no
   dead realtime helper remains with incorrect byte-count assumptions.
 
 ### Release Automation
@@ -135,11 +135,11 @@ Roadmap phase mapping for v0.4.
 | METR-03 | Phase 13 | Complete |
 | JSON-01 | Phase 13 | Complete |
 | JSON-02 | Phase 13 | Complete |
-| AUD-01 | Phase 13 | Pending |
-| AUD-02 | Phase 13 | Pending |
-| AUD-03 | Phase 13 | Pending |
-| RT-01 | Phase 13 | Pending |
-| RT-02 | Phase 13 | Pending |
+| AUD-01 | Phase 13 | Complete |
+| AUD-02 | Phase 13 | Complete |
+| AUD-03 | Phase 13 | Complete |
+| RT-01 | Phase 13 | Complete |
+| RT-02 | Phase 13 | Complete |
 | REL-01 | Phase 14 | Pending |
 | REL-02 | Phase 14 | Pending |
 | REL-03 | Phase 14 | Pending |
