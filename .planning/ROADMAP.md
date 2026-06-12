@@ -37,7 +37,7 @@ Phase numbering continues from shipped history:
 - [x] **Phase 14: Release Automation Fail-Closed** - Make release scripts and (completed 2026-06-12)
   signing workflows strict by default, with credential-free regression tests for
   failure modes.
-- [ ] **Phase 15: Public Distribution UX and Security Posture** - Publish the
+- [x] **Phase 15: Public Distribution UX and Security Posture** - Publish the (completed 2026-06-12)
   local IPC threat model, settle DMG/PKG release posture, and harden critical
   workflow trust decisions.
 - [ ] **Phase 16: Release Validation Closure** - Run and record the final
@@ -153,7 +153,7 @@ Planned work:
 | 12. Verification Closure | v0.3 | 2/2 | Complete | 2026-06-12 |
 | 13. Runtime Correctness Blockers | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 14. Release Automation Fail-Closed | v0.4 | 2/2 | Complete    | 2026-06-12 |
-| 15. Public Distribution UX and Security Posture | v0.4 | 2/2 | Verifying | - |
+| 15. Public Distribution UX and Security Posture | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 16. Release Validation Closure | v0.4 | 0/2 | Pending | - |
 
 ## Coverage
