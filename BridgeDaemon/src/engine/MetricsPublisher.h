@@ -7,32 +7,41 @@
 
 namespace apm44 {
 
-// State for the metrics seqlock. Lifted out of `BridgeEngine` so the
+// State for the metrics publisher. Lifted out of `BridgeEngine` so the
 // publication contract can be tested without spinning up the full
-// audio engine (which needs Core Audio device IDs and a real
-// prepared ring). The seqlock is the data-race-free mechanism behind
-// METR-01; it is used by both the realtime writer (RT thread) and the
-// CLI/control/UI readers.
+// audio engine (which needs Core Audio device IDs and a real prepared
+// ring). Every payload field is atomic, so the sequence counter never
+// guards a racy non-atomic struct copy.
 struct MetricsPublisherState {
-  std::atomic<uint32_t> seq{0};
-  MetricsSnapshot snapshot{};
+  std::atomic<uint64_t> sequence{0};
+  std::atomic<double> fillMs{0.0};
+  std::atomic<double> smoothedRatio{1.0};
+  std::atomic<double> ppm{0.0};
+  std::atomic<uint64_t> underruns{0};
+  std::atomic<uint64_t> overruns{0};
+  std::atomic<uint64_t> xruns{0};
 };
 
 // Writer side (called from the realtime thread, e.g. inside
-// `onOutput`'s `PublishGuard`). The seqlock pattern:
+// `onOutput`'s `PublishGuard`). The sequence pattern:
 //
-//   1. Bump `seq` to seq+1 (odd) to signal a write in progress.
-//   2. Copy the new snapshot into the shared state.
-//   3. Bump `seq` to seq+2 (even) to publish.
+//   1. Bump `sequence` to sequence+1 (odd) to signal a write in progress.
+//   2. Store each field atomically.
+//   3. Bump `sequence` to sequence+2 (even) to publish.
 //
 // Readers busy-wait until they see a stable even sequence number
 // with no concurrent writer.
 inline void PublishMetrics(MetricsPublisherState& state,
                            const MetricsSnapshot& next) {
-  const uint32_t seq = state.seq.load(std::memory_order_relaxed);
-  state.seq.store(seq + 1U, std::memory_order_release);
-  state.snapshot = next;
-  state.seq.store(seq + 2U, std::memory_order_release);
+  const uint64_t sequence = state.sequence.load(std::memory_order_relaxed);
+  state.sequence.store(sequence + 1U, std::memory_order_release);
+  state.fillMs.store(next.fillMs, std::memory_order_relaxed);
+  state.smoothedRatio.store(next.smoothedRatio, std::memory_order_relaxed);
+  state.ppm.store(next.ppm, std::memory_order_relaxed);
+  state.underruns.store(next.underruns, std::memory_order_relaxed);
+  state.overruns.store(next.overruns, std::memory_order_relaxed);
+  state.xruns.store(next.xruns, std::memory_order_relaxed);
+  state.sequence.store(sequence + 2U, std::memory_order_release);
 }
 
 // Reader side (CLI JSON emitter, app UI consumer, control loop).
@@ -40,19 +49,25 @@ inline void PublishMetrics(MetricsPublisherState& state,
 // return value is a coherent `MetricsSnapshot` copy.
 inline MetricsSnapshot ReadMetrics(const MetricsPublisherState& state) {
   for (;;) {
-    const uint32_t seqBefore =
-        state.seq.load(std::memory_order_acquire);
-    if (seqBefore & 1U) {
+    const uint64_t sequenceBefore =
+        state.sequence.load(std::memory_order_acquire);
+    if (sequenceBefore & 1U) {
       // Writer in progress; retry.
       continue;
     }
-    const MetricsSnapshot copy = state.snapshot;
-    const uint32_t seqAfter =
-        state.seq.load(std::memory_order_acquire);
-    if (seqBefore == seqAfter) {
+    MetricsSnapshot copy;
+    copy.fillMs = state.fillMs.load(std::memory_order_relaxed);
+    copy.smoothedRatio = state.smoothedRatio.load(std::memory_order_relaxed);
+    copy.ppm = state.ppm.load(std::memory_order_relaxed);
+    copy.underruns = state.underruns.load(std::memory_order_relaxed);
+    copy.overruns = state.overruns.load(std::memory_order_relaxed);
+    copy.xruns = state.xruns.load(std::memory_order_relaxed);
+    const uint64_t sequenceAfter =
+        state.sequence.load(std::memory_order_acquire);
+    if (sequenceBefore == sequenceAfter) {
       return copy;
     }
-    // seq changed under us; retry.
+    // sequence changed under us; retry.
   }
 }
 
