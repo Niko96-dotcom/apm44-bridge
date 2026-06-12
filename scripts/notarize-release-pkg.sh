@@ -17,8 +17,8 @@ fi
 
 INSTALLER_ID="${INSTALLER_SIGN_ID:-}"
 if [[ -z "$INSTALLER_ID" ]]; then
-  if INSTALLER_ID="$(security find-identity -v -p basic 2>/dev/null | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' | head -1)"; then
-    :
+  if identities="$(security find-identity -v -p basic 2>/dev/null)"; then
+    INSTALLER_ID="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' | sed -n '1p')"
   else
     INSTALLER_ID=""
   fi

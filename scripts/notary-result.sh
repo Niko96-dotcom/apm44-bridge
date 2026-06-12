@@ -2,7 +2,11 @@
 # Shared fail-closed notarytool result handling for release scripts.
 
 extract_notary_submission_id() {
-  sed -nE 's/^[[:space:]]*id:[[:space:]]*([^[:space:]]+).*/\1/p' | head -1
+  sed -nE '/^[[:space:]]*id:[[:space:]]*/ {
+    s/^[[:space:]]*id:[[:space:]]*([^[:space:]]+).*/\1/
+    p
+    q
+  }'
 }
 
 fetch_notary_log_if_available() {
