@@ -74,7 +74,7 @@ codesign --verify --verbose build/signing/APM44Bridge-0.1.1.dmg
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
 xcrun stapler validate build/signing/APM44Bridge-0.1.1.dmg
-spctl --assess --type open --verbose=4 build/signing/APM44Bridge-0.1.1.dmg
+spctl --assess --type open --context context:primary-signature --verbose=4 build/signing/APM44Bridge-0.1.1.dmg
 ```
 
 The final command is the Gatekeeper assessment for the public DMG.
@@ -135,7 +135,7 @@ repackaging:
 ```bash
 bash scripts/codesign-verify-release.sh
 xcrun stapler validate build/signing/APM44Bridge-0.1.1.dmg
-spctl --assess --type open --verbose=4 build/signing/APM44Bridge-0.1.1.dmg
+spctl --assess --type open --context context:primary-signature --verbose=4 build/signing/APM44Bridge-0.1.1.dmg
 ```
 
 If hardware/operator evidence is needed for a final ship decision, run it on a

@@ -40,7 +40,7 @@ Phase numbering continues from shipped history:
 - [x] **Phase 15: Public Distribution UX and Security Posture** - Publish the (completed 2026-06-12)
   local IPC threat model, settle DMG/PKG release posture, and harden critical
   workflow trust decisions.
-- [ ] **Phase 16: Release Validation Closure** - Run and record the final
+- [x] **Phase 16: Release Validation Closure** - Run and record the final (completed 2026-06-12)
   public-release validation sequence, including exact blockers for anything that
   cannot be completed locally.
 
@@ -131,7 +131,7 @@ Planned work:
 4. Apple credential, installer certificate, hardware, or operator blockers are recorded with exact unblock commands.
 5. Planning state is updated with satisfied requirements, accepted gaps, and remaining public-release caveats.
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 16-01 - Run full automated and release validation gates (QA-01, QA-02)
@@ -154,7 +154,7 @@ Planned work:
 | 13. Runtime Correctness Blockers | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 14. Release Automation Fail-Closed | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 15. Public Distribution UX and Security Posture | v0.4 | 2/2 | Complete    | 2026-06-12 |
-| 16. Release Validation Closure | v0.4 | 1/2 | In Progress|  |
+| 16. Release Validation Closure | v0.4 | 2/2 | Complete   | 2026-06-12 |
 
 ## Coverage
 

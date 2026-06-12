@@ -83,13 +83,13 @@ mystery relaunches.
   tests.
 - [x] **QA-02**: Final release validation records the exact command sequence from
   clean build through signing, notarization, stapling, and Gatekeeper assessment.
-- [ ] **QA-03**: Final validation checks the current release artifact path with
+- [x] **QA-03**: Final validation checks the current release artifact path with
   `codesign`, `stapler validate`, and `spctl` or `pkgutil` as appropriate for
   the chosen DMG/PKG distribution path.
-- [ ] **QA-04**: Any validation step blocked by Apple credentials, installer
+- [x] **QA-04**: Any validation step blocked by Apple credentials, installer
   certificate availability, hardware, or operator access is recorded with exact
   unblock commands instead of being silently treated as complete.
-- [ ] **QA-05**: Milestone close updates planning state with satisfied
+- [x] **QA-05**: Milestone close updates planning state with satisfied
   requirements, accepted gaps, and public-release caveats.
 
 ## Future Requirements
@@ -156,9 +156,9 @@ Roadmap phase mapping for v0.4.
 | GHA-01 | Phase 15 | Complete |
 | QA-01 | Phase 16 | Complete |
 | QA-02 | Phase 16 | Complete |
-| QA-03 | Phase 16 | Pending |
-| QA-04 | Phase 16 | Pending |
-| QA-05 | Phase 16 | Pending |
+| QA-03 | Phase 16 | Complete |
+| QA-04 | Phase 16 | Complete |
+| QA-05 | Phase 16 | Complete |
 
 **Coverage:**
 - v0.4 requirements: 29 total
