@@ -20,11 +20,13 @@ A producer can start monitoring once and trust Cubase at 44.1 kHz to keep
 playing through USB-C AirPods at 48 kHz without silent wedges or mystery
 relaunches.
 
-## Current State (v0.4 release validation closed 2026-06-12)
+## Current State (v0.5 planning started 2026-06-13)
 
-**Validated:** Public Release Blocker Closure milestone — release-blocking
-correctness, release automation, distribution posture, and final DMG validation
-have current local evidence.
+**Validated:** v0.4 Public Release Blocker Closure milestone shipped 2026-06-12.
+Release-blocking correctness, release automation, distribution posture, and final
+DMG validation have current local evidence. The previous milestone's active
+requirements are now treated as validated and are listed below under
+Requirements → Validated.
 
 **What works now:**
 - v0.2 deterministic app lifecycle, restart, hotplug, and stale-ring recovery.
@@ -47,7 +49,7 @@ have current local evidence.
   and validation, final DMG notarization/stapling/validation, and Gatekeeper
   acceptance.
 
-**Known caveats (accepted at close):**
+**Known caveats (carried forward):**
 - GitHub publication/upload is an operator action after reviewing the generated
   DMG and release notes.
 - PKG remains maintainer-only/future until Developer ID Installer validation and
@@ -55,10 +57,10 @@ have current local evidence.
 - Live USB-C AirPods/Cubase soak evidence remains operator-dependent hardware
   validation; automated and release-artifact gates are complete.
 
-## Current Milestone: v0.4 Public Release Blocker Closure
+## Current Milestone: v0.5 Release Readiness Hardening
 
-**Goal:** Close the publishing blockers in the attached review so the next
-public release is strict, race-free, and professionally shippable.
+**Goal:** Close remaining correctness, security-posture, and release-automation
+blockers so the public artifact is professionally shippable.
 
 **Target features:**
 - Make `MetricsPublisher` C++ data-race-free and ThreadSanitizer-clean.
@@ -112,26 +114,36 @@ public release is strict, race-free, and professionally shippable.
 - [x] Installed-sync dry-run is CI-gated and automated hardening evidence is
   captured. — v0.3 (QA-01, QA-02, QA-05)
 
-### Active
-
 - [x] Metrics publication is demonstrably data-race-free under standard C++ and
-  ThreadSanitizer.
+  ThreadSanitizer. — v0.4
 - [x] Metrics JSON serialization cannot read past its fixed stack buffer when
-  output is truncated.
+  output is truncated. — v0.4
 - [x] Core Audio virtual-device and non-interleaved callback error paths fail
-  safely without null IOProc cleanup or buffer overreads.
+  safely without null IOProc cleanup or buffer overreads. — v0.4
 - [x] Release scripts and signing workflows fail closed for notarization and app
-  build failures unless an explicit local-development override is set.
+  build failures unless an explicit local-development override is set. — v0.4
 - [x] Shared-memory mode `0666` has a clear public threat model and no security
-  overclaiming.
+  overclaiming. — v0.4
 - [x] Realtime helper names/comments match actual drop-new behavior; unused
-  silence helpers are deleted or corrected.
+  silence helpers are deleted or corrected. — v0.4
 - [x] Public distribution path documents or implements professional installer
   expectations: stapled inner artifacts, strict DMG notarization, and signed PKG
-  direction.
+  direction. — v0.4
 - [x] Release GitHub Actions near credentials/artifacts are pinned or explicitly
-  tracked as a release-hardening decision.
-- [x] Public-release regression and validation gates cover all blocker fixes.
+  tracked as a release-hardening decision. — v0.4
+- [x] Public-release regression and validation gates cover all blocker fixes. — v0.4
+
+### Active
+
+- [ ] MetricsPublisher is demonstrably data-race-free under standard C++ and ThreadSanitizer.
+- [ ] Metrics JSON serialization cannot read past its fixed stack buffer when output is truncated.
+- [ ] Core Audio virtual-device and non-interleaved callback error paths fail safely without null IOProc cleanup or buffer overreads.
+- [ ] Release scripts and signing workflows fail closed for notarization and app build failures unless an explicit local-development override is set.
+- [ ] Shared-memory mode `0666` has a clear public threat model and no security overclaiming.
+- [ ] Realtime helper names/comments match actual drop-new behavior; unused silence helpers are deleted or corrected.
+- [ ] Public distribution path documents or implements professional installer expectations: stapled inner artifacts, strict DMG notarization, and signed PKG direction.
+- [ ] Release GitHub Actions near credentials/artifacts are pinned or explicitly tracked as a release-hardening decision.
+- [ ] Public-release regression and validation gates cover all blocker fixes.
 
 ### Out of Scope
 
@@ -190,11 +202,12 @@ public release is strict, race-free, and professionally shippable.
 | Keep `.planning/` local/ignored for now | v0.1.1 intentionally made the repo public-facing and removed workbench artifacts | ✓ Good — unchanged |
 | Accept QA-03/IPC-04 gaps at milestone close | Operator hardware and sudo driver reinstall required for live proof | ⚠️ Revisit — next milestone or ops task |
 | macOS shm_dev=0 uses driver_generation for stale detection | st_ino unreliable on macOS shm objects | ✓ Good — Phase 7 |
-| Treat v0.3 as hardening before feature expansion | The attached risk list points to correctness issues in realtime and IPC paths | — Pending |
-| Treat v0.4 as public-release blocker closure before publishing | The attached blocker review identifies correctness, release automation, and security-posture issues that should not ship silently | — Pending |
+| Treat v0.3 as hardening before feature expansion | The attached risk list points to correctness issues in realtime and IPC paths | ✓ Good — closed realtime, process, metrics, and shm validation |
+| Treat v0.4 as public-release blocker closure before publishing | The attached blocker review identifies correctness, release automation, and security-posture issues that should not ship silently | ✓ Good — DMG-primary path validated locally with signing, notarization, stapling, and Gatekeeper acceptance |
 | Keep v0.4 DMG-primary for public distribution | The DMG install flow is already shipped and can be made honest/professional now; PKG-primary needs Developer ID Installer validation before becoming public | ✓ Good — PKG remains maintainer-only/future |
 | GitHub Actions trust decision for v0.4 | Official actions remain tag-pinned with Dependabot monitoring; full-length SHA pinning becomes required before moving more signing/notarization/release publication into CI | ✓ Good — documented release-hardening decision |
 | Close v0.4 release validation with live DMG proof | Local Developer ID and AC_NOTARY credentials were available, so Phase 16 could validate the real DMG-primary path instead of recording credential blockers only | ✓ Good — notarized/stapled/Gatekeeper-accepted DMG generated locally |
+| Treat v0.5 as a second pass on release-readiness blockers | The provided blocker review overlaps with v0.4 but is treated as the authoritative scope for the next milestone; any already-fixed items will be verified and regression-gated | — Pending |
 
 ## Evolution
 
@@ -214,4 +227,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-12 after v0.4 Public Release Blocker Closure milestone start*
+*Last updated: 2026-06-13 after v0.5 Release Readiness Hardening milestone start*

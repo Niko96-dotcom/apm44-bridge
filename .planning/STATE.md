@@ -1,37 +1,37 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.4
-milestone_name: Public Release Blocker Closure
-status: Awaiting next milestone
-stopped_at: Milestone v0.4 completed and archived
-last_updated: "2026-06-12T13:07:36.936Z"
-last_activity: 2026-06-12 — Milestone v0.4 completed and archived
+milestone: v0.5
+milestone_name: Release Readiness Hardening
+status: planning
+stopped_at: Milestone v0.5 started
+last_updated: "2026-06-13T00:00:00.000Z"
+last_activity: 2026-06-13 — Milestone v0.5 started
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-12)
+See: .planning/PROJECT.md (updated 2026-06-13)
 
 **Core value:** A producer can start monitoring once and trust Cubase at 44.1
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Awaiting next milestone
+**Current focus:** Defining requirements for v0.5 Release Readiness Hardening
 
 ## Current Position
 
-Phase: Milestone v0.4 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-12 — Milestone v0.4 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-13 — Milestone v0.5 started
 
 ## Performance Metrics
 
@@ -46,7 +46,7 @@ Last activity: 2026-06-12 — Milestone v0.4 completed and archived
 
 **Velocity (v0.3):**
 
-- Total plans completed: 16
+- Total plans completed: 8
 - Phases: 9-12 (4 phases)
 - Timeline: 2026-06-12 (single-day execution)
 - 20/22 requirements satisfied by automated evidence
@@ -57,15 +57,6 @@ Last activity: 2026-06-12 — Milestone v0.4 completed and archived
 - Total plans completed: 11
 - Phases: 5-8 (4 phases)
 - Timeline: 2026-06-11 (single-day execution)
-
-**By Phase (v0.3):**
-
-| Phase | Plans | Status |
-|-------|-------|--------|
-| 09 | 2/2 | Complete |
-| 10 | 2/2 | Complete |
-| 11 | 2/2 | Complete |
-| 12 | 2/2 | Complete |
 
 ## Accumulated Context
 
@@ -102,6 +93,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
   build-ID drift between repo daemon and embedded helper; re-embedded via
   `scripts/embed-daemon-in-app.sh` and CI went green.
 
+- v0.5: Second pass on release-readiness blockers. The provided blocker review
+  overlaps with v0.4 but is treated as the authoritative scope for this milestone;
+  any already-fixed items will be verified and regression-gated.
+
 ### Pending Todos
 
 None.
@@ -132,10 +127,12 @@ Items acknowledged and deferred at milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-12T12:19:23.585Z
-Stopped at: Completed 13-02-PLAN.md
+Last session: 2026-06-13T00:00:00.000Z
+Stopped at: Milestone v0.5 started
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Define requirements for v0.5
+- Create roadmap for v0.5
+- Start execution with `/gsd-plan-phase 17`
