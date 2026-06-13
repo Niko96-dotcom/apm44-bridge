@@ -2,14 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.6
 milestone_name: Public Release Safety Fixes
-status: planning
-last_updated: "2026-06-13T16:27:50Z"
-last_activity: 2026-06-13 — v0.6 roadmap created; next phase is Phase 23 HAL Runtime Pairing Safety
+status: ready_to_plan
+stopped_at: Phase 23 complete (2/2) — ready to discuss Phase 24
+last_updated: 2026-06-13T16:40:55.104Z
+last_activity: 2026-06-13 -- Phase 23 execution started
 progress:
-  total_phases: 4
+  total_phases: 14
   completed_phases: 0
-  total_plans: 7
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 2
   percent: 0
 ---
 
@@ -23,20 +24,20 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** v0.6 Public Release Safety Fixes roadmap is ready; next step is Phase 23 HAL Runtime Pairing Safety
+**Current focus:** Phase 24 — converter and metrics realtime safety
 
 ## Current Position
 
-Phase: 23 (HAL Runtime Pairing Safety)
-Plan: —
+Phase: 24
+Plan: Not started
 Status: Ready to plan
-Last activity: 2026-06-13 — v0.6 roadmap created with 10 requirements mapped across Phases 23-26
+Last activity: 2026-06-13
 
 ## Performance Metrics
 
 **Velocity (v0.5):**
 
-- Total plans completed: 8
+- Total plans completed: 10
 - Phases: 17-22 (6 phases)
 - Timeline: 2026-06-13
 - 16/16 requirements satisfied by automated evidence or live release validation proof
@@ -113,8 +114,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
   script regression tests, installed-sync dry-run). Apple credentials were
   available, so the signed/notarized DMG path was run clean and produced a
   Gatekeeper-accepted artifact. QA-01 and QA-02 are satisfied by live evidence.
+
 - v0.6: Public-release safety fix pass removes the unsafe legacy converter
   public path rather than repairing a debug-only comparison feature.
+
 - v0.6 roadmap: Phase 23 covers HAL timestamp pairing, stopped-IO guard, and
   drop-policy comment; Phase 24 covers converter removal and metrics storage;
   Phase 25 covers Swift app lifecycle/catalog and DMG installer reliability;

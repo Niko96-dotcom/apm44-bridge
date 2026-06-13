@@ -66,7 +66,7 @@ Phase numbering continues from shipped history:
   trust. (completed 2026-06-13)
 - [x] **Phase 22: QA / Regression** - Cover all fixes with regression tests
   and run a clean release validation sequence. (completed 2026-06-13)
-- [ ] **Phase 23: HAL Runtime Pairing Safety** - Make HAL shm output fail
+- [x] **Phase 23: HAL Runtime Pairing Safety** - Make HAL shm output fail (completed 2026-06-13)
   closed for timestamp mismatch and stopped IO.
 - [ ] **Phase 24: Converter and Metrics Realtime Safety** - Remove the unsafe
   legacy converter path and make metrics floating payload storage lock-free.
@@ -299,7 +299,7 @@ Planned work:
 4. HAL shm push comments describe the bounded ring's drop-new/incoming-tail behavior.
 5. Catch2 regressions cover unrelated mismatch rejection, normal matching, rollover matching, and stopped-IO rejection.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 23-01 - Make mono-lane timestamp pairing explicit and fail closed (HAL-01, HAL-02)
@@ -390,7 +390,7 @@ Planned work:
 | 20. Security & Realtime Cleanup | v0.5 | 1/1 | Complete    | 2026-06-13 |
 | 21. Distribution & CI | v0.5 | 3/3 | Complete | 2026-06-13 |
 | 22. QA / Regression | v0.5 | 1/1 | Complete | 2026-06-13 |
-| 23. HAL Runtime Pairing Safety | v0.6 | 0/2 | Pending | - |
+| 23. HAL Runtime Pairing Safety | v0.6 | 2/2 | Complete    | 2026-06-13 |
 | 24. Converter and Metrics Realtime Safety | v0.6 | 0/2 | Pending | - |
 | 25. App and Installer Reliability | v0.6 | 0/2 | Pending | - |
 | 26. Regression and Release Safety Closure | v0.6 | 0/1 | Pending | - |

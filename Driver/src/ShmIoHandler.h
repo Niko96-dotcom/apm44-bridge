@@ -36,21 +36,25 @@ class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestH
 
   struct PendingLaneBlock {
     std::array<float, kDefaultShmCapacityFrames> frames{};
-    Float64 sampleTime = 0.0;
+    Float64 zeroTimestamp = 0.0;
+    Float64 timestamp = 0.0;
+    Float64 logicalSampleTime = 0.0;
     UInt32 frameCount = 0;
   };
 
   bool ensureRingReady();
+  static bool laneTimesMatch(const PendingLaneBlock& lhs, const PendingLaneBlock& rhs);
   void pushInterleaved(const Float32* frames, UInt32 frameCount);
   void pushMonoLane(const std::shared_ptr<aspl::Stream>& stream,
                     const Float32* frames,
                     UInt32 frameCount,
-                    Float64 sampleTime);
+                    Float64 zeroTimestamp,
+                    Float64 timestamp);
   void enqueueLane(UInt32 channelIndex, const Float32* frames, UInt32 frameCount,
-                   Float64 sampleTime);
+                   Float64 zeroTimestamp, Float64 timestamp);
   PendingLaneBlock& laneAt(UInt32 channelIndex, std::size_t offset);
   void dropLane(UInt32 channelIndex);
-  int findLaneWithSampleTime(UInt32 channelIndex, Float64 sampleTime) const;
+  int findLaneMatchingBlock(UInt32 channelIndex, const PendingLaneBlock& block) const;
   void flushPendingLanes();
   void pushLanePair(const PendingLaneBlock& left, const PendingLaneBlock& right);
 

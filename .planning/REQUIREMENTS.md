@@ -9,10 +9,10 @@ Requirements for the v0.6 Public Release Safety Fixes milestone.
 
 ### HAL Runtime Safety
 
-- [ ] **HAL-01**: HAL mono-lane output rejects unrelated left/right timestamp mismatches and never pairs arbitrary mismatched lanes into stereo shm output.
-- [ ] **HAL-02**: HAL mono-lane rollover pairing is allowed only through a named predicate that compares `zeroTimestamp + timestamp` within a narrow documented tolerance.
-- [ ] **HAL-03**: HAL mixed-output processing ignores callbacks when IO is stopped, before stream processing or shm writes occur.
-- [ ] **HAL-04**: HAL shm push comments accurately describe the implemented drop-new/incoming-tail policy.
+- [x] **HAL-01**: HAL mono-lane output rejects unrelated left/right timestamp mismatches and never pairs arbitrary mismatched lanes into stereo shm output.
+- [x] **HAL-02**: HAL mono-lane rollover pairing is allowed only through a named predicate that compares `zeroTimestamp + timestamp` within a narrow documented tolerance.
+- [x] **HAL-03**: HAL mixed-output processing ignores callbacks when IO is stopped, before stream processing or shm writes occur.
+- [x] **HAL-04**: HAL shm push comments accurately describe the implemented drop-new/incoming-tail policy.
 
 ### Converter and Metrics Safety
 
@@ -66,10 +66,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HAL-01 | Phase 23 | Pending |
-| HAL-02 | Phase 23 | Pending |
-| HAL-03 | Phase 23 | Pending |
-| HAL-04 | Phase 23 | Pending |
+| HAL-01 | Phase 23 | Complete |
+| HAL-02 | Phase 23 | Complete |
+| HAL-03 | Phase 23 | Complete |
+| HAL-04 | Phase 23 | Complete |
 | CONV-01 | Phase 24 | Pending |
 | METR-04 | Phase 24 | Pending |
 | APP-06 | Phase 25 | Pending |
