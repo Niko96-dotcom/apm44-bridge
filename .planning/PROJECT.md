@@ -20,13 +20,13 @@ A producer can start monitoring once and trust Cubase at 44.1 kHz to keep
 playing through USB-C AirPods at 48 kHz without silent wedges or mystery
 relaunches.
 
-## Current State (v0.5 shipped 2026-06-13)
+## Current State (v0.6 shipped 2026-06-13)
 
-**Validated:** v0.5 Release Readiness Hardening milestone shipped 2026-06-13.
-All sixteen v0.5 requirements are satisfied by automated evidence or live
-release validation, and the public DMG artifact is signed, notarized, stapled,
-and accepted by Gatekeeper. The milestone's active requirements are now treated
-as validated and are listed below under Requirements → Validated.
+**Validated:** v0.6 Public Release Safety Fixes milestone shipped 2026-06-13.
+All ten v0.6 requirements are satisfied by automated evidence, and the public
+release path is much stronger around HAL pairing safety, stopped-IO callbacks,
+legacy converter removal, realtime metrics storage, app lifecycle reset,
+installer behavior, and CI release-script coverage.
 
 **What works now:**
 - v0.2 deterministic app lifecycle, restart, hotplug, and stale-ring recovery.
@@ -47,13 +47,22 @@ as validated and are listed below under Requirements → Validated.
   trusting capacity or build-ID strings.
 - `scripts/ci.sh` includes the installed-sync dry-run gate.
 - Release automation fails closed for notarization and app-build verification
-  unless an explicit local-development override is set.
+  unless an explicit local-development override is set, with v0.6 source guards
+  ensuring release-script tests remain in GitHub CI.
 - The public DMG is built from stapled inner app/driver artifacts, then
   notarized/stapled; release-facing GitHub Actions trust posture is documented
   and regression-gated.
 - The v0.5 public artifact path has live local evidence: Developer ID signing,
   app/driver evidence zip notarization, inner app/driver stapling and validation,
   final DMG notarization/stapling/validation, and Gatekeeper acceptance.
+- HAL mono-lane timestamp pairing fails closed for unrelated mismatches while
+  preserving the narrow rollover-tolerant pairing case.
+- Mixed-output HAL processing ignores callbacks while IO is stopped.
+- The unsafe legacy AudioToolbox converter public comparison path is removed.
+- Realtime metrics floating payloads are stored through packed atomic integer
+  representation rather than possibly-locking floating atomics.
+- Device catalog refresh and app idle transitions no longer hang or show stale
+  metrics state in the v0.6 audited paths.
 
 **Known caveats (carried forward):**
 - v0.5.0 has been tagged and the signed/notarized/stapled DMG has been
@@ -66,26 +75,24 @@ as validated and are listed below under Requirements → Validated.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone: v0.6 Public Release Safety Fixes
+## Current Milestone: v0.7 Release Automation Final Polish
 
-**Goal:** Close the remaining public-release safety issues surfaced after v0.5
-by fixing HAL timestamp pairing, lifecycle guards, release installer behavior,
-legacy converter safety, realtime metrics storage, stderr handling, metrics UI
-staleness reset, GitHub CI release-script coverage, and stale documentation.
+**Goal:** Close the final public-release professionalism gaps around manual
+signing, CI app-bundle proof, strict codesign verification, lock-free realtime
+metrics guarantees, and clean process termination reset behavior.
 
 **Target fixes:**
-- Make HAL mono-lane timestamp pairing fail closed for unrelated mismatches
-  while preserving an explicit, narrow rollover allowance.
-- Respect `ioRunning_` in the mixed-output HAL hot path.
-- Fix or remove the unsafe legacy AudioToolbox converter path.
-- Make the DMG installer copy the app deterministically with `sudo ditto` after
-  removing any existing app bundle.
-- Ensure realtime metrics double fields are stored with lock-free guarantees.
-- Discard or drain `DeviceCatalog.refresh()` stderr so device listing cannot
-  deadlock on a full pipe.
-- Reset `lastMetricsAt` whenever bridge metrics state is reset on start or idle.
-- Run release-script tests in GitHub CI.
-- Correct the stale `pushInterleaved()` drop-policy comment.
+- Build the manual signing workflow's Release app into the same
+  `build/Release` artifact location that `scripts/sign-release.sh` signs.
+- Make local CI prove the app bundle under test contains the current embedded
+  daemon instead of accepting a missing bundle through dry-run sync behavior.
+- Make public release codesign verification fail hard on missing Hardened
+  Runtime or missing Developer ID Application identity unless an explicit local
+  override is set.
+- Add a lock-free assertion for the `std::atomic<uint64_t>` metrics payload
+  representation used by realtime metrics storage.
+- Route clean unexpected running-process termination through the same idle
+  transition and metrics-reset path as other idle exits.
 
 ## Requirements
 
@@ -155,20 +162,30 @@ staleness reset, GitHub CI release-script coverage, and stale documentation.
 - [x] Release GitHub Actions near credentials/artifacts are pinned or explicitly tracked as a release-hardening decision. — v0.5 (Phase 21, CI-01)
 - [x] Public-release regression and validation gates cover all blocker fixes. — v0.5 (Phase 22, QA-01/QA-02)
 
+- [x] HAL mono-lane timestamp pairing rejects unrelated mismatches and preserves only explicit rollover-tolerant pairing. — v0.6 (Phase 23, HAL-01)
+- [x] Mixed-output processing ignores callbacks when IO is stopped. — v0.6 (Phase 23, HAL-02)
+- [x] Legacy AudioToolbox converter comparison path is removed before public release. — v0.6 (Phase 24, CONV-01)
+- [x] Realtime metrics publication stores floating payloads through packed atomic integer representation. — v0.6 (Phase 24, METR-01)
+- [x] Device catalog refresh cannot deadlock on unread stderr. — v0.6 (Phase 25, APP-01)
+- [x] Metrics staleness state resets cleanly across start and idle transitions. — v0.6 (Phase 25, APP-02)
+- [x] DMG installer app copy is deterministic and privileged. — v0.6 (Phase 25, DIST-01)
+- [x] GitHub CI runs release-script regressions and guards against removal. — v0.6 (Phase 25, CI-01)
+- [x] Drop-policy comments match the implemented drop-new behavior. — v0.6 (Phase 23, DOC-01)
+- [x] Full v0.6 regression gate reconciles all release-safety evidence. — v0.6 (Phase 26, QA-01)
+
 ### Active
 
-- [ ] HAL mono-lane timestamp pairing rejects unrelated mismatches and preserves
-  only explicit rollover-tolerant pairing.
-- [ ] Mixed-output processing ignores callbacks when IO is stopped.
-- [ ] Legacy AudioToolbox converter comparison path is removed or made memory
-  safe before public release.
-- [ ] DMG installer app copy is deterministic and privileged.
-- [ ] Realtime metrics publication does not depend on possibly-locking double
-  atomics.
-- [ ] Device catalog refresh cannot deadlock on unread stderr.
-- [ ] Metrics staleness state resets cleanly across start and idle transitions.
-- [ ] GitHub CI runs release-script regressions.
-- [ ] Drop-policy comments match the implemented drop-new behavior.
+- [ ] Manual signing workflow builds the Release app into the exact artifact
+  path that the signing script signs.
+- [ ] Local CI embeds and verifies the current daemon inside the app bundle it
+  is checking.
+- [ ] Release codesign verification fails hard for missing Hardened Runtime or
+  missing Developer ID Application identity unless explicitly overridden for
+  local development.
+- [ ] Realtime metrics storage has a compile-time lock-free assertion for
+  `std::atomic<uint64_t>`.
+- [ ] Clean running-process termination transitions through the central idle
+  reset path.
 
 ### Out of Scope
 
@@ -205,6 +222,10 @@ staleness reset, GitHub CI release-script coverage, and stale documentation.
   timestamp pairing, IO lifecycle gating, legacy converter ownership, installer
   determinism, realtime metrics atomics, stderr draining, metrics UI reset, CI
   release-script coverage, and drop-policy documentation.
+- v0.7 is seeded from the 2026-06-13 final public-release polish audit covering
+  manual GitHub signing artifact alignment, CI embedded-daemon proof, strict
+  release codesign verification, lock-free metrics atomic guarantees, and clean
+  process termination reset behavior.
 - `.planning/` is gitignored by default; selected artifacts are force-added for
   local GSD state.
 
@@ -240,6 +261,7 @@ staleness reset, GitHub CI release-script coverage, and stale documentation.
 | Verify v0.5 metrics and Core Audio paths without source changes | v0.4 already implemented atomic-field seqlock publication, safe JSON truncation, `inputStarted` tracking, and non-interleaved clamping | ✓ Good — verification focused on evidence and requirement tags |
 | Keep v0.5 DMG-primary and accept operator-dependent publication/soak gaps | Automated release-artifact gates are complete; live hardware sign-off and GitHub upload remain operator responsibilities | ✓ Good — caveats documented before release tag |
 | Treat v0.6 as a public-release safety fix pass | The post-v0.5 review identifies narrow correctness and distribution risks that should close before wider public confidence | — Pending |
+| Treat v0.7 as final release automation polish | The latest audit says the product is close but manual signing, CI bundle proof, strict codesign checks, and small runtime guards should close before public release | — Pending |
 
 ## Evolution
 
@@ -259,4 +281,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-13 after v0.6 Public Release Safety Fixes milestone start*
+*Last updated: 2026-06-13 after v0.7 Release Automation Final Polish milestone start*

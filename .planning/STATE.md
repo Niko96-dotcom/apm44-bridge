@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.6
-milestone_name: Public Release Safety Fixes
-status: Awaiting next milestone
-stopped_at: v0.6 milestone cleanup complete; phases 23-26 archived to .planning/milestones/v0.6-phases/
-last_updated: "2026-06-13T16:57:59.447Z"
-last_activity: 2026-06-13 — Milestone v0.6 completed, archived, and cleaned up
+milestone: v0.7
+milestone_name: Release Automation Final Polish
+status: planning
+last_updated: "2026-06-13T17:33:15.086Z"
+last_activity: 2026-06-13
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +27,10 @@ mystery relaunches.
 
 ## Current Position
 
-Phase: Milestone v0.6 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-13 — Milestone v0.6 completed, archived, and cleaned up
+Status: Defining requirements
+Last activity: 2026-06-13 — Milestone v0.7 started
 
 ## Performance Metrics
 
