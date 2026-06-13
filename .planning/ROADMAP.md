@@ -11,6 +11,7 @@
   2026-06-12) - [archive](milestones/v0.3-ROADMAP.md)
 - Complete **v0.4 Public Release Blocker Closure** - Phases 13-16 (shipped
   2026-06-12) - [archive](milestones/v0.4-ROADMAP.md)
+- **v0.5 Release Readiness Hardening** - Phases 17-22 (in progress)
 
 ## Overview
 
@@ -21,6 +22,14 @@ distribution trust and installer posture, and recorded a complete release
 validation sequence with exact caveats for anything blocked by credentials or
 hardware.
 
+The v0.5 milestone is a second pass on release-readiness blockers: harden the
+C++ metrics and serialization paths, close two Core Audio failure-path edge
+cases, make release automation fail closed by default, clean up misleading
+realtime helper naming and dead code, document the local IPC threat model and
+installer posture, pin or explicitly track release CI trust decisions, and run a
+clean regression-plus-release validation sequence before considering the public
+artifact shippable.
+
 ## Phase Numbering
 
 Phase numbering continues from shipped history:
@@ -29,21 +38,37 @@ Phase numbering continues from shipped history:
 - Phases 5-8: v0.2 Reliability and Self-Healing.
 - Phases 9-12: v0.3 Realtime Audio Hardening.
 - Phases 13-16: v0.4 Public Release Blocker Closure.
+- Phases 17-22: v0.5 Release Readiness Hardening.
 
 ## Phases
 
-- [x] **Phase 13: Runtime Correctness Blockers** - Remove the standards-level (completed 2026-06-12)
+- [x] **Phase 13: Runtime Correctness Blockers** - Remove the standards-level
   metrics data race, make metrics JSON truncation safe, and close Core Audio
-  edge/error path blockers.
-- [x] **Phase 14: Release Automation Fail-Closed** - Make release scripts and (completed 2026-06-12)
+  edge/error path blockers. (completed 2026-06-12)
+- [x] **Phase 14: Release Automation Fail-Closed** - Make release scripts and
   signing workflows strict by default, with credential-free regression tests for
-  failure modes.
-- [x] **Phase 15: Public Distribution UX and Security Posture** - Publish the (completed 2026-06-12)
+  failure modes. (completed 2026-06-12)
+- [x] **Phase 15: Public Distribution UX and Security Posture** - Publish the
   local IPC threat model, settle DMG/PKG release posture, and harden critical
-  workflow trust decisions.
-- [x] **Phase 16: Release Validation Closure** - Run and record the final (completed 2026-06-12)
+  workflow trust decisions. (completed 2026-06-12)
+- [x] **Phase 16: Release Validation Closure** - Run and record the final
   public-release validation sequence, including exact blockers for anything that
-  cannot be completed locally.
+  cannot be completed locally. (completed 2026-06-12)
+- [ ] **Phase 17: Metrics & Serialization** - Make `MetricsPublisher`
+  data-race-free and ThreadSanitizer-clean, and make metrics JSON serialization
+  truncation-safe.
+- [ ] **Phase 18: Core Audio Error Paths** - Fix virtual-device output-start
+  cleanup and non-interleaved input buffer sizing so failure paths fail safely.
+- [ ] **Phase 19: Release Automation Fail-Closed** - Make notarization,
+  release-all, and signing workflow failures hard by default with an explicit
+  local override.
+- [ ] **Phase 20: Security & Realtime Cleanup** - Publish a clear local IPC
+  threat model and remove misleading realtime helper names/comments/dead code.
+- [ ] **Phase 21: Distribution & CI** - Staple inner artifacts before DMG
+  finalization, document DMG/PKG posture, and pin/document release workflow
+  trust.
+- [ ] **Phase 22: QA / Regression** - Cover all fixes with regression tests
+  and run a clean release validation sequence.
 
 ## Phase Details
 
@@ -137,7 +162,102 @@ Planned work:
 Planned work:
 - 16-01 - Run full automated and release validation gates (QA-01, QA-02)
 - 16-02 - Assess final artifacts and record closeout caveats (QA-03, QA-04,
-  QA-05)
+   QA-05)
+
+### Phase 17: Metrics & Serialization
+
+**Goal:** Metrics publication is demonstrably data-race-free under standard C++ and ThreadSanitizer, and metrics JSON serialization handles truncation without reading past its buffer.
+
+**Depends on:** v0.4 shipped baseline
+
+**Requirements:** METR-01, METR-02, METR-03
+
+**Success Criteria** (what must be TRUE):
+1. `MetricsPublisher` stores snapshot fields atomically (or via an equivalent RT-safe representation) so publication is data-race-free under standard C++.
+2. Metrics publication passes ThreadSanitizer without reported races.
+3. `BridgeMetrics::ToJsonLine` handles `snprintf` truncation safely and cannot read past its stack buffer.
+4. Existing CLI/app metrics consumers still receive all currently exposed fields after the serialization change.
+
+**Plans:** TBD
+
+### Phase 18: Core Audio Error Paths
+
+**Goal:** Core Audio virtual-device output-start failure and non-interleaved input callback sizing fail safely without null IOProc cleanup or buffer overreads.
+
+**Depends on:** Phase 17
+
+**Requirements:** CORE-01, CORE-02
+
+**Success Criteria** (what must be TRUE):
+1. Virtual-device output-start failure only stops an input IOProc if one was actually created and started.
+2. The non-interleaved input callback clamps both buffer sizes before passing channels to the engine.
+3. Regression tests cover the output-start failure cleanup path and the non-interleaved input sizing edge case.
+
+**Plans:** TBD
+
+### Phase 19: Release Automation Fail-Closed
+
+**Goal:** Release scripts and the signing workflow treat notarization and app-build verification failures as hard failures unless explicitly overridden.
+
+**Depends on:** Phase 18
+
+**Requirements:** REL-01, REL-02, REL-03
+
+**Success Criteria** (what must be TRUE):
+1. `notarize-release-dmg.sh` exits non-zero and reports failure for any non-`Accepted` notarization result or nonzero `notarytool` exit status.
+2. `release-all.sh` requires an explicit override (e.g. `APM44_ALLOW_UNNOTARIZED=1`) to produce an unnotarized artifact.
+3. `sign-notarize.yml` fails the workflow if `verify-app-build.sh` fails.
+4. Normal release automation still succeeds when all validation passes and no override is set.
+
+**Plans:** TBD
+
+### Phase 20: Security & Realtime Cleanup
+
+**Goal:** Public docs clearly describe the local IPC threat model, and realtime overrun/silence helper naming and dead code match the actual behavior.
+
+**Depends on:** Phase 19
+
+**Requirements:** SEC-01, SEC-02, SEC-03
+
+**Success Criteria** (what must be TRUE):
+1. Public docs include a clear local IPC threat model for shared-memory mode `0666` with no security overclaiming.
+2. Realtime overrun helper names and comments accurately describe the drop-new-input behavior.
+3. The unused or incorrect `WriteSilence` helper is removed or rewritten, with no regression in silence-generation paths.
+4. Source-level or regression tests verify that the helper cleanup does not affect expected silence output.
+
+**Plans:** TBD
+
+### Phase 21: Distribution & CI
+
+**Goal:** The DMG is built from stapled inner artifacts, public docs explain the current installer posture, and release-facing GitHub Actions trust is pinned or documented.
+
+**Depends on:** Phase 20
+
+**Requirements:** DIST-01, DIST-02, CI-01
+
+**Success Criteria** (what must be TRUE):
+1. DMG creation staples inner app/driver artifacts before building the final DMG, then notarizes and staples the DMG.
+2. Public docs explain the signed PKG direction and the current DMG-primary posture.
+3. Release-facing GitHub Actions are pinned by SHA or the decision not to is explicitly documented.
+4. The release artifact validation sequence passes with the new stapling order.
+
+**Plans:** TBD
+
+### Phase 22: QA / Regression
+
+**Goal:** Every v0.5 fix is covered by regression tests and the full release validation sequence runs clean.
+
+**Depends on:** Phase 21
+
+**Requirements:** QA-01, QA-02
+
+**Success Criteria** (what must be TRUE):
+1. Regression tests cover the fixed truncation, failure-path, and callback-edge cases.
+2. The full automated test suite (native, Swift, release-script regression) passes.
+3. A clean release validation sequence runs successfully after all fixes.
+4. Any remaining operator/hardware blockers are recorded with exact unblock commands.
+
+**Plans:** TBD
 
 ## Progress
 
@@ -156,13 +276,20 @@ Planned work:
 | 14. Release Automation Fail-Closed | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 15. Public Distribution UX and Security Posture | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 16. Release Validation Closure | v0.4 | 2/2 | Complete    | 2026-06-12 |
+| 17. Metrics & Serialization | v0.5 | 0/? | Not started | - |
+| 18. Core Audio Error Paths | v0.5 | 0/? | Not started | - |
+| 19. Release Automation Fail-Closed | v0.5 | 0/? | Not started | - |
+| 20. Security & Realtime Cleanup | v0.5 | 0/? | Not started | - |
+| 21. Distribution & CI | v0.5 | 0/? | Not started | - |
+| 22. QA / Regression | v0.5 | 0/? | Not started | - |
 
 ## Coverage
 
-- Requirements mapped: 29/29
-- Phases: 4
-- Plans: 8 proposed
-- Unmapped requirements: 0
+- v0.4 requirements mapped: 29/29
+- v0.5 requirements mapped: 16/16
+- v0.5 phases: 6
+- v0.5 plans: TBD
+- v0.5 unmapped requirements: 0
 
 ---
-*Roadmap updated: 2026-06-12 after v0.4 milestone completion*
+*Roadmap updated: 2026-06-13 after v0.5 roadmap creation*
