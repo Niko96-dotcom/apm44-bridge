@@ -60,6 +60,34 @@ parse_shm_helper_id() {
   return 1
 }
 
+sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+
+capture_with_timeout() {
+  local seconds="$1"
+  shift
+  local tmp
+  tmp="$(mktemp)"
+  "$@" >"$tmp" 2>/dev/null &
+  local pid=$!
+  local limit=$((seconds * 10))
+  local i
+  for ((i = 0; i < limit; ++i)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      wait "$pid"
+      local status=$?
+      cat "$tmp"
+      rm -f "$tmp"
+      return "$status"
+    fi
+    sleep 0.1
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  cat "$tmp"
+  rm -f "$tmp"
+  return 124
+}
+
 note() { printf '%s\n' "$*"; }
 fail() { note "FAIL: $*"; exit 1; }
 
@@ -73,7 +101,8 @@ if [[ ! -x "$BRIDGE" ]]; then
   fail "repo daemon missing at $BRIDGE — cmake --build build --target apm44-bridge"
 fi
 
-REPO_ID="$(parse_build_id "$("$BRIDGE" --version 2>/dev/null || true)")" || fail "could not parse build= from repo daemon --version"
+REPO_VERSION_OUT="$(capture_with_timeout 5 "$BRIDGE" --version || true)"
+REPO_ID="$(parse_build_id "$REPO_VERSION_OUT")" || fail "could not parse build= from repo daemon --version"
 note "repo_build_id=$REPO_ID"
 
 if [[ ! -x "$HELPER" ]]; then
@@ -85,7 +114,15 @@ if [[ ! -x "$HELPER" ]]; then
   fail "embedded helper missing at $HELPER — run scripts/embed-daemon-in-app.sh"
 fi
 
-HELPER_ID="$(parse_build_id "$("$HELPER" --version 2>/dev/null || true)")" || fail "could not parse build= from embedded helper --version"
+HELPER_VERSION_OUT="$(capture_with_timeout 5 "$HELPER" --version || true)"
+if ! HELPER_ID="$(parse_build_id "$HELPER_VERSION_OUT")"; then
+  if [[ "$DRY_RUN" == "1" ]] && [[ "$(sha256 "$BRIDGE")" == "$(sha256 "$HELPER")" ]]; then
+    note "WARN: embedded helper --version unavailable; SHA matches repo daemon"
+    HELPER_ID="$REPO_ID"
+  else
+    fail "could not parse build= from embedded helper --version"
+  fi
+fi
 note "helper_build_id=$HELPER_ID"
 
 if [[ "$REPO_ID" != "$HELPER_ID" ]]; then

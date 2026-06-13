@@ -72,7 +72,7 @@ Phase numbering continues from shipped history:
   legacy converter path and make metrics floating payload storage lock-free.
 - [x] **Phase 25: App and Release Automation Reliability** - Harden app (completed 2026-06-13)
   lifecycle/catalog edges, the DMG command installer, and GitHub CI coverage.
-- [ ] **Phase 26: Regression and Release Safety Closure** - Run the full
+- [x] **Phase 26: Regression and Release Safety Closure** - Run the full (completed 2026-06-13)
   v0.6 regression gate and reconcile all release-safety evidence.
 
 ## Phase Details
@@ -362,7 +362,7 @@ Planned work:
 4. Swift unit tests pass with the app lifecycle and device catalog regressions.
 5. v0.6 requirements traceability is complete with 10/10 requirements mapped and no accepted code-level blockers.
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Planned work:
 - 26-01 - Wire release-script tests into GitHub CI and run v0.6 validation (CI-02)
@@ -393,7 +393,7 @@ Planned work:
 | 23. HAL Runtime Pairing Safety | v0.6 | 2/2 | Complete    | 2026-06-13 |
 | 24. Converter and Metrics Realtime Safety | v0.6 | 2/2 | Complete    | 2026-06-13 |
 | 25. App and Installer Reliability | v0.6 | 2/2 | Complete    | 2026-06-13 |
-| 26. Regression and Release Safety Closure | v0.6 | 0/1 | Pending | - |
+| 26. Regression and Release Safety Closure | v0.6 | 1/1 | Complete    | 2026-06-13 |
 
 ## Coverage
 
@@ -404,7 +404,7 @@ Planned work:
 - v0.5 unmapped requirements: 0
 - v0.6 requirements mapped: 10/10
 - v0.6 phases: 4
-- v0.6 plans: 0/7
+- v0.6 plans: 7/7
 - v0.6 unmapped requirements: 0
 
 ---

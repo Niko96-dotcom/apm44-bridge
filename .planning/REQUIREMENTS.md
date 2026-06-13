@@ -27,7 +27,7 @@ Requirements for the v0.6 Public Release Safety Fixes milestone.
 ### Release Automation
 
 - [x] **DIST-05**: The DMG command installer replaces `/Applications/APM44 Bridge.app` deterministically by removing any existing bundle, copying with privileged `ditto`, and setting root ownership.
-- [ ] **CI-02**: GitHub CI runs `tests/test_release_scripts.sh` so release-script regressions fail the public CI gate.
+- [x] **CI-02**: GitHub CI runs `tests/test_release_scripts.sh` so release-script regressions fail the public CI gate.
 
 ## v2 Requirements
 
@@ -75,7 +75,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | APP-06 | Phase 25 | Complete |
 | APP-07 | Phase 25 | Complete |
 | DIST-05 | Phase 25 | Complete |
-| CI-02 | Phase 26 | Pending |
+| CI-02 | Phase 26 | Complete |
 
 **Coverage:**
 - v1 requirements: 10 total

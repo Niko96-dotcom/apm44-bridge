@@ -364,6 +364,33 @@ run_ci_01_workflow_trust_check() {       # [CI-01]
   done
 }
 
+# CI-02: public GitHub CI must run release-script regressions after native tests.
+run_ci_02_release_script_tests_in_github_ci() {
+  local workflow="$ROOT/.github/workflows/ci.yml"
+  if [[ ! -f "$workflow" ]]; then
+    echo "CI-02: workflow file not found: $workflow" >&2
+    exit 1
+  fi
+
+  assert_contains "$workflow" "Release script tests"
+  assert_contains "$workflow" "bash tests/test_release_scripts.sh"
+
+  local native_line
+  local release_line
+  native_line="$(grep -n "name: Native tests" "$workflow" | head -1 | cut -d: -f1)"
+  release_line="$(grep -n "name: Release script tests" "$workflow" | head -1 | cut -d: -f1)"
+
+  if [[ -z "$native_line" || -z "$release_line" ]]; then
+    echo "CI-02: expected native and release-script test steps in $workflow" >&2
+    exit 1
+  fi
+
+  if [[ "$release_line" -le "$native_line" ]]; then
+    echo "CI-02: release-script tests must run after native tests" >&2
+    exit 1
+  fi
+}
+
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" accepted success "dmg-accepted"
 run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" accepted success "pkg-accepted"
 
@@ -388,5 +415,7 @@ run_dist_05_dmg_command_installer_check  # [DIST-05]
 run_sign_notarize_workflow_check         # [REL-03]
 
 run_ci_01_workflow_trust_check           # [CI-01]
+
+run_ci_02_release_script_tests_in_github_ci # [CI-02]
 
 echo "release script tests: OK"

@@ -48,6 +48,10 @@ jobs:
         timeout-minutes: 10
         run: ctest --test-dir build --output-on-failure
 
+      - name: Release script tests
+        timeout-minutes: 5
+        run: bash tests/test_release_scripts.sh
+
       - name: Swift app build
         timeout-minutes: 15
         run: bash scripts/verify-app-build.sh
