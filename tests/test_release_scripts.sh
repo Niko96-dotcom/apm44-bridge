@@ -268,18 +268,113 @@ run_release_all_notary_ready_sequence() {
   assert_contains "$LOG" "bash scripts/notarize-release-dmg.sh"
 }
 
+# DIST-01: enforce that inner app/driver are stapled before the final DMG is packaged,
+# and that the final DMG is notarized after it is built from the stapled artifacts.
+run_dist_01_staple_before_dmg_order() {
+  local out="$TMP/dist-01-order.out"
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_NOTARY_HISTORY=ok \
+    /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
+
+  local app_staple_line
+  local driver_staple_line
+  local package_only_line
+  local dmg_notarize_line
+
+  app_staple_line="$(grep -n "xcrun stapler staple build/Release/APM44 Bridge.app" "$LOG" | head -1 | cut -d: -f1)"
+  driver_staple_line="$(grep -n "xcrun stapler staple build/Driver/APM44Bridge.driver" "$LOG" | head -1 | cut -d: -f1)"
+  package_only_line="$(grep -n "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
+  dmg_notarize_line="$(grep -n "bash scripts/notarize-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
+
+  if [[ -z "$app_staple_line" || -z "$driver_staple_line" || -z "$package_only_line" || -z "$dmg_notarize_line" ]]; then
+    echo "DIST-01: expected staple/package/notarize lines missing from log" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+
+  if [[ "$app_staple_line" -ge "$package_only_line" ]]; then
+    echo "DIST-01: app staple must occur before package-only DMG build" >&2
+    exit 1
+  fi
+
+  if [[ "$driver_staple_line" -ge "$package_only_line" ]]; then
+    echo "DIST-01: driver staple must occur before package-only DMG build" >&2
+    exit 1
+  fi
+
+  if [[ "$package_only_line" -ge "$dmg_notarize_line" ]]; then
+    echo "DIST-01: package-only DMG build must occur before DMG notarization" >&2
+    exit 1
+  fi
+}
+
+# REL-03: sign-notarize.yml must fail the workflow if verify-app-build.sh fails.
+run_sign_notarize_workflow_check() {     # [REL-03]
+  local workflow="$ROOT/.github/workflows/sign-notarize.yml"
+  if [[ ! -f "$workflow" ]]; then
+    echo "REL-03: workflow file not found: $workflow" >&2
+    exit 1
+  fi
+  assert_contains "$workflow" "bash scripts/verify-app-build.sh"
+  if grep -Eq 'verify-app-build\.sh.*(\|\| *true|continue-on-error:\s*true)' "$workflow"; then
+    echo "REL-03: sign-notarize.yml masks verify-app-build.sh failure" >&2
+    exit 1
+  fi
+}
+
+# CI-01: release-facing workflows must reference only official actions/* actions,
+# or document any third-party action in docs/release.md.
+run_ci_01_workflow_trust_check() {       # [CI-01]
+  local workflow
+  for workflow in "$ROOT/.github/workflows/release.yml" "$ROOT/.github/workflows/sign-notarize.yml" "$ROOT/.github/workflows/ci.yml"; do
+    if [[ ! -f "$workflow" ]]; then
+      echo "CI-01: workflow file not found: $workflow" >&2
+      exit 1
+    fi
+
+    if ! grep -q "CI-01" "$workflow"; then
+      echo "CI-01: missing CI-01 trust marker in $workflow" >&2
+      exit 1
+    fi
+
+    local line
+    while IFS= read -r line; do
+      if [[ "$line" =~ uses:[[:space:]]*([^[:space:]]+) ]]; then
+        local action="${BASH_REMATCH[1]}"
+        if [[ "$action" != actions/* ]]; then
+          echo "CI-01: non-official action '$action' in $workflow must be documented in docs/release.md" >&2
+          exit 1
+        fi
+      fi
+    done < "$workflow"
+  done
+}
+
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" accepted success "dmg-accepted"
 run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" accepted success "pkg-accepted"
 
-run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" rejected failure "dmg-rejected"
-run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" rejected failure "pkg-rejected"
+# REL-01: notarization must fail closed for any non-Accepted result or nonzero notarytool exit.
+run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" rejected failure "dmg-rejected"       # [REL-01]
+run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" rejected failure "pkg-rejected"     # [REL-01]
 
-run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" auth-failure failure "dmg-auth-failure"
-run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" network-failure failure "dmg-network-failure"
-run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" malformed failure "dmg-malformed"
+run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" auth-failure failure "dmg-auth-failure"     # [REL-01]
+run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" network-failure failure "dmg-network-failure" # [REL-01]
+run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" malformed failure "dmg-malformed"           # [REL-01]
 
-run_release_all_missing_credentials
-run_release_all_unnotarized_override
+# REL-02: release-all requires explicit APM44_ALLOW_UNNOTARIZED=1 override when credentials are missing.
+run_release_all_missing_credentials      # [REL-02]
+run_release_all_unnotarized_override     # [REL-02]
+
 run_release_all_notary_ready_sequence
+
+run_dist_01_staple_before_dmg_order      # [DIST-01]
+
+run_sign_notarize_workflow_check         # [REL-03]
+
+run_ci_01_workflow_trust_check           # [CI-01]
 
 echo "release script tests: OK"

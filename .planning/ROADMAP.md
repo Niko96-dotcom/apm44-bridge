@@ -54,21 +54,23 @@ Phase numbering continues from shipped history:
 - [x] **Phase 16: Release Validation Closure** - Run and record the final
   public-release validation sequence, including exact blockers for anything that
   cannot be completed locally. (completed 2026-06-12)
-- [ ] **Phase 17: Metrics & Serialization** - Make `MetricsPublisher`
+- [x] **Phase 17: Metrics & Serialization** - Make `MetricsPublisher`
   data-race-free and ThreadSanitizer-clean, and make metrics JSON serialization
-  truncation-safe.
-- [ ] **Phase 18: Core Audio Error Paths** - Fix virtual-device output-start
+  truncation-safe. (completed 2026-06-13)
+- [x] **Phase 18: Core Audio Error Paths** - Fix virtual-device output-start
   cleanup and non-interleaved input buffer sizing so failure paths fail safely.
-- [ ] **Phase 19: Release Automation Fail-Closed** - Make notarization,
+  (completed 2026-06-13)
+- [x] **Phase 19: Release Automation Fail-Closed** - Make notarization,
   release-all, and signing workflow failures hard by default with an explicit
-  local override.
-- [ ] **Phase 20: Security & Realtime Cleanup** - Publish a clear local IPC
+  local override. (completed 2026-06-13)
+- [x] **Phase 20: Security & Realtime Cleanup** - Publish a clear local IPC
   threat model and remove misleading realtime helper names/comments/dead code.
-- [ ] **Phase 21: Distribution & CI** - Staple inner artifacts before DMG
+  (completed 2026-06-13)
+- [x] **Phase 21: Distribution & CI** - Staple inner artifacts before DMG
   finalization, document DMG/PKG posture, and pin/document release workflow
-  trust.
-- [ ] **Phase 22: QA / Regression** - Cover all fixes with regression tests
-  and run a clean release validation sequence.
+  trust. (completed 2026-06-13)
+- [x] **Phase 22: QA / Regression** - Cover all fixes with regression tests
+  and run a clean release validation sequence. (completed 2026-06-13)
 
 ## Phase Details
 
@@ -178,7 +180,7 @@ Planned work:
 3. `BridgeMetrics::ToJsonLine` handles `snprintf` truncation safely and cannot read past its stack buffer.
 4. Existing CLI/app metrics consumers still receive all currently exposed fields after the serialization change.
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
 
 ### Phase 18: Core Audio Error Paths
 
@@ -193,7 +195,11 @@ Planned work:
 2. The non-interleaved input callback clamps both buffer sizes before passing channels to the engine.
 3. Regression tests cover the output-start failure cleanup path and the non-interleaved input sizing edge case.
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
+
+Planned work:
+- 18-01 - Verify virtual-device output-start cleanup and non-interleaved input
+  sizing are regression-gated (CORE-01, CORE-02)
 
 ### Phase 19: Release Automation Fail-Closed
 
@@ -209,7 +215,11 @@ Planned work:
 3. `sign-notarize.yml` fails the workflow if `verify-app-build.sh` fails.
 4. Normal release automation still succeeds when all validation passes and no override is set.
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
+
+Planned work:
+- 19-01 - Verify release scripts and signing workflow fail closed by default
+  (REL-01, REL-02, REL-03)
 
 ### Phase 20: Security & Realtime Cleanup
 
@@ -225,7 +235,11 @@ Planned work:
 3. The unused or incorrect `WriteSilence` helper is removed or rewritten, with no regression in silence-generation paths.
 4. Source-level or regression tests verify that the helper cleanup does not affect expected silence output.
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
+
+Planned work:
+- 20-01 - Verify and regression-gate local IPC threat model, drop-new-input
+  helper naming, and WriteSilence absence (SEC-01, SEC-02, SEC-03)
 
 ### Phase 21: Distribution & CI
 
@@ -241,7 +255,12 @@ Planned work:
 3. Release-facing GitHub Actions are pinned by SHA or the decision not to is explicitly documented.
 4. The release artifact validation sequence passes with the new stapling order.
 
-**Plans:** TBD
+**Plans:** 3/3 plans complete
+
+Planned work:
+- 21-01 - Verify DMG is built from stapled inner app/driver artifacts (DIST-01)
+- 21-02 - Verify public docs explain DMG-primary and signed-PKG direction (DIST-02)
+- 21-03 - Verify release-facing GitHub Actions trust is pinned or documented (CI-01)
 
 ### Phase 22: QA / Regression
 
@@ -257,7 +276,10 @@ Planned work:
 3. A clean release validation sequence runs successfully after all fixes.
 4. Any remaining operator/hardware blockers are recorded with exact unblock commands.
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
+
+Planned work:
+- 22-01 - Run full local CI gate and clean signed/notarized release validation sequence (QA-01, QA-02)
 
 ## Progress
 
@@ -276,20 +298,20 @@ Planned work:
 | 14. Release Automation Fail-Closed | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 15. Public Distribution UX and Security Posture | v0.4 | 2/2 | Complete    | 2026-06-12 |
 | 16. Release Validation Closure | v0.4 | 2/2 | Complete    | 2026-06-12 |
-| 17. Metrics & Serialization | v0.5 | 0/? | Not started | - |
-| 18. Core Audio Error Paths | v0.5 | 0/? | Not started | - |
-| 19. Release Automation Fail-Closed | v0.5 | 0/? | Not started | - |
-| 20. Security & Realtime Cleanup | v0.5 | 0/? | Not started | - |
-| 21. Distribution & CI | v0.5 | 0/? | Not started | - |
-| 22. QA / Regression | v0.5 | 0/? | Not started | - |
+| 17. Metrics & Serialization | v0.5 | 1/1 | Complete    | 2026-06-13 |
+| 18. Core Audio Error Paths | v0.5 | 1/1 | Complete    | 2026-06-13 |
+| 19. Release Automation Fail-Closed | v0.5 | 1/1 | Complete    | 2026-06-13 |
+| 20. Security & Realtime Cleanup | v0.5 | 1/1 | Complete    | 2026-06-13 |
+| 21. Distribution & CI | v0.5 | 3/3 | Complete | 2026-06-13 |
+| 22. QA / Regression | v0.5 | 1/1 | Complete | 2026-06-13 |
 
 ## Coverage
 
 - v0.4 requirements mapped: 29/29
 - v0.5 requirements mapped: 16/16
 - v0.5 phases: 6
-- v0.5 plans: TBD
+- v0.5 plans: 8/8
 - v0.5 unmapped requirements: 0
 
 ---
-*Roadmap updated: 2026-06-13 after v0.5 roadmap creation*
+*Roadmap updated: 2026-06-13 after Phase 22 completion*

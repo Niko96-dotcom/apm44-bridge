@@ -72,7 +72,7 @@ std::size_t MismatchedNonInterleavedInputFrames(std::size_t b0Bytes,
 
 }  // namespace
 
-TEST_CASE("OversizedInterleavedOutputSilencesTail", "[io_proc][rt][RT-03][RT-04]") {
+TEST_CASE("OversizedInterleavedOutputSilencesTail", "[io_proc][rt][RT-03][RT-04][SEC-03]") {
   // Core Audio asks for 4× the scratch capacity; the engine renders into
   // the first `scratch` frames, the tail is explicitly zeroed.
   constexpr std::size_t scratchCapacity = 64;
@@ -91,7 +91,7 @@ TEST_CASE("OversizedInterleavedOutputSilencesTail", "[io_proc][rt][RT-03][RT-04]
   }
 }
 
-TEST_CASE("OversizedNonInterleavedOutputSilencesTail", "[io_proc][rt][RT-03][RT-04]") {
+TEST_CASE("OversizedNonInterleavedOutputSilencesTail", "[io_proc][rt][RT-03][RT-04][SEC-03]") {
   constexpr std::size_t scratchCapacity = 64;
   constexpr std::size_t requestedFrames = scratchCapacity * 4;
   std::vector<float> b0(requestedFrames, 0.5f);
@@ -124,7 +124,7 @@ TEST_CASE("InterleavedOutputWithinScratchCapacity", "[io_proc][rt][RT-03]") {
   }
 }
 
-TEST_CASE("InterleavedOutputAtScratchCapacityBoundary", "[io_proc][rt][RT-03][RT-04]") {
+TEST_CASE("InterleavedOutputAtScratchCapacityBoundary", "[io_proc][rt][RT-03][RT-04][SEC-03]") {
   // Edge case: requested == scratch → no tail to silence, but the loop
   // must not off-by-one.
   constexpr std::size_t scratchCapacity = 64;
@@ -140,9 +140,20 @@ TEST_CASE("InterleavedOutputAtScratchCapacityBoundary", "[io_proc][rt][RT-03][RT
 }
 
 TEST_CASE("mismatched non-interleaved input buffer sizes use shortest channel",
-          "[io_proc][rt][AUD-02][AUD-03]") {
+          "[io_proc][rt][AUD-02][AUD-03][CORE-02]") {
   const std::size_t b0Bytes = 512 * sizeof(float);
   const std::size_t b1Bytes = 128 * sizeof(float);
 
   REQUIRE(MismatchedNonInterleavedInputFrames(b0Bytes, b1Bytes, kMaxCallbackFrames) == 128);
+}
+
+TEST_CASE("non-interleaved input buffer sizes clamp to scratch capacity",
+          "[io_proc][rt][CORE-02]") {
+  // Even when both channel buffers are larger than the scratch capacity, the
+  // input callback must not pass more than kMaxCallbackFrames to the engine.
+  const std::size_t b0Bytes = 2048 * sizeof(float);
+  const std::size_t b1Bytes = 2048 * sizeof(float);
+
+  REQUIRE(MismatchedNonInterleavedInputFrames(b0Bytes, b1Bytes, kMaxCallbackFrames) ==
+          kMaxCallbackFrames);
 }

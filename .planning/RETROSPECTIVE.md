@@ -86,6 +86,71 @@
 
 ---
 
+## Milestone: v0.5 — Release Readiness Hardening
+
+**Shipped:** 2026-06-13
+**Phases:** 6 | **Plans:** 8
+
+### What Was Built
+
+- Data-race-free, ThreadSanitizer-clean metrics publication via atomic-field
+  seqlock, plus truncation-safe metrics JSON serialization.
+- Safe Core Audio failure paths: virtual-device output-start cleanup guards and
+  non-interleaved input buffer clamping.
+- Fail-closed release automation for notarization, unnotarized overrides, and
+  app-build verification, with credential-free regression tests.
+- Public local IPC threat model, accurate realtime drop-new-input naming, and
+  absence guard for misleading/dead silence helpers.
+- DMG inner-stapling order, DMG-primary/signed-PKG posture docs, and
+  release-facing GitHub Actions trust posture regression-gated.
+- Clean release validation sequence producing a signed, notarized,
+  Gatekeeper-accepted DMG.
+
+### What Worked
+
+- Treating v0.5 as a verification-and-regression pass over v0.4 work avoided
+  unnecessary reimplementation; most requirements were already correctly
+  implemented and only needed requirement tags and evidence.
+- Credential-free regression tests for release scripts and workflow YAML kept
+  CI trust decisions enforceable without Apple credentials.
+- Running the full release validation sequence after `rm -rf build` proved the
+  public artifact path end-to-end, not just the incremental developer build.
+
+### What Was Inefficient
+
+- The milestone scope overlapped heavily with v0.4; the primary effort was
+  cross-referencing existing implementation rather than building new behavior.
+- No Nyquist `*-VALIDATION.md` artifacts were produced for phases 17-22, so the
+  milestone relies on VERIFICATION.md and live release validation for evidence.
+- Operator-dependent publication and live hardware soak remain manual steps
+  after the automated gates are green.
+
+### Patterns Established
+
+- Requirement tags on Catch2 tests (`[CORE-01]`, `[SEC-02]`, etc.) make
+  traceability from REQUIREMENTS.md to executable evidence explicit.
+- Source-level guard tests (e.g., `WriteSilence` absence) prevent regression of
+  removed or forbidden patterns without runtime coverage.
+- Public docs keep security posture honest: local IPC is described as a
+  local-machine boundary, not a privilege or authentication boundary.
+
+### Key Lessons
+
+1. A "second pass" milestone is valuable when the original work is correct but
+   its evidence and traceability need to be release-grade.
+2. Release automation trust should be enforceable by credential-free tests,
+   especially when live notarization requires Apple credentials.
+3. DMG-primary is the right public posture until signed PKG distribution is
+   fully automated and validated.
+
+### Cost Observations
+
+- Timeline: single-day execution (2026-06-13) across 6 phases
+- Velocity: 8 plans, ~15-30 min/plan for verification-focused work
+- No new dependencies or major source rewrites
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -96,6 +161,7 @@
 | v0.1.1 | — | Public release cleanup, dropout fixes |
 | v0.2 | 5-8 | Lifecycle reliability layer on shipped core |
 | v0.4 | 13-16 | Runtime correctness and public release validation closure |
+| v0.5 | 17-22 | Release-readiness verification, regression gating, and artifact hardening |
 
 ### Cumulative Quality
 
@@ -104,8 +170,10 @@
 | v0.1.1 | Cubase soak sign-off | 30+ min HAL soak |
 | v0.2 | Swift transitions + Catch2 hardening | Pending operator checklist |
 | v0.4 | CI + release-script regressions + signed DMG validation | Operator publication/live soak caveats recorded |
+| v0.5 | CI + TSAN metrics + release-script regressions + signed DMG Gatekeeper acceptance | DMG artifact ready for operator publication; live soak still operator-dependent |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. The audio/DSP core was sound; lifecycle and recovery were the real failure modes.
 2. CI green is necessary but not sufficient — installed driver/helper/ring sync needs explicit gates.
+3. Release-grade closure requires artifact-level proof (signed/notarized/stapled/Gatekeeper-accepted), not only passing repo tests.

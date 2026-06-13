@@ -9,37 +9,37 @@ Requirements for the v0.5 Release Readiness Hardening milestone.
 
 ### Metrics & Serialization
 
-- [ ] **METR-01**: `MetricsPublisher` stores snapshot fields atomically (or via an equivalent RT-safe representation) so publication is data-race-free under standard C++.
-- [ ] **METR-02**: Metrics publication passes ThreadSanitizer without reported races.
-- [ ] **METR-03**: `BridgeMetrics::ToJsonLine` handles `snprintf` truncation safely and cannot read past its stack buffer.
+- [x] **METR-01**: `MetricsPublisher` stores snapshot fields atomically (or via an equivalent RT-safe representation) so publication is data-race-free under standard C++.
+- [x] **METR-02**: Metrics publication passes ThreadSanitizer without reported races.
+- [x] **METR-03**: `BridgeMetrics::ToJsonLine` handles `snprintf` truncation safely and cannot read past its stack buffer.
 
 ### Core Audio Error Paths
 
-- [ ] **CORE-01**: Virtual-device output-start failure only stops an input IOProc if one was actually created and started.
-- [ ] **CORE-02**: Non-interleaved input callback clamps both buffer sizes before passing channels to the engine.
+- [x] **CORE-01**: Virtual-device output-start failure only stops an input IOProc if one was actually created and started.
+- [x] **CORE-02**: Non-interleaved input callback clamps both buffer sizes before passing channels to the engine.
 
 ### Release Automation
 
-- [ ] **REL-01**: `notarize-release-dmg.sh` treats any non-`Accepted` notarization result or nonzero exit status as a hard failure.
-- [ ] **REL-02**: `release-all.sh` requires an explicit override (e.g. `APM44_ALLOW_UNNOTARIZED=1`) to produce an unnotarized artifact.
-- [ ] **REL-03**: `sign-notarize.yml` fails hard if `verify-app-build.sh` fails.
+- [x] **REL-01**: `notarize-release-dmg.sh` treats any non-`Accepted` notarization result or nonzero exit status as a hard failure.
+- [x] **REL-02**: `release-all.sh` requires an explicit override (e.g. `APM44_ALLOW_UNNOTARIZED=1`) to produce an unnotarized artifact.
+- [x] **REL-03**: `sign-notarize.yml` fails hard if `verify-app-build.sh` fails.
 
 ### Security & Realtime Cleanup
 
-- [ ] **SEC-01**: Public docs include a clear local IPC threat model for shared-memory mode `0666` with no security overclaiming.
-- [ ] **SEC-02**: Realtime overrun helper name/comments accurately describe drop-new-input behavior.
-- [ ] **SEC-03**: Unused or incorrect `WriteSilence` helper is removed or rewritten.
+- [x] **SEC-01**: Public docs include a clear local IPC threat model for shared-memory mode `0666` with no security overclaiming.
+- [x] **SEC-02**: Realtime overrun helper name/comments accurately describe drop-new-input behavior.
+- [x] **SEC-03**: Unused or incorrect `WriteSilence` helper is removed or rewritten.
 
 ### Distribution & CI
 
-- [ ] **DIST-01**: DMG creation order staples inner app/driver artifacts before building the final DMG, then notarizes/staples the DMG.
-- [ ] **DIST-02**: Public docs explain signed PKG direction and current DMG-primary posture.
-- [ ] **CI-01**: Release-facing GitHub Actions are pinned by SHA or the decision not to is explicitly documented.
+- [x] **DIST-01**: DMG creation order staples inner app/driver artifacts before building the final DMG, then notarizes/staples the DMG.
+- [x] **DIST-02**: Public docs explain signed PKG direction and current DMG-primary posture.
+- [x] **CI-01**: Release-facing GitHub Actions are pinned by SHA or the decision not to is explicitly documented.
 
 ### QA / Regression
 
-- [ ] **QA-01**: Regression tests cover the fixed truncation, failure-path, and callback-edge cases.
-- [ ] **QA-02**: Clean release validation sequence runs successfully after all fixes.
+- [x] **QA-01**: Regression tests cover the fixed truncation, failure-path, and callback-edge cases.
+- [x] **QA-02**: Clean release validation sequence runs successfully after all fixes.
 
 ## v2 Requirements
 
@@ -77,22 +77,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| METR-01 | Phase 17 | Pending |
-| METR-02 | Phase 17 | Pending |
-| METR-03 | Phase 17 | Pending |
-| CORE-01 | Phase 18 | Pending |
-| CORE-02 | Phase 18 | Pending |
-| REL-01 | Phase 19 | Pending |
-| REL-02 | Phase 19 | Pending |
-| REL-03 | Phase 19 | Pending |
-| SEC-01 | Phase 20 | Pending |
-| SEC-02 | Phase 20 | Pending |
-| SEC-03 | Phase 20 | Pending |
-| DIST-01 | Phase 21 | Pending |
-| DIST-02 | Phase 21 | Pending |
-| CI-01 | Phase 21 | Pending |
-| QA-01 | Phase 22 | Pending |
-| QA-02 | Phase 22 | Pending |
+| METR-01 | Phase 17 | Complete |
+| METR-02 | Phase 17 | Complete |
+| METR-03 | Phase 17 | Complete |
+| CORE-01 | Phase 18 | Complete |
+| CORE-02 | Phase 18 | Complete |
+| REL-01 | Phase 19 | Complete |
+| REL-02 | Phase 19 | Complete |
+| REL-03 | Phase 19 | Complete |
+| SEC-01 | Phase 20 | Complete |
+| SEC-02 | Phase 20 | Complete |
+| SEC-03 | Phase 20 | Complete |
+| DIST-01 | Phase 21 | Complete |
+| DIST-02 | Phase 21 | Complete |
+| CI-01 | Phase 21 | Complete |
+| QA-01 | Phase 22 | Complete |
+| QA-02 | Phase 22 | Complete |
 
 **Coverage:**
 - v1 requirements: 16 total
@@ -101,4 +101,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-13*
-*Last updated: 2026-06-13 after v0.5 roadmap creation*
+*Last updated: 2026-06-13 after Phase 22 verification*

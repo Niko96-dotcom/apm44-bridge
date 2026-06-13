@@ -31,6 +31,8 @@ PKG tooling remains maintainer-only for now. Use `APM44_BUILD_PKG=1` only to
 test the package path after Developer ID Installer signing and validation are
 configured.
 
+<!-- DIST-02 -->
+
 ## Security / local IPC
 
 `/apm44_bridge_ring` is local-machine IPC between the HAL producer and the
@@ -272,6 +274,8 @@ Rationale:
 Future hardening trigger: before moving more signing, notarization, or release
 publication into GitHub-hosted automation, pin critical actions to full-length
 SHA revisions and document the refresh procedure.
+
+<!-- CI-01 -->
 
 ## Related
 

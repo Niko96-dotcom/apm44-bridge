@@ -45,7 +45,7 @@ TEST_CASE("MmapShmRing closed ring returns zero safely", "[hardening_audit]") {
   ring.setDaemonReady();
 }
 
-TEST_CASE("PlanarRingBuffer drop-input overrun preserves consumer-visible fill", "[hardening_audit]") {
+TEST_CASE("PlanarRingBuffer drop-input overrun preserves consumer-visible fill", "[hardening_audit][SEC-02]") {
   // RT-01 / RT-02 contract: the producer path drops the unaccepted tail
   // of the incoming block (drop-new-input policy) and never calls `pop`
   // from the producer side. Consumer-visible fill is therefore preserved
@@ -96,10 +96,20 @@ TEST_CASE("kControlLoopInterval blocks at least 100ms", "[hardening_audit]") {
 }
 
 TEST_CASE("virtual-device output-start failure cleanup avoids null input stop",
-          "[hardening_audit][AUD-01][AUD-03]") {
+          "[hardening_audit][AUD-01][AUD-03][CORE-01]") {
   const std::string source = ReadFile("BridgeDaemon/src/engine/BridgeEngine.cpp");
 
   REQUIRE(Contains(source, "bool inputStarted = false;"));
   REQUIRE(Contains(source, "cleanupIOProcs(inputStarted, false);"));
   REQUIRE_FALSE(Contains(source, "AudioDeviceStop(devices_.input.deviceId, inputProc_);\n    stop();"));
+}
+
+TEST_CASE("no WriteSilence helper exists in IoProcHandlers",
+          "[hardening_audit][SEC-03]") {
+  // SEC-03: the old/incorrect WriteSilence helper must not be present.
+  // Silence generation is performed inline by OutputIoProc; no dead helper
+  // should remain to contradict the contract.
+  const std::string source = ReadFile("BridgeDaemon/src/engine/IoProcHandlers.cpp");
+
+  REQUIRE_FALSE(Contains(source, "WriteSilence"));
 }

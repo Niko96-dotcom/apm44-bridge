@@ -2,6 +2,30 @@
 
 ## Completed
 
+### v0.5 - Release Readiness Hardening
+
+**Shipped:** 2026-06-13
+**Phases completed:** 6 phases, 8 plans, 16 requirements
+
+**Delivered:**
+
+- Verified data-race-free, ThreadSanitizer-clean metrics publication via atomic-field seqlock.
+- Verified truncation-safe metrics JSON serialization with `snprintf` bounds checking.
+- Verified safe Core Audio failure paths for virtual-device output-start cleanup and non-interleaved input buffer clamping.
+- Verified fail-closed release automation for notarization, explicit unnotarized override, and workflow app-build verification.
+- Verified public local IPC threat model, accurate drop-new-input helper naming, and absence of misleading/dead silence helpers.
+- Verified DMG inner-stapling order, DMG-primary/signed-PKG posture docs, and release-facing GitHub Actions trust posture.
+- Ran full local CI gate (20 native + 43 Swift tests, release-script regressions, installed-sync dry-run).
+- Produced a signed, notarized, stapled DMG accepted by Gatekeeper.
+
+**Known caveats at close:**
+
+- GitHub release publication/upload remains an operator action for the current public artifact.
+- Signed PKG packaging remains future/maintainer-only; public distribution stays DMG-first.
+- Live USB-C AirPods/Cubase soak remains operator-dependent and outside local automation.
+
+**Archive:** [milestones/v0.5-SUMMARY.md](milestones/v0.5-SUMMARY.md), [milestones/v0.5-ROADMAP.md](milestones/v0.5-ROADMAP.md), [milestones/v0.5-REQUIREMENTS.md](milestones/v0.5-REQUIREMENTS.md), [milestones/v0.5-MILESTONE-AUDIT.md](milestones/v0.5-MILESTONE-AUDIT.md), [milestones/v0.5/phases/](milestones/v0.5/phases/)
+
 ### v0.4 - Public Release Blocker Closure
 
 **Shipped:** 2026-06-12

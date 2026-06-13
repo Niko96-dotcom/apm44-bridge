@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Release Readiness Hardening
-status: planning
-stopped_at: Milestone v0.5 started
-last_updated: "2026-06-13T00:00:00.000Z"
-last_activity: 2026-06-13 — Milestone v0.5 started
+status: complete
+stopped_at: Phase 22 complete; v0.5 milestone complete
+last_updated: "2026-06-13T17:15:00Z"
+last_activity: 2026-06-13 — v0.5 milestone cleanup complete; phases 17-22 archived to .planning/milestones/v0.5/phases/, build-tsan/ removed, signed DMG preserved
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 6
+  total_plans: 8
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -24,16 +24,24 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Defining requirements for v0.5 Release Readiness Hardening
+**Current focus:** v0.5 Release Readiness Hardening milestone complete and cleaned up; awaiting operator review, release tag decision, and next milestone definition
 
 ## Current Position
 
-Phase: 17 (Metrics & Serialization)
-Plan: —
-Status: Planning
-Last activity: 2026-06-13 — v0.5 roadmap created; awaiting Phase 17 planning
+Phase: 22 (QA / Regression)
+Plan: 22-01
+Status: Complete
+Last activity: 2026-06-13 — Phase 22 QA / Regression complete (QA-01/QA-02), signed/notarized DMG accepted by Gatekeeper
 
 ## Performance Metrics
+
+**Velocity (v0.5):**
+
+- Total plans completed: 8
+- Phases: 17-22 (6 phases)
+- Timeline: 2026-06-13
+- 16/16 requirements satisfied by automated evidence or live release validation proof
+- Signed/notarized DMG path validated end-to-end and accepted by Gatekeeper
 
 **Velocity (v0.4):**
 
@@ -97,13 +105,24 @@ Decisions are logged in PROJECT.md Key Decisions table.
   overlaps with v0.4 but is treated as the authoritative scope for this milestone;
   any already-fixed items will be verified and regression-gated.
 
+- Phase 20: Existing docs and code already satisfied SEC-01/02/03; the phase
+  added requirement tags and a source-level guard test rather than behavioral
+  changes.
+
+- Phase 22: Full local CI gate passed (20 native + 43 Swift tests, release
+  script regression tests, installed-sync dry-run). Apple credentials were
+  available, so the signed/notarized DMG path was run clean and produced a
+  Gatekeeper-accepted artifact. QA-01 and QA-02 are satisfied by live evidence.
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
-None blocking next milestone planning.
+None. v0.5 milestone is complete.
+
+- Milestone audit completed 2026-06-13: `.planning/v0.5-MILESTONE-AUDIT.md` status `tech_debt`. No blockers; minor planning-hygiene gaps and accepted operational caveats are documented in the audit.
 
 ## Deferred Items
 
@@ -127,11 +146,18 @@ Items acknowledged and deferred at milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-13T00:00:00.000Z
-Stopped at: Milestone v0.5 started
+Last session: 2026-06-13T17:15:00.000Z
+Stopped at: v0.5 milestone cleanup complete; phases 17-22 archived to .planning/milestones/v0.5/phases/
 Resume file: None
 
 ## Operator Next Steps
 
-- Review and approve v0.5 ROADMAP.md
-- Start execution with `/gsd-plan-phase 17`
+- Review v0.5 milestone audit (`.planning/v0.5-MILESTONE-AUDIT.md`) and closeout artifacts:
+  - `.planning/milestones/v0.5-SUMMARY.md`
+  - `.planning/milestones/v0.5-ROADMAP.md`
+  - `.planning/milestones/v0.5-REQUIREMENTS.md`
+  - `.planning/PROJECT.md` (Current State and Key Decisions updated)
+  - `.planning/STATE.md` (milestone completion recorded)
+- Decide whether to tag `v0.5.0` and publish the signed/notarized DMG (`build/signing/APM44Bridge-0.1.1.dmg`).
+- Optional: run live USB-C AirPods Max / Cubase soak on target hardware before public release.
+- Start next milestone planning (`/gsd-new-milestone`) when ready.

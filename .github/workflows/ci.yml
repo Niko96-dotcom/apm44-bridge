@@ -1,5 +1,7 @@
 name: CI
 
+# CI-01: release-facing CI workflow; action trust decision in docs/release.md
+
 on:
   pull_request:
   push:

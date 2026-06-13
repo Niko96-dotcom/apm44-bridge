@@ -20,13 +20,13 @@ A producer can start monitoring once and trust Cubase at 44.1 kHz to keep
 playing through USB-C AirPods at 48 kHz without silent wedges or mystery
 relaunches.
 
-## Current State (v0.5 planning started 2026-06-13)
+## Current State (v0.5 shipped 2026-06-13)
 
-**Validated:** v0.4 Public Release Blocker Closure milestone shipped 2026-06-12.
-Release-blocking correctness, release automation, distribution posture, and final
-DMG validation have current local evidence. The previous milestone's active
-requirements are now treated as validated and are listed below under
-Requirements → Validated.
+**Validated:** v0.5 Release Readiness Hardening milestone shipped 2026-06-13.
+All sixteen v0.5 requirements are satisfied by automated evidence or live
+release validation, and the public DMG artifact is signed, notarized, stapled,
+and accepted by Gatekeeper. The milestone's active requirements are now treated
+as validated and are listed below under Requirements → Validated.
 
 **What works now:**
 - v0.2 deterministic app lifecycle, restart, hotplug, and stale-ring recovery.
@@ -36,18 +36,24 @@ Requirements → Validated.
   every Core Audio frame.
 - Swift process-stop waiters complete independently and escalation reaches the
   timeout path.
-- Metrics publication no longer relies on bare cross-thread `MetricsSnapshot`
-  copies.
+- Metrics publication is data-race-free under standard C++ and
+  ThreadSanitizer-clean (`MetricsPublisher` atomic-field seqlock).
+- `BridgeMetrics::ToJsonLine` handles `snprintf` truncation safely and cannot
+  read past its stack buffer.
+- Core Audio failure paths fail safely: virtual-device output-start cleanup only
+  stops an input IOProc that was actually started, and non-interleaved input
+  callbacks clamp both channel buffer sizes.
 - Shared-memory opening rejects truncated, lying, or corrupt mappings before
   trusting capacity or build-ID strings.
 - `scripts/ci.sh` includes the installed-sync dry-run gate.
-- Release automation fails closed for notarization, packages the final DMG from
-  stapled inner app/driver artifacts, and regression-tests notary failure modes
-  without Apple credentials.
-- The v0.4 DMG-primary public artifact path has live local evidence: Developer
-  ID signing, app/driver evidence zip notarization, inner app/driver stapling
-  and validation, final DMG notarization/stapling/validation, and Gatekeeper
-  acceptance.
+- Release automation fails closed for notarization and app-build verification
+  unless an explicit local-development override is set.
+- The public DMG is built from stapled inner app/driver artifacts, then
+  notarized/stapled; release-facing GitHub Actions trust posture is documented
+  and regression-gated.
+- The v0.5 public artifact path has live local evidence: Developer ID signing,
+  app/driver evidence zip notarization, inner app/driver stapling and validation,
+  final DMG notarization/stapling/validation, and Gatekeeper acceptance.
 
 **Known caveats (carried forward):**
 - GitHub publication/upload is an operator action after reviewing the generated
@@ -56,24 +62,20 @@ Requirements → Validated.
   installer UX are intentionally promoted.
 - Live USB-C AirPods/Cubase soak evidence remains operator-dependent hardware
   validation; automated and release-artifact gates are complete.
+- Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
+  driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone: v0.5 Release Readiness Hardening
+## Current Milestone: v0.6+ (next milestone not yet defined)
 
-**Goal:** Close remaining correctness, security-posture, and release-automation
-blockers so the public artifact is professionally shippable.
+**Status:** v0.5 Release Readiness Hardening is complete; awaiting operator
+review and next milestone definition.
 
-**Target features:**
-- Make `MetricsPublisher` C++ data-race-free and ThreadSanitizer-clean.
-- Fix `BridgeMetrics::ToJsonLine` truncation safety with regression coverage.
-- Harden Core Audio failure paths: virtual-device output-start cleanup and
-  non-interleaved input buffer sizing.
-- Make notarization, signing, and release automation fail hard unless explicitly
-  opted out.
-- Document the local shared-memory threat model and remove misleading or dead
-  realtime helpers.
-- Recheck distribution UX: DMG stapling order, signed PKG direction, and
-  SHA-pinned release workflows.
-- Add blocker-list regression tests and run a clean release validation sequence.
+**Likely directions (to be decided):**
+- Promote signed PKG installer to primary public install path.
+- Automate GitHub release publication/upload.
+- Live USB-C AirPods Max / Cubase soak on target hardware.
+- Broad DAW compatibility matrix (Logic/Ableton).
+- Support bundle export for observability.
 
 ## Requirements
 
@@ -133,17 +135,19 @@ blockers so the public artifact is professionally shippable.
   tracked as a release-hardening decision. — v0.4
 - [x] Public-release regression and validation gates cover all blocker fixes. — v0.4
 
+- [x] MetricsPublisher is demonstrably data-race-free under standard C++ and ThreadSanitizer. — v0.5 (Phase 17, METR-01/METR-02)
+- [x] Metrics JSON serialization cannot read past its fixed stack buffer when output is truncated. — v0.5 (Phase 17, METR-03)
+- [x] Core Audio virtual-device and non-interleaved callback error paths fail safely without null IOProc cleanup or buffer overreads. — v0.5 (Phase 18, CORE-01/CORE-02)
+- [x] Release scripts and signing workflows fail closed for notarization and app build failures unless an explicit local-development override is set. — v0.5 (Phase 19, REL-01/REL-02/REL-03)
+- [x] Shared-memory mode `0666` has a clear public threat model and no security overclaiming. — v0.5 (Phase 20, SEC-01)
+- [x] Realtime helper names/comments match actual drop-new behavior; unused silence helpers are deleted or corrected. — v0.5 (Phase 20, SEC-02/SEC-03)
+- [x] Public distribution path documents or implements professional installer expectations: stapled inner artifacts, strict DMG notarization, and signed PKG direction. — v0.5 (Phase 21, DIST-01/DIST-02)
+- [x] Release GitHub Actions near credentials/artifacts are pinned or explicitly tracked as a release-hardening decision. — v0.5 (Phase 21, CI-01)
+- [x] Public-release regression and validation gates cover all blocker fixes. — v0.5 (Phase 22, QA-01/QA-02)
+
 ### Active
 
-- [ ] MetricsPublisher is demonstrably data-race-free under standard C++ and ThreadSanitizer.
-- [ ] Metrics JSON serialization cannot read past its fixed stack buffer when output is truncated.
-- [ ] Core Audio virtual-device and non-interleaved callback error paths fail safely without null IOProc cleanup or buffer overreads.
-- [ ] Release scripts and signing workflows fail closed for notarization and app build failures unless an explicit local-development override is set.
-- [ ] Shared-memory mode `0666` has a clear public threat model and no security overclaiming.
-- [ ] Realtime helper names/comments match actual drop-new behavior; unused silence helpers are deleted or corrected.
-- [ ] Public distribution path documents or implements professional installer expectations: stapled inner artifacts, strict DMG notarization, and signed PKG direction.
-- [ ] Release GitHub Actions near credentials/artifacts are pinned or explicitly tracked as a release-hardening decision.
-- [ ] Public-release regression and validation gates cover all blocker fixes.
+None — v0.5 Release Readiness Hardening is complete; awaiting next milestone definition.
 
 ### Out of Scope
 
@@ -207,7 +211,9 @@ blockers so the public artifact is professionally shippable.
 | Keep v0.4 DMG-primary for public distribution | The DMG install flow is already shipped and can be made honest/professional now; PKG-primary needs Developer ID Installer validation before becoming public | ✓ Good — PKG remains maintainer-only/future |
 | GitHub Actions trust decision for v0.4 | Official actions remain tag-pinned with Dependabot monitoring; full-length SHA pinning becomes required before moving more signing/notarization/release publication into CI | ✓ Good — documented release-hardening decision |
 | Close v0.4 release validation with live DMG proof | Local Developer ID and AC_NOTARY credentials were available, so Phase 16 could validate the real DMG-primary path instead of recording credential blockers only | ✓ Good — notarized/stapled/Gatekeeper-accepted DMG generated locally |
-| Treat v0.5 as a second pass on release-readiness blockers | The provided blocker review overlaps with v0.4 but is treated as the authoritative scope for the next milestone; any already-fixed items will be verified and regression-gated | — Pending |
+| Treat v0.5 as a second pass on release-readiness blockers | The provided blocker review overlaps with v0.4 but is treated as the authoritative scope for this milestone; any already-fixed items were verified and regression-gated | ✓ Good — all 16 v0.5 requirements satisfied |
+| Verify v0.5 metrics and Core Audio paths without source changes | v0.4 already implemented atomic-field seqlock publication, safe JSON truncation, `inputStarted` tracking, and non-interleaved clamping | ✓ Good — verification focused on evidence and requirement tags |
+| Keep v0.5 DMG-primary and accept operator-dependent publication/soak gaps | Automated release-artifact gates are complete; live hardware sign-off and GitHub upload remain operator responsibilities | ✓ Good — caveats documented before release tag |
 
 ## Evolution
 
@@ -227,4 +233,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-13 after v0.5 Release Readiness Hardening milestone start*
+*Last updated: 2026-06-13 after v0.5 Release Readiness Hardening milestone completion*
