@@ -22,7 +22,7 @@
 - Target-machine Cubase/AirPods live soak remains operator-dependent and outside v0.6 scope.
 - Signed PKG-primary distribution, GitHub release upload automation, Logic/Ableton validation, and support bundle export remain deferred to future milestones.
 
-**Archive:** [milestones/v0.6-ROADMAP.md](milestones/v0.6-ROADMAP.md), [milestones/v0.6-REQUIREMENTS.md](milestones/v0.6-REQUIREMENTS.md), [milestones/v0.6-MILESTONE-AUDIT.md](milestones/v0.6-MILESTONE-AUDIT.md)
+**Archive:** [milestones/v0.6-ROADMAP.md](milestones/v0.6-ROADMAP.md), [milestones/v0.6-REQUIREMENTS.md](milestones/v0.6-REQUIREMENTS.md), [milestones/v0.6-MILESTONE-AUDIT.md](milestones/v0.6-MILESTONE-AUDIT.md), [milestones/v0.6-phases/](milestones/v0.6-phases/)
 
 ### v0.5 - Release Readiness Hardening
 
