@@ -1,133 +1,74 @@
 # Feature Research
 
-**Domain:** macOS audio bridge public-release hardening
-**Researched:** 2026-06-12
+**Domain:** APM44 Bridge public-release safety fixes
+**Researched:** 2026-06-13
 **Confidence:** HIGH
 
 ## Feature Landscape
 
-### Table Stakes (Users Expect These)
+v0.6 is a blocker/fix milestone. The "features" are release-safety capabilities
+that public users should be able to rely on without knowing the internals.
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Race-free metrics publication | Public audio tools should not rely on undefined behavior in UI/CLI metrics | HIGH | Replace plain payload seqlock with atomic representation or safe buffering; include TSan proof. |
-| Safe metrics JSON serialization | CLI JSON should not read past stack buffers on truncation | LOW | Guard `snprintf` result and add a long `srcQuality` regression test. |
-| Safe Core Audio error paths | Error cleanup should not make an existing failure weirder | MEDIUM | Fix virtual-device output-start failure path and non-interleaved input min-frame sizing. |
-| Fail-closed notarization | Public release automation must not treat non-Accepted output as success | MEDIUM | Check `notarytool` return code and require `status: Accepted`; fetch log on failure when an id is present. |
-| Strict signing workflow | Release workflows near secrets/artifacts should not hide build failures | LOW | Remove `bash scripts/verify-app-build.sh || true`. |
-| Explicit local IPC threat model | `0666` shared memory has local-machine security implications | LOW | Document that the ring is not an authentication or privilege boundary. |
-| Blocker regression suite | Each published blocker should have a named test or script check | MEDIUM | Add tests for metrics, JSON truncation, callbacks, virtual failure cleanup, and release scripts. |
+### Table Stakes
 
-### Differentiators (Competitive Advantage)
+| Capability | Why Expected | Complexity | Repo Evidence |
+|------------|--------------|------------|---------------|
+| HAL mono-lane pairing rejects unrelated timestamp mismatches | Arbitrary left/right pairing can produce rare stereo skew, clicks, or comb filtering | HIGH | `flushPendingLanes()` falls through to `pushLanePair(left, right)` after unmatched mismatches. |
+| HAL rollover pairing is explicit and narrow | Existing rollover test should remain valid without accepting every mismatch | MEDIUM | Test uses left `44032.0` with right `zeroTimestamp=44100.0`, `timestamp=0.0`. |
+| Mixed-output processing respects IO stopped state | Lifecycle flag should defend against callbacks after stop | LOW | `ioRunning_` is set but not checked in `OnProcessMixedOutput()`. |
+| Legacy AudioToolbox converter is not unsafe | Public CLI exposes `--legacy-converter`; debug paths still ship | MEDIUM | `InputDataProc` writes to `ioData->mBuffers[0].mData`; `inputInterleaved_` is allocated but unused as source. |
+| DMG installer copies the app deterministically | Users expect app bundle install not to partially merge or fail with permissions | LOW | Generated command uses unprivileged `cp -R "$DIR/APM44 Bridge.app" /Applications/`. |
+| Metrics publication avoids possibly-locking atomics in realtime path | Data-race-safe is not enough for realtime audio callback publication | MEDIUM | `MetricsPublisherState` stores three `std::atomic<double>` fields. |
+| Device catalog refresh cannot deadlock on stderr | User device list refresh should not hang if child emits stderr | LOW | stdout is drained before wait; stderr is an undrained `Pipe()`. |
+| Metrics stale timestamp resets at lifecycle boundaries | UI should not inherit stale timestamps across starts/idle transitions | LOW | `latestMetrics` and `metricsStale` reset, but `lastMetricsAt` does not. |
+| GitHub CI runs release-script tests | Release hardening should not regress while badge stays green | LOW | `scripts/ci.sh` runs the tests; `.github/workflows/ci.yml` does not. |
+| Drop-policy comments match drop-new behavior | Realtime policy should be clear to future maintainers | LOW | `pushInterleaved()` comment still says oldest is skipped. |
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Signed PKG installer direction | More professional UX for a HAL driver install than a Terminal-looking command | HIGH | Could be primary artifact or explicitly tracked release follow-up. |
-| Inner artifact stapling before final container | Better offline/Gatekeeper behavior and clearer support story | MEDIUM | Adjust `release-all.sh` order if final DMG contains the app/driver after stapling. |
-| SHA-pinned release workflows | Stronger supply-chain posture around signing/notarization | MEDIUM | Pin critical actions or document trusted tag decision. |
-| Mocked notary/release shell tests | Prevents script regressions without needing Apple credentials in CI | MEDIUM | Use fake `xcrun` on PATH to simulate Accepted, Invalid, auth error, network error, and malformed output. |
-| Clean release validation command sequence | Gives maintainers one boring, repeatable launch gate | MEDIUM | Combine secret scan, CI, app build, signing/notary checks, stapler, spctl. |
+### Differentiators
 
-### Anti-Features (Commonly Requested, Often Problematic)
+| Capability | Value | Notes |
+|------------|-------|-------|
+| Timestamp pairing predicate named and tested | Makes the HAL rollover exception auditable | Prefer a small helper such as `SameLogicalLaneBlock`. |
+| Source guards for release/RT invariants | Cheap protection for scripts/comments/atomics | Existing tests already use source-level guards in `test_hardening_audit.cpp` and release tests. |
+| One release-safety CI lane | Local and GitHub gates become aligned | Add release-script tests after native tests. |
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Keep `release-all.sh` permissive | Convenient for local dev | Easy to upload unnotarized artifacts by accident | Hard fail by default; explicit `APM44_ALLOW_UNNOTARIZED=1` for local-only builds. |
-| Accept any notary output except `Invalid` | Avoids brittle parsing | Treats auth/network/malformed output as success | Require return code 0 and `status: Accepted`. |
-| Leave `DropOldestThenPush` name | Avoids touching call sites/tests | Name contradicts drop-new behavior and invites future realtime bugs | Rename to `PushWithDropNewOnOverrun` or similar. |
-| Hide `0666` shm mode | Avoids alarming users | Creates an implicit security overclaim | Document local IPC threat model honestly. |
-| Broad DAW expansion in this milestone | Tempting public-facing feature | Distracts from release blockers | Defer Logic/Ableton matrix until release blockers are closed. |
+### Deferred
 
-## Feature Dependencies
+| Item | Reason |
+|------|--------|
+| Broad DAW compatibility matrix | Outside the nine concrete blockers. |
+| PKG-primary public installer promotion | DMG command installer can be hardened now; PKG promotion needs separate UX/signing validation. |
+| New DSP/resampler path | v0.6 should not replace the existing SRC architecture. |
+| Hardware soak | Valuable but operator-dependent and not required to fix these code-level blockers. |
 
-```text
-Race-free metrics representation
-    -> TSan/metrics regression proof
-    -> release validation confidence
+## Scope Recommendation
 
-Safe JSON + callback/error-path fixes
-    -> blocker regression suite
-    -> requirements traceability
+Capture all nine audit items in v0.6 requirements. The first HAL item should be
+split into explicit sub-requirements because it is the highest-risk item:
 
-Fail-closed release scripts
-    -> signing workflow strictness
-    -> DMG/PKG validation
-    -> public release command sequence
+- reject unrelated mono-lane mismatches,
+- preserve only named rollover pairing,
+- add regression coverage for normal, mismatch, and rollover cases.
 
-IPC threat model
-    -> release docs truthfulness
-    -> installer UX decision
-```
+The legacy converter requirement should be worded as outcome-based: the public
+build either no longer exposes the flag, or the converter callback uses owned
+input storage with regression coverage.
 
-### Dependency Notes
+## Regression Expectations
 
-- **Metrics representation requires tests first or alongside implementation:** a stress test alone is not enough if the source still has a standard C++ data race.
-- **Release automation must be strict before final validation:** otherwise validation can pass against stale or unnotarized artifacts.
-- **Distribution UX depends on notarization/stapling order:** the final artifact should contain the exact signed/stapled inner artifacts users receive.
-- **Security docs depend on actual shm behavior:** if mode remains `0666`, docs must say what that permits and what it does not promise.
-
-## MVP Definition
-
-### Launch With (v0.4)
-
-- [ ] Race-free metrics publication with TSan-oriented proof.
-- [ ] Safe JSON truncation handling and test.
-- [ ] Core Audio virtual-device output-start failure cleanup fix.
-- [ ] Non-interleaved input callback min-buffer frame sizing fix.
-- [ ] Notary DMG/PKG scripts fail unless submission is accepted.
-- [ ] `release-all.sh` hard-fails without notary credentials unless explicitly opted out.
-- [ ] Signing workflow fails on app-build failure.
-- [ ] IPC threat model and release docs updated.
-- [ ] Misleading overrun helper name fixed and unused silence helper removed or corrected.
-- [ ] Final validation sequence recorded.
-
-### Add After Validation (v0.4.x)
-
-- [ ] Signed PKG becomes primary public installer if certificates and UX are validated.
-- [ ] Workflow SHA pins are maintained by Dependabot or documented manual process.
-- [ ] More complete shell-test framework for release scripts.
-
-### Future Consideration (v0.5+)
-
-- [ ] Logic/Ableton compatibility matrix.
-- [ ] Support bundle export.
-- [ ] Per-user or tighter-permission shared-memory creation strategy.
-- [ ] Privileged helper or XPC-mediated IPC setup.
-
-## Feature Prioritization Matrix
-
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Metrics race fix | HIGH | HIGH | P1 |
-| JSON truncation fix | HIGH | LOW | P1 |
-| Core Audio failure path fixes | HIGH | MEDIUM | P1 |
-| Notary/signing fail-closed automation | HIGH | MEDIUM | P1 |
-| IPC threat model docs | HIGH | LOW | P1 |
-| Helper rename/dead code cleanup | MEDIUM | LOW | P2 |
-| DMG/PKG distribution UX decision | HIGH | MEDIUM/HIGH | P2 |
-| SHA-pinned actions | MEDIUM | MEDIUM | P2 |
-| Logic/Ableton matrix | MEDIUM | HIGH | P3 |
-
-## Competitor Feature Analysis
-
-Not applicable as a feature-comparison exercise. For this milestone, the benchmark is not competitor feature breadth; it is whether the release behaves like a serious macOS audio utility:
-
-| Release expectation | Professional baseline | Our Approach |
-|---------------------|-----------------------|--------------|
-| Driver install | Signed/notarized installer or extremely clear admin install path | Decide PKG direction and tighten docs/automation. |
-| Gatekeeper trust | Developer ID signing and notarization with stapled tickets | Fail release scripts unless `Accepted` and stapler validation succeed. |
-| CI trust | Release workflow cannot hide app build failures | Remove `|| true`; pin critical actions or document exception. |
-| Local IPC | Honest threat model for local shared memory | Document `0666` mode and future hardening options. |
-
-## Sources
-
-- Attached "Blockers before publishing" review, 2026-06-12.
-- https://developer.apple.com/developer-id/ - Developer ID, notarytool, stapler, supported container types.
-- https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution - installer package signing.
-- https://docs.github.com/en/actions/reference/security/secure-use - action SHA pinning and workflow security.
-- https://clang.llvm.org/docs/ThreadSanitizer.html - TSan data-race detection and supported platforms.
-- Repo source scan: `scripts/notarize-release-dmg.sh`, `scripts/release-all.sh`, `.github/workflows/sign-notarize.yml`, `BridgeDaemon/src/engine/*`.
+| Capability | Expected Test Type |
+|------------|--------------------|
+| HAL arbitrary mismatch rejection | Catch2 behavior test using `ShmIoHandler` and `MmapShmRing`. |
+| HAL rollover allowance | Existing rollover test updated to exercise named predicate behavior. |
+| `ioRunning_` guard | Catch2 test that stops IO then calls `OnProcessMixedOutput()` and observes no frames. |
+| Legacy converter safety | Catch2 converter test plus source guard that callback no longer writes into Core Audio-provided input storage. |
+| Metrics lock-free storage | Compile-time static assertions and source/test guard against `std::atomic<double>`. |
+| DeviceCatalog stderr | Swift/source guard for `FileHandle.nullDevice` or concurrent stderr drain. |
+| `lastMetricsAt` reset | Swift lifecycle test or narrow testing accessor. |
+| DMG installer app copy | Release script source test for `sudo rm -rf`, `sudo ditto`, and `sudo chown`. |
+| GitHub CI release tests | Release script source test for `bash tests/test_release_scripts.sh` in `.github/workflows/ci.yml`. |
+| Drop comment | Source guard or direct comment update. |
 
 ---
-*Feature research for: APM44 Bridge v0.4 Public Release Blocker Closure*
-*Researched: 2026-06-12*
+*Feature research for: APM44 Bridge v0.6 Public Release Safety Fixes*
+*Researched: 2026-06-13*
