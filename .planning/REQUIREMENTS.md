@@ -66,22 +66,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HAL-01 | — | Pending |
-| HAL-02 | — | Pending |
-| HAL-03 | — | Pending |
-| HAL-04 | — | Pending |
-| CONV-01 | — | Pending |
-| METR-04 | — | Pending |
-| APP-06 | — | Pending |
-| APP-07 | — | Pending |
-| DIST-05 | — | Pending |
-| CI-02 | — | Pending |
+| HAL-01 | Phase 23 | Pending |
+| HAL-02 | Phase 23 | Pending |
+| HAL-03 | Phase 23 | Pending |
+| HAL-04 | Phase 23 | Pending |
+| CONV-01 | Phase 24 | Pending |
+| METR-04 | Phase 24 | Pending |
+| APP-06 | Phase 25 | Pending |
+| APP-07 | Phase 25 | Pending |
+| DIST-05 | Phase 25 | Pending |
+| CI-02 | Phase 26 | Pending |
 
 **Coverage:**
 - v1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-13*
-*Last updated: 2026-06-13 after v0.6 requirements definition*
+*Last updated: 2026-06-13 after v0.6 roadmap creation*

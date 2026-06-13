@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.6
 milestone_name: Public Release Safety Fixes
 status: planning
-last_updated: "2026-06-13T16:08:44.654Z"
-last_activity: 2026-06-13
+last_updated: "2026-06-13T16:27:50Z"
+last_activity: 2026-06-13 — v0.6 roadmap created; next phase is Phase 23 HAL Runtime Pairing Safety
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -23,14 +23,14 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** v0.5 Release Readiness Hardening milestone complete and cleaned up; awaiting operator review, release tag decision, and next milestone definition
+**Current focus:** v0.6 Public Release Safety Fixes roadmap is ready; next step is Phase 23 HAL Runtime Pairing Safety
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 23 (HAL Runtime Pairing Safety)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-13 — Milestone v0.6 started
+Status: Ready to plan
+Last activity: 2026-06-13 — v0.6 roadmap created with 10 requirements mapped across Phases 23-26
 
 ## Performance Metrics
 
@@ -113,6 +113,12 @@ Decisions are logged in PROJECT.md Key Decisions table.
   script regression tests, installed-sync dry-run). Apple credentials were
   available, so the signed/notarized DMG path was run clean and produced a
   Gatekeeper-accepted artifact. QA-01 and QA-02 are satisfied by live evidence.
+- v0.6: Public-release safety fix pass removes the unsafe legacy converter
+  public path rather than repairing a debug-only comparison feature.
+- v0.6 roadmap: Phase 23 covers HAL timestamp pairing, stopped-IO guard, and
+  drop-policy comment; Phase 24 covers converter removal and metrics storage;
+  Phase 25 covers Swift app lifecycle/catalog and DMG installer reliability;
+  Phase 26 covers GitHub CI release-script coverage and final regression proof.
 
 ### Pending Todos
 
@@ -120,7 +126,7 @@ None.
 
 ### Blockers/Concerns
 
-None. v0.5 milestone is complete.
+None. v0.6 is ready for Phase 23 planning.
 
 - Milestone audit completed 2026-06-13: `.planning/v0.5-MILESTONE-AUDIT.md` status `tech_debt`. No blockers; minor planning-hygiene gaps and accepted operational caveats are documented in the audit.
 
@@ -152,12 +158,6 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Review v0.5 milestone audit (`.planning/v0.5-MILESTONE-AUDIT.md`) and closeout artifacts:
-  - `.planning/milestones/v0.5-SUMMARY.md`
-  - `.planning/milestones/v0.5-ROADMAP.md`
-  - `.planning/milestones/v0.5-REQUIREMENTS.md`
-  - `.planning/PROJECT.md` (Current State and Key Decisions updated)
-  - `.planning/STATE.md` (milestone completion recorded)
-- Decide whether to tag `v0.5.0` and publish the signed/notarized DMG (`build/signing/APM44Bridge-0.1.1.dmg`).
-- Optional: run live USB-C AirPods Max / Cubase soak on target hardware before public release.
-- Start next milestone planning (`/gsd-new-milestone`) when ready.
+- Start Phase 23 planning with `$gsd-plan-phase 23`.
+- Optional: use `$gsd-discuss-phase 23` first if you want to clarify the HAL
+  rollover tolerance and mismatch-drop behavior before implementation planning.

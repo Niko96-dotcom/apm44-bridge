@@ -11,24 +11,18 @@
   2026-06-12) - [archive](milestones/v0.3-ROADMAP.md)
 - Complete **v0.4 Public Release Blocker Closure** - Phases 13-16 (shipped
   2026-06-12) - [archive](milestones/v0.4-ROADMAP.md)
-- **v0.5 Release Readiness Hardening** - Phases 17-22 (in progress)
+- Complete **v0.5 Release Readiness Hardening** - Phases 17-22 (shipped
+  2026-06-13) - [archive](milestones/v0.5-ROADMAP.md)
+- **v0.6 Public Release Safety Fixes** - Phases 23-26 (in progress)
 
 ## Overview
 
-The v0.4 journey closed the remaining blockers before the next public release.
-It started with runtime correctness issues that could invalidate release proof,
-then made signing/notarization automation fail closed, cleaned up public
-distribution trust and installer posture, and recorded a complete release
-validation sequence with exact caveats for anything blocked by credentials or
-hardware.
-
-The v0.5 milestone is a second pass on release-readiness blockers: harden the
-C++ metrics and serialization paths, close two Core Audio failure-path edge
-cases, make release automation fail closed by default, clean up misleading
-realtime helper naming and dead code, document the local IPC threat model and
-installer posture, pin or explicitly track release CI trust decisions, and run a
-clean regression-plus-release validation sequence before considering the public
-artifact shippable.
+The v0.6 milestone is a narrow public-release safety pass over issues found
+after the v0.5 release artifact was signed, notarized, stapled, and published.
+It fixes HAL mono-lane timestamp pairing so arbitrary mismatches cannot become
+stereo output, removes the unsafe legacy converter debug path, makes metrics
+publication avoid possibly-locking double atomics, and tightens app/release
+edges that can deadlock, show stale state, or miss CI regressions.
 
 ## Phase Numbering
 
@@ -39,6 +33,7 @@ Phase numbering continues from shipped history:
 - Phases 9-12: v0.3 Realtime Audio Hardening.
 - Phases 13-16: v0.4 Public Release Blocker Closure.
 - Phases 17-22: v0.5 Release Readiness Hardening.
+- Phases 23-26: v0.6 Public Release Safety Fixes.
 
 ## Phases
 
@@ -71,6 +66,14 @@ Phase numbering continues from shipped history:
   trust. (completed 2026-06-13)
 - [x] **Phase 22: QA / Regression** - Cover all fixes with regression tests
   and run a clean release validation sequence. (completed 2026-06-13)
+- [ ] **Phase 23: HAL Runtime Pairing Safety** - Make HAL shm output fail
+  closed for timestamp mismatch and stopped IO.
+- [ ] **Phase 24: Converter and Metrics Realtime Safety** - Remove the unsafe
+  legacy converter path and make metrics floating payload storage lock-free.
+- [ ] **Phase 25: App and Release Automation Reliability** - Harden app
+  lifecycle/catalog edges, the DMG command installer, and GitHub CI coverage.
+- [ ] **Phase 26: Regression and Release Safety Closure** - Run the full
+  v0.6 regression gate and reconcile all release-safety evidence.
 
 ## Phase Details
 
@@ -281,6 +284,89 @@ Planned work:
 Planned work:
 - 22-01 - Run full local CI gate and clean signed/notarized release validation sequence (QA-01, QA-02)
 
+### Phase 23: HAL Runtime Pairing Safety
+
+**Goal:** HAL shared-memory output fails closed for timestamp mismatch and stopped IO, while preserving only the known rollover pairing case.
+
+**Depends on:** v0.5 shipped baseline
+
+**Requirements:** HAL-01, HAL-02, HAL-03, HAL-04
+
+**Success Criteria** (what must be TRUE):
+1. Left/right mono lanes with unrelated timestamps are not paired into stereo shm output.
+2. Rollover pairing is accepted only through a named logical-time predicate with a narrow documented tolerance.
+3. Mixed-output callbacks after `OnStopIO()` do not apply processing or write frames to shm.
+4. HAL shm push comments describe the bounded ring's drop-new/incoming-tail behavior.
+5. Catch2 regressions cover unrelated mismatch rejection, normal matching, rollover matching, and stopped-IO rejection.
+
+**Plans:** 0/2 plans complete
+
+Planned work:
+- 23-01 - Make mono-lane timestamp pairing explicit and fail closed (HAL-01, HAL-02)
+- 23-02 - Guard stopped IO and correct HAL drop-policy documentation (HAL-03, HAL-04)
+
+### Phase 24: Converter and Metrics Realtime Safety
+
+**Goal:** Public daemon runtime no longer carries the unsafe legacy converter path, and metrics floating fields are published with a lock-free realtime-safe representation.
+
+**Depends on:** Phase 23
+
+**Requirements:** CONV-01, METR-04
+
+**Success Criteria** (what must be TRUE):
+1. `--legacy-converter` is absent from CLI help, option parsing, docs, CMake inputs, tests, and bridge runtime options.
+2. `AudioConverterSrc` is removed from public build inputs or otherwise cannot be selected by users.
+3. `MetricsPublisherState` contains no `std::atomic<double>` fields.
+4. Metrics floating fields round-trip through lock-free `std::atomic<uint64_t>` bit-packed storage.
+5. Native tests or source guards cover both converter removal and metrics storage invariants.
+
+**Plans:** 0/2 plans complete
+
+Planned work:
+- 24-01 - Remove the public legacy AudioToolbox converter path (CONV-01)
+- 24-02 - Replace metrics double atomics with lock-free packed storage (METR-04)
+
+### Phase 25: App and Installer Reliability
+
+**Goal:** App-side refresh and metrics lifecycle state cannot hang or inherit stale timestamps, and the DMG command installer replaces the app bundle deterministically.
+
+**Depends on:** Phase 24
+
+**Requirements:** APP-06, APP-07, DIST-05
+
+**Success Criteria** (what must be TRUE):
+1. `DeviceCatalog.refresh()` cannot block on unread helper stderr while waiting for device-list output.
+2. Bridge start resets `latestMetrics`, `lastMetricsAt`, and `metricsStale` together.
+3. Idle transition resets `latestMetrics`, `lastMetricsAt`, and `metricsStale` together.
+4. The generated DMG command installer removes any existing `/Applications/APM44 Bridge.app`, copies with privileged `ditto`, and sets root ownership.
+5. Swift and release-script regressions cover the stderr, metrics reset, and installer command behavior.
+
+**Plans:** 0/2 plans complete
+
+Planned work:
+- 25-01 - Harden DeviceCatalog stderr handling and metrics timestamp reset (APP-06, APP-07)
+- 25-02 - Make the DMG command installer app copy deterministic (DIST-05)
+
+### Phase 26: Regression and Release Safety Closure
+
+**Goal:** The public CI and local regression gates prove the v0.6 release-safety fixes cannot silently regress.
+
+**Depends on:** Phase 25
+
+**Requirements:** CI-02
+
+**Success Criteria** (what must be TRUE):
+1. `.github/workflows/ci.yml` runs `bash tests/test_release_scripts.sh` after native tests.
+2. Release-script tests contain a guard that fails if GitHub CI stops running release-script regressions.
+3. The native test suite passes with the HAL, converter, metrics, and release-script regressions.
+4. Swift unit tests pass with the app lifecycle and device catalog regressions.
+5. v0.6 requirements traceability is complete with 10/10 requirements mapped and no accepted code-level blockers.
+
+**Plans:** 0/1 plans complete
+
+Planned work:
+- 26-01 - Wire release-script tests into GitHub CI and run v0.6 validation (CI-02)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -304,6 +390,10 @@ Planned work:
 | 20. Security & Realtime Cleanup | v0.5 | 1/1 | Complete    | 2026-06-13 |
 | 21. Distribution & CI | v0.5 | 3/3 | Complete | 2026-06-13 |
 | 22. QA / Regression | v0.5 | 1/1 | Complete | 2026-06-13 |
+| 23. HAL Runtime Pairing Safety | v0.6 | 0/2 | Pending | - |
+| 24. Converter and Metrics Realtime Safety | v0.6 | 0/2 | Pending | - |
+| 25. App and Installer Reliability | v0.6 | 0/2 | Pending | - |
+| 26. Regression and Release Safety Closure | v0.6 | 0/1 | Pending | - |
 
 ## Coverage
 
@@ -312,6 +402,10 @@ Planned work:
 - v0.5 phases: 6
 - v0.5 plans: 8/8
 - v0.5 unmapped requirements: 0
+- v0.6 requirements mapped: 10/10
+- v0.6 phases: 4
+- v0.6 plans: 0/7
+- v0.6 unmapped requirements: 0
 
 ---
-*Roadmap updated: 2026-06-13 after Phase 22 completion*
+*Roadmap updated: 2026-06-13 after v0.6 roadmap creation*
