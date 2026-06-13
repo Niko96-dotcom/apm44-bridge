@@ -17,15 +17,16 @@
   2026-06-13) - [archive](milestones/v0.6-ROADMAP.md)
 - Complete **v0.7 Release Automation Final Polish** - Phases 27-29 (shipped
   2026-06-13)
+- Current **v0.8 Release Candidate Closure** - Phases 30-32
 
 ## Overview
 
-The v0.7 milestone is a final public-release polish pass over the small but
-important gaps left after v0.6. It aligns the manual GitHub signing workflow
-with the exact Release app artifact that gets signed, makes local CI prove the
-embedded daemon inside the app bundle under test, hardens release codesign
-verification, and adds small runtime guardrails for metrics atomics and clean
-termination reset behavior.
+The v0.8 milestone is a release-candidate closure pass over the remaining
+blockers before tagging or publishing. It makes the manual signing workflow build
+all artifacts that `scripts/sign-release.sh` signs, fails closed when signing or
+notary credentials are unavailable, puts HAL driver-only notarization on the
+shared strict notary helper, aligns public docs with release/code truth, and
+records the final release-Mac and target-hardware validation sequence.
 
 ## Phase Numbering
 
@@ -38,6 +39,7 @@ Phase numbering continues from shipped history:
 - Phases 17-22: v0.5 Release Readiness Hardening.
 - Phases 23-26: v0.6 Public Release Safety Fixes.
 - Phases 27-29: v0.7 Release Automation Final Polish.
+- Phases 30-32: v0.8 Release Candidate Closure.
 
 ## Phases
 
@@ -87,6 +89,13 @@ Phase numbering continues from shipped history:
 - [x] **Phase 29: Final Release Polish Closure** - Run the full final
   release-polish gate and reconcile v0.7 evidence before public release.
   (completed 2026-06-13)
+- [ ] **Phase 30: Signing and Notary Fail-Closed** - Build every signed release
+  artifact in the manual signing workflow and apply shared strict notary
+  handling to the HAL driver path.
+- [ ] **Phase 31: Public Truth Cleanup** - Align release version and latency
+  docs with current truth, and remove or justify stale converter/SRC surfaces.
+- [ ] **Phase 32: Release Candidate Validation** - Run the full regression gate
+  and record the release-Mac plus operator target-hardware validation sequence.
 
 ## Phase Details
 
@@ -464,6 +473,72 @@ Planned work:
 - 29-01 - Run final release-polish verification and reconcile v0.7 evidence
   (QA-01)
 
+### Phase 30: Signing and Notary Fail-Closed
+
+**Goal:** Manual signing and HAL driver notarization cannot silently skip, misbuild, or weakly validate release artifacts.
+
+**Depends on:** v0.7 shipped baseline
+
+**Requirements:** SIGN-01, SIGN-02, SIGN-03, SIGN-04, NOTARY-01, NOTARY-02,
+NOTARY-03
+
+**Success Criteria** (what must be TRUE):
+1. `sign-notarize.yml` builds both `apm44-bridge` and `APM44Bridge` before calling `scripts/sign-release.sh`.
+2. The manual signing workflow fails when `APPLE_SIGN_ID` is missing.
+3. The manual signing workflow fails when `notarize=true` but the `AC_NOTARY` profile is unavailable.
+4. `scripts/notarize-hal-driver.sh` uses `require_notary_accepted` and inherits strict accepted-status checking and useful failure logs.
+5. Release-script regression tests catch workflow drift that omits the HAL driver build target.
+
+**Plans:** 0/2 plans complete
+
+Planned work:
+- 30-01 - Build the HAL driver in manual signing and fail closed on missing
+  signing/notary credentials (SIGN-01, SIGN-02, SIGN-03, SIGN-04)
+- 30-02 - Route HAL driver notarization through shared strict notary handling
+  (NOTARY-01, NOTARY-02, NOTARY-03)
+
+### Phase 31: Public Truth Cleanup
+
+**Goal:** Public-facing release docs and code surfaces do not imply stale versions, wrong defaults, dead converter paths, or placebo quality controls.
+
+**Depends on:** Phase 30
+
+**Requirements:** DOC-01, DOC-02, CLEAN-01, SRC-01
+
+**Success Criteria** (what must be TRUE):
+1. Release docs and commands use one current version story for artifact names and milestone language.
+2. Default latency docs match the code's Safe default for new installs.
+3. Empty or dead legacy converter files are deleted or explicitly documented with a current reason for remaining.
+4. SRC quality labels map to distinct converter behavior or are collapsed so public UI/docs do not expose placebo choices.
+
+**Plans:** 0/2 plans complete
+
+Planned work:
+- 31-01 - Align version and latency documentation with current release truth
+  (DOC-01, DOC-02)
+- 31-02 - Remove or document legacy converter files and reconcile SRC quality
+  labels (CLEAN-01, SRC-01)
+
+### Phase 32: Release Candidate Validation
+
+**Goal:** v0.8 closes with complete regression evidence plus exact release-Mac and target-hardware operator validation commands.
+
+**Depends on:** Phase 31
+
+**Requirements:** QA-01, QA-02, QA-03
+
+**Success Criteria** (what must be TRUE):
+1. Full local CI passes after all v0.8 signing, notarization, docs, cleanup, and SRC label changes.
+2. Release-Mac validation commands are recorded for secrets, build, signing, notarization, stapling, Gatekeeper assessment, and installed HAL/app checks.
+3. Operator validation expectations are recorded for clean DMG install, HAL device visibility, menu-bar app start, Cubase route, smoke/soak, and export rate proof.
+4. v0.8 requirements traceability is complete with 14/14 requirements mapped and no accepted code-level blockers.
+
+**Plans:** 0/1 plans complete
+
+Planned work:
+- 32-01 - Run release-candidate regression and validation closure
+  (QA-01, QA-02, QA-03)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -494,6 +569,9 @@ Planned work:
 | 27. Release Artifact Alignment | v0.7 | 2/2 | Complete | 2026-06-13 |
 | 28. Strict Verification and Runtime Guards | v0.7 | 2/2 | Complete | 2026-06-13 |
 | 29. Final Release Polish Closure | v0.7 | 1/1 | Complete | 2026-06-13 |
+| 30. Signing and Notary Fail-Closed | v0.8 | 0/2 | Pending | - |
+| 31. Public Truth Cleanup | v0.8 | 0/2 | Pending | - |
+| 32. Release Candidate Validation | v0.8 | 0/1 | Pending | - |
 
 ## Coverage
 
@@ -510,6 +588,10 @@ Planned work:
 - v0.7 phases: 3
 - v0.7 plans: 5/5
 - v0.7 unmapped requirements: 0
+- v0.8 requirements mapped: 14/14
+- v0.8 phases: 3
+- v0.8 plans: 0/5
+- v0.8 unmapped requirements: 0
 
 ---
-*Roadmap updated: 2026-06-13 after v0.7 autonomous completion*
+*Roadmap updated: 2026-06-13 after v0.8 milestone initialization*

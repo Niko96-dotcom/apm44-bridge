@@ -20,13 +20,13 @@ A producer can start monitoring once and trust Cubase at 44.1 kHz to keep
 playing through USB-C AirPods at 48 kHz without silent wedges or mystery
 relaunches.
 
-## Current State (v0.6 shipped 2026-06-13)
+## Current State (v0.7 shipped 2026-06-13)
 
-**Validated:** v0.6 Public Release Safety Fixes milestone shipped 2026-06-13.
-All ten v0.6 requirements are satisfied by automated evidence, and the public
-release path is much stronger around HAL pairing safety, stopped-IO callbacks,
-legacy converter removal, realtime metrics storage, app lifecycle reset,
-installer behavior, and CI release-script coverage.
+**Validated:** v0.7 Release Automation Final Polish milestone shipped
+2026-06-13. All eleven v0.7 requirements are satisfied by automated evidence,
+and the public release path now has stronger manual signing artifact alignment,
+local CI app-bundle proof, strict release codesign verification, lock-free
+metrics storage guardrails, and clean process termination reset behavior.
 
 **What works now:**
 - v0.2 deterministic app lifecycle, restart, hotplug, and stale-ring recovery.
@@ -63,6 +63,14 @@ installer behavior, and CI release-script coverage.
   representation rather than possibly-locking floating atomics.
 - Device catalog refresh and app idle transitions no longer hang or show stale
   metrics state in the v0.6 audited paths.
+- Manual signing workflow, `scripts/sign-release.sh`,
+  `scripts/codesign-verify-release.sh`, and local CI agree on the Release app
+  bundle path used for embedding, signing, and verification.
+- Release codesign verification fails on weak signing posture unless an explicit
+  local-development override is set.
+- Metrics packed `std::atomic<uint64_t>` storage has compile-time lock-free
+  proof, and clean running-process termination routes through the central idle
+  reset path.
 
 **Known caveats (carried forward):**
 - v0.5.0 has been tagged and the signed/notarized/stapled DMG has been
@@ -75,24 +83,27 @@ installer behavior, and CI release-script coverage.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone: v0.7 Release Automation Final Polish
+## Current Milestone: v0.8 Release Candidate Closure
 
-**Goal:** Close the final public-release professionalism gaps around manual
-signing, CI app-bundle proof, strict codesign verification, lock-free realtime
-metrics guarantees, and clean process termination reset behavior.
+**Goal:** Close the remaining release-candidate blockers before tagging or
+publishing by hardening manual signing, HAL driver notarization, docs/code truth,
+and final operator validation evidence.
 
 **Target fixes:**
-- Build the manual signing workflow's Release app into the same
-  `build/Release` artifact location that `scripts/sign-release.sh` signs.
-- Make local CI prove the app bundle under test contains the current embedded
-  daemon instead of accepting a missing bundle through dry-run sync behavior.
-- Make public release codesign verification fail hard on missing Hardened
-  Runtime or missing Developer ID Application identity unless an explicit local
-  override is set.
-- Add a lock-free assertion for the `std::atomic<uint64_t>` metrics payload
-  representation used by realtime metrics storage.
-- Route clean unexpected running-process termination through the same idle
-  transition and metrics-reset path as other idle exits.
+- Build the HAL driver target in `sign-notarize.yml` before invoking
+  `scripts/sign-release.sh`.
+- Make the manual signing workflow fail when `APPLE_SIGN_ID` or required notary
+  credentials are missing for the requested operation.
+- Route `scripts/notarize-hal-driver.sh` through the shared strict notary helper
+  so driver-only notarization has the same fail-closed behavior as DMG/PKG paths.
+- Add release-script coverage proving `sign-notarize.yml` builds the driver
+  target before signing.
+- Align public version language and default latency documentation with the
+  current release/code truth.
+- Delete or document empty legacy converter files and recheck SRC quality labels
+  so public controls do not imply placebo behavior.
+- Record the final release-candidate validation command set for the release Mac
+  and target-hardware operator pass.
 
 ## Requirements
 
@@ -172,20 +183,34 @@ metrics guarantees, and clean process termination reset behavior.
 - [x] GitHub CI runs release-script regressions and guards against removal. — v0.6 (Phase 25, CI-01)
 - [x] Drop-policy comments match the implemented drop-new behavior. — v0.6 (Phase 23, DOC-01)
 - [x] Full v0.6 regression gate reconciles all release-safety evidence. — v0.6 (Phase 26, QA-01)
+- [x] Manual signing workflow builds, embeds, signs, and verifies the same
+  Release app artifact. — v0.7 (Phase 27, SIGN-01/SIGN-02/SIGN-03)
+- [x] Local CI proves the app bundle under test contains the current embedded
+  daemon. — v0.7 (Phase 27, CI-01/CI-02/CI-03)
+- [x] Release codesign verification fails hard on missing Hardened Runtime or
+  Developer ID Application identity unless explicitly overridden. — v0.7 (Phase 28, REL-01/REL-02)
+- [x] Realtime metrics storage has a compile-time lock-free assertion for packed
+  `std::atomic<uint64_t>` payloads. — v0.7 (Phase 28, METR-01)
+- [x] Clean running-process termination transitions through the central idle
+  reset path. — v0.7 (Phase 28, APP-01)
+- [x] Full final release-polish verification covers v0.7 changes. — v0.7 (Phase 29, QA-01)
 
 ### Active
 
-- [ ] Manual signing workflow builds the Release app into the exact artifact
-  path that the signing script signs.
-- [ ] Local CI embeds and verifies the current daemon inside the app bundle it
-  is checking.
-- [ ] Release codesign verification fails hard for missing Hardened Runtime or
-  missing Developer ID Application identity unless explicitly overridden for
-  local development.
-- [ ] Realtime metrics storage has a compile-time lock-free assertion for
-  `std::atomic<uint64_t>`.
-- [ ] Clean running-process termination transitions through the central idle
-  reset path.
+- [ ] Manual signing workflow builds the HAL driver target before calling
+  `scripts/sign-release.sh`.
+- [ ] Manual signing workflow fails instead of succeeding when required signing
+  or notarization credentials are missing.
+- [ ] Driver-only notarization uses the shared strict notary acceptance helper.
+- [ ] Release-script tests detect signing workflow drift that omits the driver
+  build target.
+- [ ] Public release version language and default latency docs match current
+  code and artifact truth.
+- [ ] Empty legacy converter files are removed or intentionally documented.
+- [ ] SRC quality labels map to distinct behavior or are collapsed before public
+  release.
+- [ ] Final release-candidate validation commands and operator evidence
+  expectations are recorded.
 
 ### Out of Scope
 
@@ -226,6 +251,11 @@ metrics guarantees, and clean process termination reset behavior.
   manual GitHub signing artifact alignment, CI embedded-daemon proof, strict
   release codesign verification, lock-free metrics atomic guarantees, and clean
   process termination reset behavior.
+- v0.8 is seeded from the 2026-06-13 release-candidate closure audit covering
+  missing HAL driver builds in the manual signing workflow, fail-closed signing
+  and notary credential handling, strict driver-only notarization, version/docs
+  truth, legacy converter cleanup, SRC quality labels, and final release-Mac
+  validation.
 - `.planning/` is gitignored by default; selected artifacts are force-added for
   local GSD state.
 
@@ -260,8 +290,9 @@ metrics guarantees, and clean process termination reset behavior.
 | Treat v0.5 as a second pass on release-readiness blockers | The provided blocker review overlaps with v0.4 but is treated as the authoritative scope for this milestone; any already-fixed items were verified and regression-gated | ✓ Good — all 16 v0.5 requirements satisfied |
 | Verify v0.5 metrics and Core Audio paths without source changes | v0.4 already implemented atomic-field seqlock publication, safe JSON truncation, `inputStarted` tracking, and non-interleaved clamping | ✓ Good — verification focused on evidence and requirement tags |
 | Keep v0.5 DMG-primary and accept operator-dependent publication/soak gaps | Automated release-artifact gates are complete; live hardware sign-off and GitHub upload remain operator responsibilities | ✓ Good — caveats documented before release tag |
-| Treat v0.6 as a public-release safety fix pass | The post-v0.5 review identifies narrow correctness and distribution risks that should close before wider public confidence | — Pending |
-| Treat v0.7 as final release automation polish | The latest audit says the product is close but manual signing, CI bundle proof, strict codesign checks, and small runtime guards should close before public release | — Pending |
+| Treat v0.6 as a public-release safety fix pass | The post-v0.5 review identifies narrow correctness and distribution risks that should close before wider public confidence | ✓ Good — shipped public-release safety fixes |
+| Treat v0.7 as final release automation polish | The latest audit says the product is close but manual signing, CI bundle proof, strict codesign checks, and small runtime guards should close before public release | ✓ Good — shipped final release automation polish |
+| Treat v0.8 as release-candidate closure | The latest audit identifies the remaining release-candidate blockers in signing workflow driver coverage, fail-closed credentials, HAL driver notarization, docs truth, and final validation evidence | — Pending |
 
 ## Evolution
 
@@ -281,4 +312,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-13 after v0.7 Release Automation Final Polish milestone start*
+*Last updated: 2026-06-13 after v0.8 Release Candidate Closure milestone start*

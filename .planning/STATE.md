@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.7
-milestone_name: Release Automation Final Polish
-status: Awaiting next milestone
-stopped_at: v0.7 milestone archived; ready for next milestone planning
-last_updated: "2026-06-13T17:47:36.238Z"
-last_activity: 2026-06-13 — Milestone v0.7 completed and archived
+milestone: v0.8
+milestone_name: Release Candidate Closure
+status: planning
+last_updated: "2026-06-13T18:11:43.514Z"
+last_activity: 2026-06-13
 progress:
   total_phases: 3
-  completed_phases: 3
+  completed_phases: 0
   total_plans: 5
-  completed_plans: 5
-  percent: 100
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,14 +23,14 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** v0.7 complete - Release Automation Final Polish
+**Current focus:** v0.8 planning - Release Candidate Closure
 
 ## Current Position
 
-Phase: Milestone v0.7 complete
+Phase: Phase 30 next - Signing and Notary Fail-Closed
 Plan: —
-Status: v0.7 archived; awaiting next milestone
-Last activity: 2026-06-13 — Milestone v0.7 completed and archived
+Status: Roadmap approved; ready to plan Phase 30
+Last activity: 2026-06-13 — Milestone v0.8 requirements and roadmap initialized
 
 ## Performance Metrics
 
@@ -136,6 +135,12 @@ Decisions are logged in PROJECT.md Key Decisions table.
   app-bundle proof; Phase 28 covers strict release codesign verification,
   metrics lock-free assertion, and clean termination reset; Phase 29 covers
   final release-polish verification and traceability closure.
+
+- v0.8 roadmap: Phase 30 covers manual signing HAL driver build coverage,
+  fail-closed signing/notary credentials, and shared strict HAL driver
+  notarization; Phase 31 covers public version/latency docs, converter file
+  cleanup, and SRC quality label truth; Phase 32 covers final regression and
+  release-candidate validation evidence.
 
 ### Pending Todos
 
