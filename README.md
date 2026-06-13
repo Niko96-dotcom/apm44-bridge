@@ -55,6 +55,7 @@ Useful focused checks:
 ```bash
 bash scripts/check-secrets.sh
 bash scripts/verify-app-build.sh
+bash scripts/rebuild-and-open-app.sh
 bash scripts/verify-menu-bar.sh
 bash scripts/ci-soak.sh
 ```

@@ -25,6 +25,12 @@ export APM44_DEV_REPO_ROOT="$PWD"
 bash scripts/verify-app-build.sh
 ```
 
+To rebuild, stop any running copy, and open the exact local build:
+
+```bash
+bash scripts/rebuild-and-open-app.sh
+```
+
 Or open `App/APM44Bridge.xcodeproj` in Xcode and run the **APM44 Bridge** scheme.
 
 ## BlackHole

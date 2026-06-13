@@ -40,6 +40,7 @@ if [[ "${APM44_SKIP_APP:-0}" != "1" ]]; then
     xcodebuild -project App/APM44Bridge.xcodeproj \
       -scheme APM44Bridge \
       -destination 'platform=macOS' \
+      -derivedDataPath build/app \
       test -only-testing:APM44BridgeTests \
       CODE_SIGNING_ALLOWED=NO
   else
