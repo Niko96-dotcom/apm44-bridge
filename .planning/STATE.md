@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.7
 milestone_name: Release Automation Final Polish
-status: planning
-last_updated: "2026-06-13T17:33:15.086Z"
-last_activity: 2026-06-13
+status: Awaiting next milestone
+stopped_at: v0.7 milestone archived; ready for next milestone planning
+last_updated: "2026-06-13T17:47:36.238Z"
+last_activity: 2026-06-13 — Milestone v0.7 completed and archived
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 3
   total_plans: 5
-  completed_plans: 0
-  percent: 0
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -23,14 +24,14 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Phase 27 - Release Artifact Alignment
+**Current focus:** v0.7 complete - Release Automation Final Polish
 
 ## Current Position
 
-Phase: 27 - Release Artifact Alignment
+Phase: Milestone v0.7 complete
 Plan: —
-Status: Ready for phase planning
-Last activity: 2026-06-13 — Milestone v0.7 roadmap created
+Status: v0.7 archived; awaiting next milestone
+Last activity: 2026-06-13 — Milestone v0.7 completed and archived
 
 ## Performance Metrics
 
@@ -130,6 +131,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
   drop-policy comment; Phase 24 covers converter removal and metrics storage;
   Phase 25 covers Swift app lifecycle/catalog and DMG installer reliability;
   Phase 26 covers GitHub CI release-script coverage and final regression proof.
+
 - v0.7 roadmap: Phase 27 covers manual signing artifact alignment and CI
   app-bundle proof; Phase 28 covers strict release codesign verification,
   metrics lock-free assertion, and clean termination reset; Phase 29 covers
@@ -141,9 +143,7 @@ None.
 
 ### Blockers/Concerns
 
-None. v0.7 is ready for Phase 27 planning.
-
-- Milestone audit completed 2026-06-13: `.planning/v0.5-MILESTONE-AUDIT.md` status `tech_debt`. No blockers; minor planning-hygiene gaps and accepted operational caveats are documented in the audit.
+None. v0.7 audit passed with no code-level blockers.
 
 ## Deferred Items
 
@@ -164,13 +164,15 @@ Items acknowledged and deferred at milestone close:
 | packaging | Signed PKG installer | future |
 | compatibility | Logic/Ableton validation matrix | future |
 | observability | Support bundle export | future |
+| publication | GitHub release publication/upload for v0.7 DMG | operator-owned |
+| live soak | Final Cubase/AirPods target hardware soak | operator-dependent |
 
 ## Session Continuity
 
-Last session: 2026-06-13T17:45:00.000Z
-Stopped at: v0.7 roadmap created; Phase 27 ready for planning
+Last session: 2026-06-13T17:47:36.238Z
+Stopped at: v0.7 milestone archived; ready for next milestone planning
 Resume file: None
 
 ## Operator Next Steps
 
-- Start Phase 27 with /gsd-plan-phase 27
+- Start the next milestone with /gsd-new-milestone

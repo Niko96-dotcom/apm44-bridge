@@ -31,6 +31,9 @@ struct MetricsPublisherState {
   std::atomic<uint64_t> xruns{0};
 };
 
+static_assert(std::atomic<uint64_t>::is_always_lock_free,
+              "MetricsPublisherState requires lock-free uint64_t atomics");
+
 // Writer side (called from the realtime thread, e.g. inside
 // `onOutput`'s `PublishGuard`). The sequence pattern:
 //

@@ -191,6 +191,28 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertFalse(manager.metricsStale)
     }
 
+    func testCleanRunningTerminationUsesIdleTransition() async {
+        let (manager, _, launcher) = makeManager()
+
+        manager.start()
+        manager.applyMetricsForTesting(sampleMetrics())
+        manager.markMetricsStaleForTesting()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertNotNil(manager.latestMetrics)
+        XCTAssertTrue(manager.hasLastMetricsTimestampForTesting)
+
+        manager.testTerminationStatus = 0
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertNil(manager.latestMetrics)
+        XCTAssertFalse(manager.hasLastMetricsTimestampForTesting)
+        XCTAssertFalse(manager.metricsStale)
+        XCTAssertNil(manager.lastStopReason)
+    }
+
     func testRunningUnexpectedExit() async {
         let (manager, _, launcher) = makeManager()
         manager.testRetryDelays = [60]

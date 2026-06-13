@@ -3,8 +3,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DERIVED_DATA_PATH="${APM44_APP_DERIVED_DATA:-$ROOT/build/app}"
 CONFIG="${APM44_BUILD_CONFIG:-Debug}"
-APP="$DERIVED_DATA_PATH/Build/Products/$CONFIG/APM44 Bridge.app"
+APP_OUTPUT_DIR="${APM44_APP_OUTPUT_DIR:-}"
+if [[ -n "$APP_OUTPUT_DIR" ]]; then
+  APP="$APP_OUTPUT_DIR/APM44 Bridge.app"
+else
+  APP="$DERIVED_DATA_PATH/Build/Products/$CONFIG/APM44 Bridge.app"
+fi
 EXECUTABLE="$APP/Contents/MacOS/APM44 Bridge"
+XCODEBUILD_ARGS=(
+  -project App/APM44Bridge.xcodeproj
+  -scheme APM44Bridge
+  -configuration "$CONFIG"
+  -derivedDataPath "$DERIVED_DATA_PATH"
+  build
+  CODE_SIGNING_ALLOWED=NO
+)
+if [[ -n "$APP_OUTPUT_DIR" ]]; then
+  XCODEBUILD_ARGS+=("CONFIGURATION_BUILD_DIR=$APP_OUTPUT_DIR")
+fi
 
 cd "$ROOT"
 echo "Generating Xcode project..." >&2
@@ -13,13 +29,10 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Source HEAD: $(git rev-parse --short HEAD)"
 fi
 echo "DerivedData: $DERIVED_DATA_PATH"
-xcodebuild \
-  -project App/APM44Bridge.xcodeproj \
-  -scheme APM44Bridge \
-  -configuration "$CONFIG" \
-  -derivedDataPath "$DERIVED_DATA_PATH" \
-  build \
-  CODE_SIGNING_ALLOWED=NO
+if [[ -n "$APP_OUTPUT_DIR" ]]; then
+  echo "App output: $APP_OUTPUT_DIR"
+fi
+xcodebuild "${XCODEBUILD_ARGS[@]}"
 
 if [[ ! -x "$EXECUTABLE" ]]; then
   echo "error: built app executable missing at $EXECUTABLE" >&2

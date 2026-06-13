@@ -46,12 +46,23 @@ jobs:
       - name: Build Release artifacts
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target apm44-bridge APM44Bridge
-          bash scripts/verify-app-build.sh
+          cmake --build build --target apm44-bridge
+          (cd App && xcodegen generate)
+          xcodebuild -project App/APM44Bridge.xcodeproj \
+            -scheme APM44Bridge \
+            -configuration Release \
+            -derivedDataPath build/app \
+            CONFIGURATION_BUILD_DIR="$PWD/build/Release" \
+            build \
+            CODE_SIGNING_ALLOWED=NO
+          APM44_BUILD_CONFIG=Release \
+            APM44_APP_OUTPUT_DIR="$PWD/build/Release" \
+            bash scripts/verify-app-build.sh
 
       - name: Sign (requires SIGN_ID secret)
         env:
           SIGN_ID: ${{ secrets.APPLE_SIGN_ID }}
+          APM44_APP_PATH: ${{ github.workspace }}/build/Release/APM44 Bridge.app
         run: |
           if [[ -z "${SIGN_ID:-}" ]]; then
             echo "SKIP: APPLE_SIGN_ID secret not configured — use local scripts/sign-release.sh"

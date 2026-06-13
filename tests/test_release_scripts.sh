@@ -91,6 +91,42 @@ echo "unsupported fake security command: $*" >&2
 exit 64
 EOF
 
+cat >"$FAKE_BIN/codesign" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+if [[ "${1:-}" == "--verify" ]]; then
+  exit 0
+fi
+
+if [[ "${1:-}" == "-dv" ]]; then
+  case "${APM44_FAKE_CODESIGN_INFO:-strict-ok}" in
+    strict-ok)
+      echo "Authority=Developer ID Application: APM44 Test Org (LOCALTEAM)" >&2
+      echo "Runtime Version=15.0.0" >&2
+      ;;
+    no-runtime)
+      echo "Authority=Developer ID Application: APM44 Test Org (LOCALTEAM)" >&2
+      ;;
+    no-developer-id)
+      echo "Runtime Version=15.0.0" >&2
+      echo "Authority=Apple Development: Local" >&2
+      ;;
+    ad-hoc)
+      echo "Authority=ad-hoc" >&2
+      ;;
+    *)
+      echo "unsupported fake codesign info mode" >&2
+      exit 64
+      ;;
+  esac
+  exit 0
+fi
+
+echo "unsupported fake codesign command: $*" >&2
+exit 64
+EOF
+
 cat >"$FAKE_BIN/xcodegen" <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -127,7 +163,7 @@ set -euo pipefail
 echo "fake ls $*"
 EOF
 
-chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/xcodegen" "$FAKE_BIN/bash" "$FAKE_BIN/ls"
+chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/codesign" "$FAKE_BIN/xcodegen" "$FAKE_BIN/bash" "$FAKE_BIN/ls"
 
 DMG="$TMP/APM44Bridge.dmg"
 PKG="$TMP/APM44Bridge.pkg"
@@ -140,7 +176,7 @@ reset_log() {
 assert_contains() {
   local file="$1"
   local needle="$2"
-  if ! grep -Fq "$needle" "$file"; then
+  if ! grep -Fq -- "$needle" "$file"; then
     echo "expected to find '$needle' in $file" >&2
     echo "--- $file ---" >&2
     cat "$file" >&2
@@ -151,7 +187,7 @@ assert_contains() {
 assert_not_contains() {
   local file="$1"
   local needle="$2"
-  if grep -Fq "$needle" "$file"; then
+  if grep -Fq -- "$needle" "$file"; then
     echo "did not expect to find '$needle' in $file" >&2
     echo "--- $file ---" >&2
     cat "$file" >&2
@@ -391,6 +427,67 @@ run_ci_02_release_script_tests_in_github_ci() {
   fi
 }
 
+run_sign_01_03_workflow_release_app_alignment_check() {
+  local workflow="$ROOT/.github/workflows/sign-notarize.yml"
+  assert_contains "$workflow" "xcodebuild -project App/APM44Bridge.xcodeproj"
+  assert_contains "$workflow" "-configuration Release"
+  assert_contains "$workflow" 'CONFIGURATION_BUILD_DIR="$PWD/build/Release"'
+  assert_contains "$workflow" "APM44_APP_OUTPUT_DIR=\"\$PWD/build/Release\""
+  assert_contains "$workflow" "APM44_APP_PATH: \${{ github.workspace }}/build/Release/APM44 Bridge.app"
+}
+
+run_ci_03_local_ci_app_bundle_proof_check() {
+  local script="$ROOT/scripts/ci.sh"
+  assert_contains "$script" 'APP_PATH="$BUILD_DIR/$CONFIG/APM44 Bridge.app"'
+  assert_contains "$script" 'APM44_APP_OUTPUT_DIR="$BUILD_DIR/$CONFIG"'
+  assert_contains "$script" 'APM44_APP_PATH="$APP_PATH"'
+  assert_contains "$script" 'bash scripts/embed-daemon-in-app.sh'
+  assert_contains "$script" 'bash scripts/verify-installed-sync.sh --dry-run'
+  assert_contains "$script" 'embedded helper missing'
+}
+
+run_codesign_verify_case() {
+  local mode="$1"
+  local override="$2"
+  local expected="$3"
+  local label="$4"
+  local out="$TMP/$label.out"
+  local root="$TMP/$label"
+  local status=0
+
+  mkdir -p "$root/app/APM44 Bridge.app" "$root/driver/APM44Bridge.driver" "$root/bin"
+  touch "$root/bin/apm44-bridge"
+  chmod +x "$root/bin/apm44-bridge"
+
+  local env_args=(
+    PATH="$FAKE_BIN:$PATH"
+    APM44_FAKE_CODESIGN_INFO="$mode"
+    APM44_DAEMON_PATH="$root/bin/apm44-bridge"
+    APM44_APP_PATH="$root/app/APM44 Bridge.app"
+    APM44_DRIVER_PATH="$root/driver/APM44Bridge.driver"
+  )
+  if [[ "$override" == "1" ]]; then
+    env_args+=(APM44_ALLOW_LOCAL_CODESIGN=1)
+  fi
+
+  if env "${env_args[@]}" /bin/bash "$ROOT/scripts/codesign-verify-release.sh" >"$out" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [[ "$expected" == "success" && "$status" -ne 0 ]]; then
+    echo "$label: expected success, got exit $status" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  if [[ "$expected" == "failure" && "$status" -eq 0 ]]; then
+    echo "$label: expected failure, got success" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+}
+
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" accepted success "dmg-accepted"
 run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" accepted success "pkg-accepted"
 
@@ -417,5 +514,14 @@ run_sign_notarize_workflow_check         # [REL-03]
 run_ci_01_workflow_trust_check           # [CI-01]
 
 run_ci_02_release_script_tests_in_github_ci # [CI-02]
+
+run_sign_01_03_workflow_release_app_alignment_check # [SIGN-01][SIGN-02][SIGN-03]
+
+run_ci_03_local_ci_app_bundle_proof_check # [CI-01][CI-02][CI-03]
+
+run_codesign_verify_case strict-ok 0 success "codesign-strict-ok"
+run_codesign_verify_case no-runtime 0 failure "codesign-no-runtime"        # [REL-01]
+run_codesign_verify_case no-developer-id 0 failure "codesign-no-dev-id"    # [REL-02]
+run_codesign_verify_case ad-hoc 1 success "codesign-local-override"        # [REL-01][REL-02]
 
 echo "release script tests: OK"

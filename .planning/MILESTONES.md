@@ -2,6 +2,39 @@
 
 ## Completed
 
+### v0.7 - Release Automation Final Polish
+
+**Shipped:** 2026-06-13
+**Phases completed:** 3 phases, 5 plans, 11 requirements
+
+**Delivered:**
+
+- Aligned the manual signing workflow so it builds the Release app with
+  `xcodebuild`, writes it to `build/Release/APM44 Bridge.app`, and passes that
+  same path through embed, sign, and release codesign verification.
+- Extended `scripts/verify-app-build.sh` with explicit app output directory
+  support so workflow and local CI can prove the same app artifact path.
+- Hardened `scripts/ci.sh` to build/locate a concrete app bundle, embed the
+  current daemon into that exact bundle, and fail if the bundle or embedded
+  helper is missing.
+- Made release codesign verification fail on missing Hardened Runtime or
+  Developer ID Application identity by default, with only
+  `APM44_ALLOW_LOCAL_CODESIGN=1` as an explicit local-development override.
+- Added a compile-time lock-free assertion for packed metrics atomics and a
+  clean-termination Swift regression proving `transitionToIdle()` resets
+  metrics state.
+- Ran full local CI: secret scan, 19 native tests, release-script regressions,
+  47 Swift tests, app embed, and installed-sync dry-run.
+
+**Known caveats at close:**
+
+- GitHub release publication/upload remains an operator action.
+- Final Cubase/AirPods target-hardware soak remains operator-dependent.
+
+**Archive:** [milestones/v0.7-ROADMAP.md](milestones/v0.7-ROADMAP.md), [milestones/v0.7-REQUIREMENTS.md](milestones/v0.7-REQUIREMENTS.md), [milestones/v0.7-MILESTONE-AUDIT.md](milestones/v0.7-MILESTONE-AUDIT.md), [milestones/v0.7-phases/](milestones/v0.7-phases/)
+
+---
+
 ### v0.6 - Public Release Safety Fixes
 
 **Shipped:** 2026-06-13

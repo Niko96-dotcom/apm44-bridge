@@ -714,8 +714,8 @@ final class BridgeProcessManager: ObservableObject {
             resumeTerminationWaiters()
             return
         } else if case .running = state {
-            lastStopReason = nil
-            state = .idle
+            transitionToIdle()
+            return
         } else if case .starting = state {
             if recoverableStale, lastStopReason != .user {
                 scheduleAutoRetry()

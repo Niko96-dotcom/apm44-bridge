@@ -200,6 +200,7 @@ TEST_CASE("MetricsPublisherStateAvoidsAtomicDouble",
   REQUIRE(Contains(header, "std::atomic<uint64_t> fillMsBits"));
   REQUIRE(Contains(header, "std::atomic<uint64_t> smoothedRatioBits"));
   REQUIRE(Contains(header, "std::atomic<uint64_t> ppmBits"));
+  REQUIRE(Contains(header, "std::atomic<uint64_t>::is_always_lock_free"));
 }
 
 TEST_CASE("LegacyConverterPathRemovedFromPublicRuntime",

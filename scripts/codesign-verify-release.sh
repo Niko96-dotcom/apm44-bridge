@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${APM44_BUILD_CONFIG:-Release}"
 FAIL=0
+ALLOW_LOCAL_CODESIGN="${APM44_ALLOW_LOCAL_CODESIGN:-0}"
 
 DAEMON="${APM44_DAEMON_PATH:-$ROOT/build/BridgeDaemon/apm44-bridge}"
 APP="${APM44_APP_PATH:-$ROOT/build/$CONFIG/APM44 Bridge.app}"
@@ -41,13 +42,19 @@ check() {
   info="$(codesign -dv --verbose=2 "$path" 2>&1 || true)"
   if grep -q 'Runtime Version' <<<"$info"; then
     echo "OK: $label hardened runtime"
+  elif [[ "$ALLOW_LOCAL_CODESIGN" == "1" ]]; then
+    echo "WARN: $label — hardened runtime flag not detected (APM44_ALLOW_LOCAL_CODESIGN=1)"
   else
-    echo "WARN: $label — hardened runtime flag not detected"
+    echo "FAIL: $label — hardened runtime flag not detected"
+    FAIL=1
   fi
   if grep -qi 'Developer ID Application' <<<"$info"; then
     echo "OK: $label Developer ID Application"
+  elif [[ "$ALLOW_LOCAL_CODESIGN" == "1" ]]; then
+    echo "WARN: $label — not Developer ID (APM44_ALLOW_LOCAL_CODESIGN=1)"
   else
-    echo "WARN: $label — not Developer ID (may be ad-hoc for local dev)"
+    echo "FAIL: $label — not Developer ID Application"
+    FAIL=1
   fi
 }
 
