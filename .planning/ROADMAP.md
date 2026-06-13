@@ -15,15 +15,16 @@
   2026-06-13) - [archive](milestones/v0.5-ROADMAP.md)
 - Complete **v0.6 Public Release Safety Fixes** - Phases 23-26 (shipped
   2026-06-13) - [archive](milestones/v0.6-ROADMAP.md)
+- Current **v0.7 Release Automation Final Polish** - Phases 27-29
 
 ## Overview
 
-The v0.6 milestone is a narrow public-release safety pass over issues found
-after the v0.5 release artifact was signed, notarized, stapled, and published.
-It fixes HAL mono-lane timestamp pairing so arbitrary mismatches cannot become
-stereo output, removes the unsafe legacy converter debug path, makes metrics
-publication avoid possibly-locking double atomics, and tightens app/release
-edges that can deadlock, show stale state, or miss CI regressions.
+The v0.7 milestone is a final public-release polish pass over the small but
+important gaps left after v0.6. It aligns the manual GitHub signing workflow
+with the exact Release app artifact that gets signed, makes local CI prove the
+embedded daemon inside the app bundle under test, hardens release codesign
+verification, and adds small runtime guardrails for metrics atomics and clean
+termination reset behavior.
 
 ## Phase Numbering
 
@@ -35,6 +36,7 @@ Phase numbering continues from shipped history:
 - Phases 13-16: v0.4 Public Release Blocker Closure.
 - Phases 17-22: v0.5 Release Readiness Hardening.
 - Phases 23-26: v0.6 Public Release Safety Fixes.
+- Phases 27-29: v0.7 Release Automation Final Polish.
 
 ## Phases
 
@@ -75,6 +77,14 @@ Phase numbering continues from shipped history:
   lifecycle/catalog edges, the DMG command installer, and GitHub CI coverage.
 - [x] **Phase 26: Regression and Release Safety Closure** - Run the full (completed 2026-06-13)
   v0.6 regression gate and reconcile all release-safety evidence.
+- [ ] **Phase 27: Release Artifact Alignment** - Make the manual signing
+  workflow and local CI build, embed, sign, and verify the same app bundle
+  artifacts.
+- [ ] **Phase 28: Strict Verification and Runtime Guards** - Fail release
+  codesign verification on weak signing posture and add the remaining small
+  runtime guardrails.
+- [ ] **Phase 29: Final Release Polish Closure** - Run the full final
+  release-polish gate and reconcile v0.7 evidence before public release.
 
 ## Phase Details
 
@@ -368,6 +378,90 @@ Planned work:
 Planned work:
 - 26-01 - Wire release-script tests into GitHub CI and run v0.6 validation (CI-02)
 
+### Phase 27: Release Artifact Alignment
+
+**Goal:** Manual signing and local CI operate on the exact app bundle artifacts
+they claim to sign, embed, and verify.
+
+**Depends on:** v0.6 shipped baseline
+
+**Requirements:** SIGN-01, SIGN-02, SIGN-03, CI-01, CI-02, CI-03
+
+**Success Criteria** (what must be TRUE):
+1. `.github/workflows/sign-notarize.yml` builds the app with
+   `xcodebuild -configuration Release`.
+2. The signing workflow writes `APM44 Bridge.app` into `build/Release`, matching
+   the path consumed by `scripts/sign-release.sh`.
+3. The signing workflow signs and runs release codesign verification against the
+   same Release app artifact.
+4. `scripts/ci.sh` identifies a concrete app bundle path before embedding or
+   installed-sync verification.
+5. CI embedding and installed-sync checks fail if the app bundle or embedded
+   daemon is missing.
+
+**Plans:** 0/2 plans complete
+
+Planned work:
+- 27-01 - Align manual signing workflow Release app artifact path (SIGN-01,
+  SIGN-02, SIGN-03)
+- 27-02 - Make CI embed and verify the exact app bundle under test (CI-01,
+  CI-02, CI-03)
+
+### Phase 28: Strict Verification and Runtime Guards
+
+**Goal:** Public release checks fail loudly on weak signing posture, and the
+remaining small runtime paths have explicit guardrails.
+
+**Depends on:** Phase 27
+
+**Requirements:** REL-01, REL-02, METR-01, APP-01
+
+**Success Criteria** (what must be TRUE):
+1. `scripts/codesign-verify-release.sh` fails on missing Hardened Runtime unless
+   an explicit local-development override is set.
+2. `scripts/codesign-verify-release.sh` fails on missing Developer ID
+   Application identity unless an explicit local-development override is set.
+3. Tests or script fixtures cover strict pass/fail behavior and the explicit
+   local override.
+4. Metrics packed `std::atomic<uint64_t>` storage has a compile-time lock-free
+   assertion.
+5. Clean running-process termination uses the central idle transition/reset
+   path instead of assigning idle state directly.
+
+**Plans:** 0/2 plans complete
+
+Planned work:
+- 28-01 - Make release codesign verification strict by default (REL-01, REL-02)
+- 28-02 - Add metrics lock-free and clean termination reset guardrails
+  (METR-01, APP-01)
+
+### Phase 29: Final Release Polish Closure
+
+**Goal:** The final public-release polish pass closes with complete traceability
+and a clean verification record.
+
+**Depends on:** Phase 28
+
+**Requirements:** QA-01
+
+**Success Criteria** (what must be TRUE):
+1. Full local CI passes after the signing workflow, CI bundle proof, release
+   verification, metrics guard, and termination-reset changes.
+2. Targeted release-script tests cover the artifact alignment and codesign
+   strictness behavior.
+3. Native and Swift regression tests cover the metrics and process-lifecycle
+   guardrails where applicable.
+4. v0.7 requirements traceability is complete with 11/11 requirements mapped
+   and no accepted code-level blockers.
+5. Remaining operator-owned release actions are recorded explicitly without
+   blocking the code-level milestone.
+
+**Plans:** 0/1 plans complete
+
+Planned work:
+- 29-01 - Run final release-polish verification and reconcile v0.7 evidence
+  (QA-01)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -395,6 +489,9 @@ Planned work:
 | 24. Converter and Metrics Realtime Safety | v0.6 | 2/2 | Complete    | 2026-06-13 |
 | 25. App and Installer Reliability | v0.6 | 2/2 | Complete    | 2026-06-13 |
 | 26. Regression and Release Safety Closure | v0.6 | 1/1 | Complete    | 2026-06-13 |
+| 27. Release Artifact Alignment | v0.7 | 0/2 | Pending | - |
+| 28. Strict Verification and Runtime Guards | v0.7 | 0/2 | Pending | - |
+| 29. Final Release Polish Closure | v0.7 | 0/1 | Pending | - |
 
 ## Coverage
 
@@ -407,6 +504,10 @@ Planned work:
 - v0.6 phases: 4
 - v0.6 plans: 7/7
 - v0.6 unmapped requirements: 0
+- v0.7 requirements mapped: 11/11
+- v0.7 phases: 3
+- v0.7 plans: 0/5
+- v0.7 unmapped requirements: 0
 
 ---
-*Roadmap updated: 2026-06-13 after v0.6 roadmap creation*
+*Roadmap updated: 2026-06-13 after v0.7 roadmap creation*

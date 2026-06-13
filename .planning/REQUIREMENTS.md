@@ -73,23 +73,23 @@ Deferred to future milestones and tracked only as context.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SIGN-01 | Unmapped | Pending |
-| SIGN-02 | Unmapped | Pending |
-| SIGN-03 | Unmapped | Pending |
-| CI-01 | Unmapped | Pending |
-| CI-02 | Unmapped | Pending |
-| CI-03 | Unmapped | Pending |
-| REL-01 | Unmapped | Pending |
-| REL-02 | Unmapped | Pending |
-| METR-01 | Unmapped | Pending |
-| APP-01 | Unmapped | Pending |
-| QA-01 | Unmapped | Pending |
+| SIGN-01 | Phase 27 | Pending |
+| SIGN-02 | Phase 27 | Pending |
+| SIGN-03 | Phase 27 | Pending |
+| CI-01 | Phase 27 | Pending |
+| CI-02 | Phase 27 | Pending |
+| CI-03 | Phase 27 | Pending |
+| REL-01 | Phase 28 | Pending |
+| REL-02 | Phase 28 | Pending |
+| METR-01 | Phase 28 | Pending |
+| APP-01 | Phase 28 | Pending |
+| QA-01 | Phase 29 | Pending |
 
 **Coverage:**
 - v0.7 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-13*
-*Last updated: 2026-06-13 after initial definition*
+*Last updated: 2026-06-13 after roadmap creation*

@@ -6,9 +6,9 @@ status: planning
 last_updated: "2026-06-13T17:33:15.086Z"
 last_activity: 2026-06-13
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 5
   completed_plans: 0
   percent: 0
 ---
@@ -23,16 +23,25 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Milestone complete
+**Current focus:** Phase 27 - Release Artifact Alignment
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 27 - Release Artifact Alignment
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-13 — Milestone v0.7 started
+Status: Ready for phase planning
+Last activity: 2026-06-13 — Milestone v0.7 roadmap created
 
 ## Performance Metrics
+
+**Velocity (v0.6):**
+
+- Total plans completed: 7
+- Phases: 23-26 (4 phases)
+- Timeline: 2026-06-13
+- 10/10 requirements satisfied by automated release-safety evidence
+- HAL pairing, stopped-IO guard, converter removal, metrics storage, app
+  lifecycle/catalog, installer, and CI release-script coverage closed
 
 **Velocity (v0.5):**
 
@@ -121,6 +130,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
   drop-policy comment; Phase 24 covers converter removal and metrics storage;
   Phase 25 covers Swift app lifecycle/catalog and DMG installer reliability;
   Phase 26 covers GitHub CI release-script coverage and final regression proof.
+- v0.7 roadmap: Phase 27 covers manual signing artifact alignment and CI
+  app-bundle proof; Phase 28 covers strict release codesign verification,
+  metrics lock-free assertion, and clean termination reset; Phase 29 covers
+  final release-polish verification and traceability closure.
 
 ### Pending Todos
 
@@ -128,7 +141,7 @@ None.
 
 ### Blockers/Concerns
 
-None. v0.6 is ready for Phase 23 planning.
+None. v0.7 is ready for Phase 27 planning.
 
 - Milestone audit completed 2026-06-13: `.planning/v0.5-MILESTONE-AUDIT.md` status `tech_debt`. No blockers; minor planning-hygiene gaps and accepted operational caveats are documented in the audit.
 
@@ -154,10 +167,10 @@ Items acknowledged and deferred at milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-13T17:15:00.000Z
-Stopped at: v0.5 milestone cleanup complete; phases 17-22 archived to .planning/milestones/v0.5/phases/
+Last session: 2026-06-13T17:45:00.000Z
+Stopped at: v0.7 roadmap created; Phase 27 ready for planning
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Start Phase 27 with /gsd-plan-phase 27
