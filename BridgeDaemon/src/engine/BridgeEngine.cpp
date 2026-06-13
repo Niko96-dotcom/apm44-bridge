@@ -76,7 +76,6 @@ bool IsFatalShmOpenFailure(ShmRingErrorCode code, int err) {
 bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options) {
   devices_ = devices;
   options_ = options;
-  useLegacyConverter_ = options.useLegacyConverter;
   virtualDevice_ = options.virtualDevice;
 
   if (virtualDevice_) {
@@ -133,14 +132,8 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
     ring_.push(preCh, targetFillFrames);
   }
 
-  if (useLegacyConverter_) {
-    if (!legacyConverter_.prepare(devices_.inputAsbd, devices_.outputAsbd)) {
-      return false;
-    }
-  } else {
-    if (!src_.prepare(options_.srcQuality)) {
-      return false;
-    }
+  if (!src_.prepare(options_.srcQuality)) {
+    return false;
   }
 
   outputScratch0_.resize(kMaxCallbackFrames);
@@ -151,9 +144,6 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
 }
 
 double BridgeEngine::converterRatio() const {
-  if (useLegacyConverter_) {
-    return legacyConverter_.nominalRatio();
-  }
   return src_.nominalRatio();
 }
 
@@ -197,11 +187,8 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   }
 
   float* popCh[2] = {outputScratch0_.data(), outputScratch1_.data()};
-  double ratio = DriftController::kNominalRatio;
-  if (!useLegacyConverter_) {
-    ratio = drift_.update(fill);
-    src_.setRatio(ratio);
-  }
+  const double ratio = drift_.update(fill);
+  src_.setRatio(ratio);
   const std::size_t inputFramesNeeded = inputDemand_.consume(frames, ratio);
   const std::size_t maxPop = std::min(inputFramesNeeded, outputScratch0_.size());
   const std::size_t popped = ring_.pop(popCh, maxPop);
@@ -212,26 +199,6 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
       inputDemand_.reset();
     }
     xruns_.fetch_add(1, std::memory_order_relaxed);
-    return;
-  }
-
-  if (useLegacyConverter_) {
-    std::size_t converted = 0;
-    const float* inCh[2] = {popCh[0], popCh[1]};
-    if (!legacyConverter_.convert(inCh, popped, channels, frames, converted) || converted == 0) {
-      std::memset(channels[0], 0, frames * sizeof(float));
-      std::memset(channels[1], 0, frames * sizeof(float));
-      drift_.notifyUnderrun();
-      if (virtualDevice_) {
-        virtualPrebuffer_.forceRebuffer();
-        inputDemand_.reset();
-      }
-      xruns_.fetch_add(1, std::memory_order_relaxed);
-      return;
-    }
-    if (converted < frames) {
-      HoldLastSample(channels[0], channels[1], converted, frames);
-    }
     return;
   }
 
@@ -291,7 +258,6 @@ bool BridgeEngine::start() {
       virtualDevice_ ? std::max(options_.targetFillMs, 20.0) : options_.targetFillMs;
   std::cerr << "apm44-bridge: ring_capacity=" << ring_.capacityFrames()
             << " target_fill_ms=" << loggedTargetMs
-            << " legacy_converter=" << (useLegacyConverter_ ? "yes" : "no")
             << " converter_ratio=" << converterRatio() << "\n";
 
   OSStatus status = noErr;

@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -15,6 +16,17 @@ namespace {
 
 bool Contains(const std::string& haystack, const std::string& needle) {
   return haystack.find(needle) != std::string::npos;
+}
+
+std::filesystem::path RepoRoot() {
+  return std::filesystem::path(__FILE__).parent_path().parent_path();
+}
+
+std::string ReadRepoFile(const std::string& rel) {
+  std::ifstream in(RepoRoot() / rel);
+  REQUIRE(in.good());
+  return std::string((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
 }
 
 }  // namespace
@@ -159,6 +171,63 @@ TEST_CASE("MetricsPublisherSeqlockNeverDeliversTornSnapshot",
   REQUIRE(maxObservedXruns.load() > 0);
 }
 
+TEST_CASE("MetricsPublisherPackedFloatingFieldsRoundTrip",
+          "[metrics][rt][METR-04]") {
+  apm44::MetricsPublisherState state;
+  apm44::MetricsSnapshot next;
+  next.fillMs = 15.25;
+  next.smoothedRatio = 48000.0 / 44100.0;
+  next.ppm = -12.75;
+  next.underruns = 2;
+  next.overruns = 3;
+  next.xruns = 5;
+
+  apm44::PublishMetrics(state, next);
+  const apm44::MetricsSnapshot read = apm44::ReadMetrics(state);
+
+  REQUIRE(read.fillMs == next.fillMs);
+  REQUIRE(read.smoothedRatio == next.smoothedRatio);
+  REQUIRE(read.ppm == next.ppm);
+  REQUIRE(read.underruns == next.underruns);
+  REQUIRE(read.overruns == next.overruns);
+  REQUIRE(read.xruns == next.xruns);
+}
+
+TEST_CASE("MetricsPublisherStateAvoidsAtomicDouble",
+          "[metrics][rt][METR-04]") {
+  const std::string header = ReadRepoFile("BridgeDaemon/src/engine/MetricsPublisher.h");
+  REQUIRE(!Contains(header, "std::atomic<double>"));
+  REQUIRE(Contains(header, "std::atomic<uint64_t> fillMsBits"));
+  REQUIRE(Contains(header, "std::atomic<uint64_t> smoothedRatioBits"));
+  REQUIRE(Contains(header, "std::atomic<uint64_t> ppmBits"));
+}
+
+TEST_CASE("LegacyConverterPathRemovedFromPublicRuntime",
+          "[converter][CONV-01]") {
+  const std::vector<std::string> files = {
+      "BridgeDaemon/src/CliOptions.cpp",
+      "BridgeDaemon/src/CliOptions.h",
+      "BridgeDaemon/src/engine/BridgeEngine.cpp",
+      "BridgeDaemon/src/engine/BridgeEngine.h",
+      "BridgeDaemon/CMakeLists.txt",
+      "tests/CMakeLists.txt",
+      "docs/soak-test.md",
+  };
+  const std::vector<std::string> forbidden = {
+      "--legacy-" "converter",
+      "Audio" "ConverterSrc",
+      "legacy" "Converter",
+      "useLegacy" "Converter",
+  };
+
+  for (const auto& rel : files) {
+    const std::string contents = ReadRepoFile(rel);
+    for (const auto& needle : forbidden) {
+      REQUIRE(!Contains(contents, needle));
+    }
+  }
+}
+
 // METR-03 regression guard: a bare copy of MetricsSnapshot across
 // threads would not be data-race-free. Scan the source tree for
 // any line that mentions `MetricsSnapshot` outside the seqlock
@@ -166,7 +235,6 @@ TEST_CASE("MetricsPublisherSeqlockNeverDeliversTornSnapshot",
 // regression that reintroduces a plain copy is caught.
 TEST_CASE("NoBareMetricsSnapshotCopyInSource",
           "[metrics][rt][METR-03]") {
-  namespace fs = std;
   // The allow-list of files where MetricsSnapshot is expected to
   // appear alongside the publisher free functions. The test reads
   // each file and asserts any reference to `MetricsSnapshot` is
@@ -179,13 +247,7 @@ TEST_CASE("NoBareMetricsSnapshotCopyInSource",
   };
 
   for (const auto& rel : files) {
-    std::ifstream in(rel);
-    if (!in) {
-      // File missing — out-of-tree build, skip.
-      continue;
-    }
-    std::string contents((std::istreambuf_iterator<char>(in)),
-                         std::istreambuf_iterator<char>());
+    const std::string contents = ReadRepoFile(rel);
     // Check that any non-comment, non-include mention of
     // MetricsSnapshot is preceded within the same file by either
     // PublishMetrics or ReadMetrics (the publisher pair). The check

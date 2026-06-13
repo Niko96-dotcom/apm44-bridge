@@ -1,6 +1,5 @@
 #pragma once
 
-#include "engine/AudioConverterSrc.h"
 #include "engine/LibSamplerateSrc.h"
 #include "engine/MetricsPublisher.h"
 #include "engine/VirtualPrebufferGate.h"
@@ -23,7 +22,6 @@ namespace apm44 {
 struct BridgeEngineOptions {
   double targetFillMs = 15.0;
   LibSamplerateSrc::Quality srcQuality = LibSamplerateSrc::Quality::Medium;
-  bool useLegacyConverter = false;
   bool virtualDevice = false;
 };
 
@@ -78,8 +76,6 @@ class BridgeEngine {
   InputFrameDemand inputDemand_;
   VirtualPrebufferGate virtualPrebuffer_;
   LibSamplerateSrc src_;
-  AudioConverterSrc legacyConverter_;
-  bool useLegacyConverter_ = false;
 
   std::vector<float> outputScratch0_;
   std::vector<float> outputScratch1_;

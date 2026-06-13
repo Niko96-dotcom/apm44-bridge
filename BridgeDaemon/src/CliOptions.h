@@ -20,7 +20,6 @@ struct CliOptions {
 
   double targetFillMs = 15.0;
   LibSamplerateSrc::Quality srcQuality = LibSamplerateSrc::Quality::Medium;
-  bool legacyConverter = false;
   bool metricsJson = false;
   bool virtualDevice = false;
 };

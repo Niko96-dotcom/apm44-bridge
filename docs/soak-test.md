@@ -77,11 +77,3 @@ See **[cubase-soak.md](cubase-soak.md)** for the operator checklist.
 | `--target-fill-ms` | |
 | `--src-quality` | |
 | Notes (glitches, xruns) | |
-
-## Debug: legacy AudioToolbox converter
-
-Compare against Phase 1 path:
-
-```bash
-./build/BridgeDaemon/apm44-bridge --legacy-converter
-```

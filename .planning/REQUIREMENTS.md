@@ -16,8 +16,8 @@ Requirements for the v0.6 Public Release Safety Fixes milestone.
 
 ### Converter and Metrics Safety
 
-- [ ] **CONV-01**: The public daemon no longer exposes the unsafe legacy AudioToolbox converter debug path through CLI help, parsing, docs, build inputs, or runtime engine options.
-- [ ] **METR-04**: Realtime metrics publication stores floating payload fields with a lock-free representation and no `std::atomic<double>` in the realtime publisher state.
+- [x] **CONV-01**: The public daemon no longer exposes the unsafe legacy AudioToolbox converter debug path through CLI help, parsing, docs, build inputs, or runtime engine options.
+- [x] **METR-04**: Realtime metrics publication stores floating payload fields with a lock-free representation and no `std::atomic<double>` in the realtime publisher state.
 
 ### App Lifecycle Reliability
 
@@ -70,8 +70,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HAL-02 | Phase 23 | Complete |
 | HAL-03 | Phase 23 | Complete |
 | HAL-04 | Phase 23 | Complete |
-| CONV-01 | Phase 24 | Pending |
-| METR-04 | Phase 24 | Pending |
+| CONV-01 | Phase 24 | Complete |
+| METR-04 | Phase 24 | Complete |
 | APP-06 | Phase 25 | Pending |
 | APP-07 | Phase 25 | Pending |
 | DIST-05 | Phase 25 | Pending |

@@ -3,7 +3,6 @@ add_executable(apm44-bridge
   src/CliOptions.cpp
   src/hal/DeviceEnumerator.cpp
   src/hal/FormatNegotiator.cpp
-  src/engine/AudioConverterSrc.cpp
   src/engine/LibSamplerateSrc.cpp
   src/engine/IoProcHandlers.cpp
   src/engine/BridgeEngine.cpp
@@ -18,7 +17,6 @@ target_link_libraries(apm44-bridge
     apm44_shared
     samplerate::samplerate
     "-framework CoreAudio"
-    "-framework AudioToolbox"
     "-framework CoreFoundation"
 )
 

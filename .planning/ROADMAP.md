@@ -68,7 +68,7 @@ Phase numbering continues from shipped history:
   and run a clean release validation sequence. (completed 2026-06-13)
 - [x] **Phase 23: HAL Runtime Pairing Safety** - Make HAL shm output fail (completed 2026-06-13)
   closed for timestamp mismatch and stopped IO.
-- [ ] **Phase 24: Converter and Metrics Realtime Safety** - Remove the unsafe
+- [x] **Phase 24: Converter and Metrics Realtime Safety** - Remove the unsafe (completed 2026-06-13)
   legacy converter path and make metrics floating payload storage lock-free.
 - [ ] **Phase 25: App and Release Automation Reliability** - Harden app
   lifecycle/catalog edges, the DMG command installer, and GitHub CI coverage.
@@ -320,7 +320,7 @@ Planned work:
 4. Metrics floating fields round-trip through lock-free `std::atomic<uint64_t>` bit-packed storage.
 5. Native tests or source guards cover both converter removal and metrics storage invariants.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 24-01 - Remove the public legacy AudioToolbox converter path (CONV-01)
@@ -391,7 +391,7 @@ Planned work:
 | 21. Distribution & CI | v0.5 | 3/3 | Complete | 2026-06-13 |
 | 22. QA / Regression | v0.5 | 1/1 | Complete | 2026-06-13 |
 | 23. HAL Runtime Pairing Safety | v0.6 | 2/2 | Complete    | 2026-06-13 |
-| 24. Converter and Metrics Realtime Safety | v0.6 | 0/2 | Pending | - |
+| 24. Converter and Metrics Realtime Safety | v0.6 | 2/2 | Complete    | 2026-06-13 |
 | 25. App and Installer Reliability | v0.6 | 0/2 | Pending | - |
 | 26. Regression and Release Safety Closure | v0.6 | 0/1 | Pending | - |
 
