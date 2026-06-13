@@ -20,13 +20,15 @@ A producer can start monitoring once and trust Cubase at 44.1 kHz to keep
 playing through USB-C AirPods at 48 kHz without silent wedges or mystery
 relaunches.
 
-## Current State (v0.7 shipped 2026-06-13)
+## Current State (v0.8 shipped 2026-06-13)
 
-**Validated:** v0.7 Release Automation Final Polish milestone shipped
-2026-06-13. All eleven v0.7 requirements are satisfied by automated evidence,
-and the public release path now has stronger manual signing artifact alignment,
-local CI app-bundle proof, strict release codesign verification, lock-free
-metrics storage guardrails, and clean process termination reset behavior.
+**Validated:** v0.8 Release Candidate Closure milestone shipped 2026-06-13.
+All fourteen v0.8 requirements are satisfied by automated release-candidate
+evidence or recorded operator validation commands. The public release path now
+has fail-closed manual signing credentials, HAL driver build coverage in the
+manual signing workflow, strict driver-only notarization handling, current
+release docs, distinct SRC quality behavior, and final release-Mac plus
+target-hardware validation instructions.
 
 **What works now:**
 - v0.2 deterministic app lifecycle, restart, hotplug, and stale-ring recovery.
@@ -71,6 +73,15 @@ metrics storage guardrails, and clean process termination reset behavior.
 - Metrics packed `std::atomic<uint64_t>` storage has compile-time lock-free
   proof, and clean running-process termination routes through the central idle
   reset path.
+- Manual signing workflow builds both `apm44-bridge` and `APM44Bridge` before
+  signing, and missing `APPLE_SIGN_ID` / `AC_NOTARY` inputs fail the workflow
+  instead of silently skipping.
+- Driver-only notarization uses the shared strict accepted-status helper and
+  keeps stapling/validation after accepted notarization.
+- Standard / High / Best SRC labels map to distinct converter behavior and
+  public latency estimates.
+- `docs/release-validation.md` records the final release-Mac and target-hardware
+  operator validation sequence.
 
 **Known caveats (carried forward):**
 - v0.5.0 has been tagged and the signed/notarized/stapled DMG has been
@@ -83,27 +94,9 @@ metrics storage guardrails, and clean process termination reset behavior.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone: v0.8 Release Candidate Closure
+## Current Milestone: none
 
-**Goal:** Close the remaining release-candidate blockers before tagging or
-publishing by hardening manual signing, HAL driver notarization, docs/code truth,
-and final operator validation evidence.
-
-**Target fixes:**
-- Build the HAL driver target in `sign-notarize.yml` before invoking
-  `scripts/sign-release.sh`.
-- Make the manual signing workflow fail when `APPLE_SIGN_ID` or required notary
-  credentials are missing for the requested operation.
-- Route `scripts/notarize-hal-driver.sh` through the shared strict notary helper
-  so driver-only notarization has the same fail-closed behavior as DMG/PKG paths.
-- Add release-script coverage proving `sign-notarize.yml` builds the driver
-  target before signing.
-- Align public version language and default latency documentation with the
-  current release/code truth.
-- Delete or document empty legacy converter files and recheck SRC quality labels
-  so public controls do not imply placebo behavior.
-- Record the final release-candidate validation command set for the release Mac
-  and target-hardware operator pass.
+Start the next milestone with `$gsd-new-milestone`.
 
 ## Requirements
 

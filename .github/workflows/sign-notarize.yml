@@ -3,7 +3,7 @@ name: Sign and Notarize
 # CI-01: release-facing signing workflow; action trust decision in docs/release.md
 # Manual release signing — requires Apple Developer credentials on the runner.
 # Local path: scripts/sign-release.sh + scripts/notary-dry-run.sh
-# GitHub Actions trust decision: official actions stay tag-pinned for v0.4;
+# GitHub Actions trust decision: official actions stay tag-pinned for current release candidates;
 # see docs/release.md before moving more signing/notarization into CI.
 on:
   workflow_dispatch:
@@ -46,7 +46,7 @@ jobs:
       - name: Build Release artifacts
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target apm44-bridge
+          cmake --build build --target apm44-bridge APM44Bridge
           (cd App && xcodegen generate)
           xcodebuild -project App/APM44Bridge.xcodeproj \
             -scheme APM44Bridge \
@@ -59,14 +59,14 @@ jobs:
             APM44_APP_OUTPUT_DIR="$PWD/build/Release" \
             bash scripts/verify-app-build.sh
 
-      - name: Sign (requires SIGN_ID secret)
+      - name: Sign (requires APPLE_SIGN_ID secret)
         env:
           SIGN_ID: ${{ secrets.APPLE_SIGN_ID }}
           APM44_APP_PATH: ${{ github.workspace }}/build/Release/APM44 Bridge.app
         run: |
           if [[ -z "${SIGN_ID:-}" ]]; then
-            echo "SKIP: APPLE_SIGN_ID secret not configured — use local scripts/sign-release.sh"
-            exit 0
+            echo "error: APPLE_SIGN_ID secret is required for manual release signing"
+            exit 1
           fi
           bash scripts/embed-daemon-in-app.sh
           bash scripts/sign-release.sh
@@ -76,7 +76,7 @@ jobs:
         if: inputs.notarize == 'true'
         run: |
           if ! xcrun notarytool history --keychain-profile AC_NOTARY 2>/dev/null; then
-            echo "SKIP: AC_NOTARY profile not on runner — use local scripts/notary-dry-run.sh"
-            exit 0
+            echo "error: AC_NOTARY keychain profile is required when notarize=true"
+            exit 1
           fi
           bash scripts/notary-dry-run.sh

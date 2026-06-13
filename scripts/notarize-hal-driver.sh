@@ -7,6 +7,9 @@ DRIVER="${APM44_DRIVER_PATH:-$ROOT/build/Driver/APM44Bridge.driver}"
 PROFILE="${NOTARY_PROFILE:-AC_NOTARY}"
 ZIP="${APM44_NOTARY_ZIP:-$ROOT/build/signing/APM44Bridge-driver.zip}"
 
+# shellcheck source=scripts/notary-result.sh
+source "$ROOT/scripts/notary-result.sh"
+
 if [[ ! -d "$DRIVER" ]]; then
   echo "error: driver not found at $DRIVER" >&2
   echo "Build: cmake --build build --target APM44Bridge" >&2
@@ -25,8 +28,7 @@ echo "Packaging $DRIVER -> $ZIP"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$DRIVER" "$ZIP"
 
-echo "Submitting to Apple notary service (profile: $PROFILE)..."
-xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait
+require_notary_accepted "$ZIP" "$PROFILE" "HAL driver"
 
 echo "Stapling ticket to driver bundle..."
 xcrun stapler staple "$DRIVER"

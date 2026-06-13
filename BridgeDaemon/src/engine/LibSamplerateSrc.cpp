@@ -26,10 +26,10 @@ int LibSamplerateSrc::QualityToConverterType(Quality quality) {
     case Quality::Best:
       return SRC_SINC_BEST_QUALITY;
     case Quality::High:
-      return SRC_SINC_BEST_QUALITY;
+      return SRC_SINC_MEDIUM_QUALITY;
     case Quality::Medium:
     default:
-      return SRC_SINC_MEDIUM_QUALITY;
+      return SRC_SINC_FASTEST;
   }
 }
 

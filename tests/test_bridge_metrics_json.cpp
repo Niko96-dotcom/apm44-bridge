@@ -64,6 +64,15 @@ TEST_CASE("estimated_rt_ms equals fill_ms plus group delay") {
   REQUIRE(metrics.estimatedRtMs > 0.0);
 }
 
+TEST_CASE("estimated_rt_ms distinguishes public SRC quality labels", "[metrics][SRC-01]") {
+  const auto medium = apm44::MakeBridgeMetrics(15.0, 1.0, 0.0, 0, 0, 0, 15.0, "medium");
+  const auto high = apm44::MakeBridgeMetrics(15.0, 1.0, 0.0, 0, 0, 0, 15.0, "high");
+  const auto best = apm44::MakeBridgeMetrics(15.0, 1.0, 0.0, 0, 0, 0, 15.0, "best");
+
+  REQUIRE(medium.estimatedRtMs < high.estimatedRtMs);
+  REQUIRE(high.estimatedRtMs < best.estimatedRtMs);
+}
+
 // METR-01/03: prove the metrics publisher is data-race-free. Spawn
 // one writer thread and four reader threads, exercise the publisher
 // for many iterations, then assert the sequence retry never delivered

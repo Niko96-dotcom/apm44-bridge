@@ -7,7 +7,7 @@
 namespace apm44 {
 
 // Documented group-delay estimates for honest RT latency (QA-03). Not zero.
-inline constexpr double kSrcGroupDelayMediumMs = 2.5;
+inline constexpr double kSrcGroupDelayMediumMs = 1.5;
 inline constexpr double kSrcGroupDelayHighMs = 2.5;
 inline constexpr double kSrcGroupDelayBestMs = 3.0;
 

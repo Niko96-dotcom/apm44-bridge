@@ -167,7 +167,9 @@ chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/codesign" "$FAKE_BIN/
 
 DMG="$TMP/APM44Bridge.dmg"
 PKG="$TMP/APM44Bridge.pkg"
+DRIVER="$TMP/APM44Bridge.driver"
 touch "$DMG" "$PKG"
+mkdir -p "$DRIVER"
 
 reset_log() {
   : >"$LOG"
@@ -366,10 +368,22 @@ run_sign_notarize_workflow_check() {     # [REL-03]
     exit 1
   fi
   assert_contains "$workflow" "bash scripts/verify-app-build.sh"
+  assert_contains "$workflow" "cmake --build build --target apm44-bridge APM44Bridge"
+  assert_contains "$workflow" "error: APPLE_SIGN_ID secret is required"
+  assert_contains "$workflow" "error: AC_NOTARY keychain profile is required"
+  assert_not_contains "$workflow" "SKIP: APPLE_SIGN_ID"
+  assert_not_contains "$workflow" "SKIP: AC_NOTARY"
   if grep -Eq 'verify-app-build\.sh.*(\|\| *true|continue-on-error:\s*true)' "$workflow"; then
     echo "REL-03: sign-notarize.yml masks verify-app-build.sh failure" >&2
     exit 1
   fi
+}
+
+run_notarize_hal_driver_shared_helper_check() {
+  local script="$ROOT/scripts/notarize-hal-driver.sh"
+  assert_contains "$script" 'source "$ROOT/scripts/notary-result.sh"'
+  assert_contains "$script" 'require_notary_accepted "$ZIP" "$PROFILE" "HAL driver"'
+  assert_not_contains "$script" 'xcrun notarytool submit "$ZIP"'
 }
 
 # CI-01: release-facing workflows must reference only official actions/* actions,
@@ -490,10 +504,12 @@ run_codesign_verify_case() {
 
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" accepted success "dmg-accepted"
 run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" accepted success "pkg-accepted"
+run_notary_case "scripts/notarize-hal-driver.sh" APM44_DRIVER_PATH "$DRIVER" accepted success "driver-accepted"
 
 # REL-01: notarization must fail closed for any non-Accepted result or nonzero notarytool exit.
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" rejected failure "dmg-rejected"       # [REL-01]
 run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" rejected failure "pkg-rejected"     # [REL-01]
+run_notary_case "scripts/notarize-hal-driver.sh" APM44_DRIVER_PATH "$DRIVER" rejected failure "driver-rejected" # [NOTARY-02]
 
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" auth-failure failure "dmg-auth-failure"     # [REL-01]
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" network-failure failure "dmg-network-failure" # [REL-01]
@@ -510,6 +526,8 @@ run_dist_01_staple_before_dmg_order      # [DIST-01]
 run_dist_05_dmg_command_installer_check  # [DIST-05]
 
 run_sign_notarize_workflow_check         # [REL-03]
+
+run_notarize_hal_driver_shared_helper_check # [NOTARY-01][NOTARY-02][NOTARY-03]
 
 run_ci_01_workflow_trust_check           # [CI-01]
 

@@ -1,7 +1,7 @@
 # Release validation checklist
 
-This checklist is the v0.4 public-release closeout path for the DMG-primary
-distribution flow. It separates credential-free verification from Apple
+This checklist is the v0.8 release-candidate closeout path for the current
+DMG-primary distribution flow. It separates credential-free verification from Apple
 Developer credential checks so local-only artifacts are never confused with a
 public release.
 
@@ -63,6 +63,66 @@ bash scripts/release-all.sh
 6. Package the final DMG from those stapled inner artifacts.
 7. Notarize, staple, and validate the final public DMG.
 
+## Release-Mac validation commands
+
+Run these on the release Mac before tagging or uploading a public artifact:
+
+```bash
+# 1. Secrets and toolchain
+bash scripts/check-secrets.sh
+security find-identity -v -p codesigning
+xcrun notarytool history --keychain-profile "${NOTARY_PROFILE:-AC_NOTARY}"
+
+# 2. Build and local regression proof
+rm -rf build
+bash scripts/ci.sh
+
+# 3. Release build, signing, notarization, stapling, and DMG packaging
+export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
+export NOTARY_PROFILE="${NOTARY_PROFILE:-AC_NOTARY}"
+bash scripts/release-all.sh
+
+# 4. Artifact signing/notary assessment
+bash scripts/codesign-verify-release.sh
+xcrun stapler validate "build/Release/APM44 Bridge.app"
+xcrun stapler validate build/Driver/APM44Bridge.driver
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
+
+# 5. Installed app / HAL checks after installing from the DMG
+bash scripts/verify-hal-driver.sh
+bash scripts/verify-installed-sync.sh
+build/BridgeDaemon/apm44-bridge --shm-status
+```
+
+## Target-hardware operator validation
+
+Run this on the target Mac with USB-C AirPods Max and Cubase available:
+
+```bash
+# 1. Clean install from the final DMG
+hdiutil attach "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
+# Run "Install APM44 Bridge.command" from the mounted DMG.
+# Reboot once if Audio MIDI Setup does not show the HAL device after install.
+
+# 2. HAL visibility and installed build identity
+bash scripts/verify-hal-driver.sh
+bash scripts/verify-installed-sync.sh
+build/BridgeDaemon/apm44-bridge --shm-status
+
+# 3. Menu-bar app start and DAW route
+open "/Applications/APM44 Bridge.app"
+# In Audio MIDI Setup: APM44 Bridge at 44,100 Hz; USB-C AirPods at 48,000 Hz.
+# In Cubase: select APM44 Bridge as the audio output and assign Control Room Monitor L/R to APM44 Bridge.
+
+# 4. Smoke, soak, and export-rate proof
+# Play a 440 Hz tone and confirm menu bar state reaches Running.
+# Complete docs/cubase-soak.md for a 30+ minute hardware soak.
+bash scripts/validate-export-rate.sh --check-file ~/Desktop/your-mix.wav
+```
+
+Record command output and operator notes in the release issue or tag checklist.
+
 ## Artifact assessment
 
 For the DMG-primary public path, assess these artifacts after
@@ -70,11 +130,11 @@ For the DMG-primary public path, assess these artifacts after
 
 ```bash
 bash scripts/codesign-verify-release.sh
-codesign --verify --verbose build/signing/APM44Bridge-0.1.1.dmg
+codesign --verify --verbose "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
-xcrun stapler validate build/signing/APM44Bridge-0.1.1.dmg
-spctl --assess --type open --context context:primary-signature --verbose=4 build/signing/APM44Bridge-0.1.1.dmg
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
 ```
 
 The final command is the Gatekeeper assessment for the public DMG.
@@ -134,8 +194,8 @@ repackaging:
 
 ```bash
 bash scripts/codesign-verify-release.sh
-xcrun stapler validate build/signing/APM44Bridge-0.1.1.dmg
-spctl --assess --type open --context context:primary-signature --verbose=4 build/signing/APM44Bridge-0.1.1.dmg
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
 ```
 
 If hardware/operator evidence is needed for a final ship decision, run it on a

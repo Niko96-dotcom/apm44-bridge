@@ -1,7 +1,7 @@
 name: Release
 
 # CI-01: release-facing workflow; action trust decision in docs/release.md
-# GitHub Actions trust decision: official actions stay tag-pinned for v0.4;
+# GitHub Actions trust decision: official actions stay tag-pinned for current release candidates;
 # see docs/release.md before moving more release publication into CI.
 on:
   push:

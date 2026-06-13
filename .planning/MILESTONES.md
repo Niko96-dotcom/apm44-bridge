@@ -1,5 +1,36 @@
 # Milestones: APM44 Bridge
 
+## v0.8 Release Candidate Closure (Shipped: 2026-06-13)
+
+**Phases completed:** 3 phases, 5 plans, 14 requirements
+
+**Delivered:**
+
+- Made the manual signing workflow build both the daemon and HAL driver before
+  signing, and fail closed when `APPLE_SIGN_ID` is missing.
+- Made `notarize=true` fail closed when the `AC_NOTARY` keychain profile is
+  unavailable on the release runner.
+- Routed `scripts/notarize-hal-driver.sh` through the shared strict
+  `require_notary_accepted` helper and added accepted/rejected driver-only
+  notarization regression coverage.
+- Aligned release docs and workflow comments with the current release-candidate
+  posture while keeping `APM44Bridge-0.1.1.dmg` as the current artifact story.
+- Mapped Standard / High / Best SRC quality labels to distinct converter modes
+  and public latency estimates.
+- Recorded release-Mac and target-hardware operator validation commands, then
+  ran full local CI: secret scan, 19 native tests, release-script regressions,
+  47 Swift tests, app embed, and installed-sync dry-run.
+
+**Known caveats at close:**
+
+- GitHub release publication/upload remains an operator action.
+- Final Cubase/AirPods target-hardware soak remains operator-dependent and is
+  recorded in `docs/release-validation.md`.
+
+**Archive:** [milestones/v0.8-ROADMAP.md](milestones/v0.8-ROADMAP.md), [milestones/v0.8-REQUIREMENTS.md](milestones/v0.8-REQUIREMENTS.md), [milestones/v0.8-MILESTONE-AUDIT.md](milestones/v0.8-MILESTONE-AUDIT.md)
+
+---
+
 ## Completed
 
 ### v0.7 - Release Automation Final Polish
@@ -12,17 +43,22 @@
 - Aligned the manual signing workflow so it builds the Release app with
   `xcodebuild`, writes it to `build/Release/APM44 Bridge.app`, and passes that
   same path through embed, sign, and release codesign verification.
+
 - Extended `scripts/verify-app-build.sh` with explicit app output directory
   support so workflow and local CI can prove the same app artifact path.
+
 - Hardened `scripts/ci.sh` to build/locate a concrete app bundle, embed the
   current daemon into that exact bundle, and fail if the bundle or embedded
   helper is missing.
+
 - Made release codesign verification fail on missing Hardened Runtime or
   Developer ID Application identity by default, with only
   `APM44_ALLOW_LOCAL_CODESIGN=1` as an explicit local-development override.
+
 - Added a compile-time lock-free assertion for packed metrics atomics and a
   clean-termination Swift regression proving `transitionToIdle()` resets
   metrics state.
+
 - Ran full local CI: secret scan, 19 native tests, release-script regressions,
   47 Swift tests, app embed, and installed-sync dry-run.
 

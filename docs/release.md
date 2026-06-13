@@ -19,8 +19,9 @@ Distribution checklist for **apm44-bridge**, **APM44 Bridge.app**, and **APM44Br
 
 ## Distribution posture
 
-v0.4 is **DMG-primary** for public distribution. The public artifact is the
-signed, notarized, stapled DMG produced by `scripts/release-all.sh`.
+The current release-candidate posture is **DMG-primary** for public distribution.
+The public artifact is the signed, notarized, stapled DMG produced by
+`scripts/release-all.sh`.
 
 The DMG intentionally contains an admin installer command because the HAL driver
 must be copied to `/Library/Audio/Plug-Ins/HAL/` and owned by `root:wheel`.
@@ -256,8 +257,8 @@ Optional future: GitHub Actions `macos-latest` job compiling daemon + tests only
 
 ## GitHub Actions trust decision
 
-v0.4 keeps official GitHub actions tag-pinned instead of full-length SHA pinned
-for the release-adjacent workflows:
+The current release-candidate workflow keeps official GitHub actions tag-pinned
+instead of full-length SHA pinned for the release-adjacent workflows:
 
 - `.github/workflows/release.yml`: `actions/checkout`, `actions/upload-artifact`
 - `.github/workflows/sign-notarize.yml`: `actions/checkout`

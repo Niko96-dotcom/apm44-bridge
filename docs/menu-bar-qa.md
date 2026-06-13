@@ -32,7 +32,7 @@ Map each step to requirements. Record pass/fail in the phase SUMMARY or VERIFICA
 
 | Step | Pass? |
 |------|-------|
-| Standard / High / Best picker works | |
+| Standard / High / Best picker works; each label maps to distinct SRC behavior | |
 | Safe preset defaults to Best until overridden | |
 
 ## APP-04 — Hotplug
