@@ -56,8 +56,9 @@ as validated and are listed below under Requirements → Validated.
   final DMG notarization/stapling/validation, and Gatekeeper acceptance.
 
 **Known caveats (carried forward):**
-- GitHub publication/upload is an operator action after reviewing the generated
-  DMG and release notes.
+- v0.5.0 has been tagged and the signed/notarized/stapled DMG has been
+  published to GitHub; future public artifacts still require operator review
+  before upload.
 - PKG remains maintainer-only/future until Developer ID Installer validation and
   installer UX are intentionally promoted.
 - Live USB-C AirPods/Cubase soak evidence remains operator-dependent hardware
@@ -65,17 +66,26 @@ as validated and are listed below under Requirements → Validated.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone: v0.6+ (next milestone not yet defined)
+## Current Milestone: v0.6 Public Release Safety Fixes
 
-**Status:** v0.5 Release Readiness Hardening is complete; awaiting operator
-review and next milestone definition.
+**Goal:** Close the remaining public-release safety issues surfaced after v0.5
+by fixing HAL timestamp pairing, lifecycle guards, release installer behavior,
+legacy converter safety, realtime metrics storage, stderr handling, metrics UI
+staleness reset, GitHub CI release-script coverage, and stale documentation.
 
-**Likely directions (to be decided):**
-- Promote signed PKG installer to primary public install path.
-- Automate GitHub release publication/upload.
-- Live USB-C AirPods Max / Cubase soak on target hardware.
-- Broad DAW compatibility matrix (Logic/Ableton).
-- Support bundle export for observability.
+**Target fixes:**
+- Make HAL mono-lane timestamp pairing fail closed for unrelated mismatches
+  while preserving an explicit, narrow rollover allowance.
+- Respect `ioRunning_` in the mixed-output HAL hot path.
+- Fix or remove the unsafe legacy AudioToolbox converter path.
+- Make the DMG installer copy the app deterministically with `sudo ditto` after
+  removing any existing app bundle.
+- Ensure realtime metrics double fields are stored with lock-free guarantees.
+- Discard or drain `DeviceCatalog.refresh()` stderr so device listing cannot
+  deadlock on a full pipe.
+- Reset `lastMetricsAt` whenever bridge metrics state is reset on start or idle.
+- Run release-script tests in GitHub CI.
+- Correct the stale `pushInterleaved()` drop-policy comment.
 
 ## Requirements
 
@@ -147,7 +157,18 @@ review and next milestone definition.
 
 ### Active
 
-None — v0.5 Release Readiness Hardening is complete; awaiting next milestone definition.
+- [ ] HAL mono-lane timestamp pairing rejects unrelated mismatches and preserves
+  only explicit rollover-tolerant pairing.
+- [ ] Mixed-output processing ignores callbacks when IO is stopped.
+- [ ] Legacy AudioToolbox converter comparison path is removed or made memory
+  safe before public release.
+- [ ] DMG installer app copy is deterministic and privileged.
+- [ ] Realtime metrics publication does not depend on possibly-locking double
+  atomics.
+- [ ] Device catalog refresh cannot deadlock on unread stderr.
+- [ ] Metrics staleness state resets cleanly across start and idle transitions.
+- [ ] GitHub CI runs release-script regressions.
+- [ ] Drop-policy comments match the implemented drop-new behavior.
 
 ### Out of Scope
 
@@ -180,6 +201,10 @@ None — v0.5 Release Readiness Hardening is complete; awaiting next milestone d
 - v0.4 is seeded from the "Blockers before publishing" review attached on
   2026-06-12. It focuses on release-blocking correctness, security posture, and
   packaging automation, not new audio/DSP features.
+- v0.6 is seeded from the 2026-06-13 public-release safety review covering HAL
+  timestamp pairing, IO lifecycle gating, legacy converter ownership, installer
+  determinism, realtime metrics atomics, stderr draining, metrics UI reset, CI
+  release-script coverage, and drop-policy documentation.
 - `.planning/` is gitignored by default; selected artifacts are force-added for
   local GSD state.
 
@@ -214,6 +239,7 @@ None — v0.5 Release Readiness Hardening is complete; awaiting next milestone d
 | Treat v0.5 as a second pass on release-readiness blockers | The provided blocker review overlaps with v0.4 but is treated as the authoritative scope for this milestone; any already-fixed items were verified and regression-gated | ✓ Good — all 16 v0.5 requirements satisfied |
 | Verify v0.5 metrics and Core Audio paths without source changes | v0.4 already implemented atomic-field seqlock publication, safe JSON truncation, `inputStarted` tracking, and non-interleaved clamping | ✓ Good — verification focused on evidence and requirement tags |
 | Keep v0.5 DMG-primary and accept operator-dependent publication/soak gaps | Automated release-artifact gates are complete; live hardware sign-off and GitHub upload remain operator responsibilities | ✓ Good — caveats documented before release tag |
+| Treat v0.6 as a public-release safety fix pass | The post-v0.5 review identifies narrow correctness and distribution risks that should close before wider public confidence | — Pending |
 
 ## Evolution
 
@@ -233,4 +259,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-13 after v0.5 Release Readiness Hardening milestone completion*
+*Last updated: 2026-06-13 after v0.6 Public Release Safety Fixes milestone start*

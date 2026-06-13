@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.5
-milestone_name: Release Readiness Hardening
-status: complete
-stopped_at: Phase 22 complete; v0.5 milestone complete
-last_updated: "2026-06-13T17:15:00Z"
-last_activity: 2026-06-13 — v0.5 milestone cleanup complete; phases 17-22 archived to .planning/milestones/v0.5/phases/, build-tsan/ removed, signed DMG preserved
+milestone: v0.6
+milestone_name: Public Release Safety Fixes
+status: planning
+last_updated: "2026-06-13T16:08:44.654Z"
+last_activity: 2026-06-13
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +27,10 @@ mystery relaunches.
 
 ## Current Position
 
-Phase: 22 (QA / Regression)
-Plan: 22-01
-Status: Complete
-Last activity: 2026-06-13 — Phase 22 QA / Regression complete (QA-01/QA-02), signed/notarized DMG accepted by Gatekeeper
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-13 — Milestone v0.6 started
 
 ## Performance Metrics
 
@@ -50,6 +49,7 @@ Last activity: 2026-06-13 — Phase 22 QA / Regression complete (QA-01/QA-02), s
 - Timeline: 2026-06-12 (single-day execution)
 - 29/29 requirements satisfied by automated evidence or recorded release
   validation proof
+
 - Public artifact path validated as DMG-first; PKG remains future/maintainer-only
 
 **Velocity (v0.3):**
