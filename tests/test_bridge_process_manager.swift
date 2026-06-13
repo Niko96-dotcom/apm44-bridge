@@ -85,6 +85,20 @@ final class BridgeProcessManagerTests: XCTestCase {
         return (manager, settings, mockLauncher)
     }
 
+    private func sampleMetrics() -> BridgeMetricsSnapshot {
+        BridgeMetricsSnapshot(
+            fillMs: 15,
+            ratio: 1.0,
+            ppm: 0,
+            underruns: 0,
+            overruns: 0,
+            xruns: 0,
+            estimatedRtMs: 15,
+            targetFillMs: 15,
+            srcQuality: "medium"
+        )
+    }
+
     func testStartFromErrorState() async {
         let launcher = MockProcessLauncher()
         let settings = BridgeSettings()
@@ -123,6 +137,21 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .idle)
     }
 
+    func testStartResetsMetricsStateAndTimestamp() {
+        let (manager, _, _) = makeManager()
+        manager.applyMetricsForTesting(sampleMetrics())
+        manager.markMetricsStaleForTesting()
+        XCTAssertNotNil(manager.latestMetrics)
+        XCTAssertTrue(manager.hasLastMetricsTimestampForTesting)
+        XCTAssertTrue(manager.metricsStale)
+
+        manager.start()
+
+        XCTAssertNil(manager.latestMetrics)
+        XCTAssertFalse(manager.hasLastMetricsTimestampForTesting)
+        XCTAssertFalse(manager.metricsStale)
+    }
+
     func testRunningToIdleViaUserStop() async {
         let (manager, _, launcher) = makeManager()
 
@@ -139,6 +168,27 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .idle)
         XCTAssertNil(manager.lastStopReason)
+    }
+
+    func testIdleTransitionResetsMetricsStateAndTimestamp() async {
+        let (manager, _, launcher) = makeManager()
+
+        manager.start()
+        manager.applyMetricsForTesting(sampleMetrics())
+        manager.markMetricsStaleForTesting()
+        XCTAssertNotNil(manager.latestMetrics)
+        XCTAssertTrue(manager.hasLastMetricsTimestampForTesting)
+        XCTAssertTrue(manager.metricsStale)
+
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertNil(manager.latestMetrics)
+        XCTAssertFalse(manager.hasLastMetricsTimestampForTesting)
+        XCTAssertFalse(manager.metricsStale)
     }
 
     func testRunningUnexpectedExit() async {

@@ -70,7 +70,7 @@ Phase numbering continues from shipped history:
   closed for timestamp mismatch and stopped IO.
 - [x] **Phase 24: Converter and Metrics Realtime Safety** - Remove the unsafe (completed 2026-06-13)
   legacy converter path and make metrics floating payload storage lock-free.
-- [ ] **Phase 25: App and Release Automation Reliability** - Harden app
+- [x] **Phase 25: App and Release Automation Reliability** - Harden app (completed 2026-06-13)
   lifecycle/catalog edges, the DMG command installer, and GitHub CI coverage.
 - [ ] **Phase 26: Regression and Release Safety Closure** - Run the full
   v0.6 regression gate and reconcile all release-safety evidence.
@@ -341,7 +341,7 @@ Planned work:
 4. The generated DMG command installer removes any existing `/Applications/APM44 Bridge.app`, copies with privileged `ditto`, and sets root ownership.
 5. Swift and release-script regressions cover the stderr, metrics reset, and installer command behavior.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 25-01 - Harden DeviceCatalog stderr handling and metrics timestamp reset (APP-06, APP-07)
@@ -392,7 +392,7 @@ Planned work:
 | 22. QA / Regression | v0.5 | 1/1 | Complete | 2026-06-13 |
 | 23. HAL Runtime Pairing Safety | v0.6 | 2/2 | Complete    | 2026-06-13 |
 | 24. Converter and Metrics Realtime Safety | v0.6 | 2/2 | Complete    | 2026-06-13 |
-| 25. App and Installer Reliability | v0.6 | 0/2 | Pending | - |
+| 25. App and Installer Reliability | v0.6 | 2/2 | Complete    | 2026-06-13 |
 | 26. Regression and Release Safety Closure | v0.6 | 0/1 | Pending | - |
 
 ## Coverage

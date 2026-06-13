@@ -91,7 +91,9 @@ if [[ "\$SRC_SHA" != "\$DST_SHA" ]]; then
   exit 1
 fi
 sudo killall coreaudiod 2>/dev/null || true
-cp -R "\$DIR/APM44 Bridge.app" /Applications/
+sudo rm -rf "/Applications/APM44 Bridge.app"
+sudo ditto "\$DIR/APM44 Bridge.app" "/Applications/APM44 Bridge.app"
+sudo chown -R root:wheel "/Applications/APM44 Bridge.app"
 open "/Applications/APM44 Bridge.app"
 echo "Done. If APM44 Bridge does not appear in Audio MIDI Setup, reboot once."
 CMD

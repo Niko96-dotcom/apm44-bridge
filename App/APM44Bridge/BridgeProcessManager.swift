@@ -196,9 +196,8 @@ final class BridgeProcessManager: ObservableObject {
         state = .starting
         connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
         stderrLines.removeAll()
-        latestMetrics = nil
+        resetMetricsState()
         lastXrunCount = 0
-        metricsStale = false
 
         let proc = processLauncher.makeProcess()
         proc.executableURL = url
@@ -532,6 +531,18 @@ final class BridgeProcessManager: ObservableObject {
         appendStderr(text)
     }
 
+    internal func applyMetricsForTesting(_ snapshot: BridgeMetricsSnapshot) {
+        applyMetrics(snapshot)
+    }
+
+    internal func markMetricsStaleForTesting() {
+        metricsStale = true
+    }
+
+    internal var hasLastMetricsTimestampForTesting: Bool {
+        lastMetricsAt != nil
+    }
+
     private func isRecoverableStaleRingExit(status: Int32, stderr: String) -> Bool {
         status == 42 && stderr.localizedCaseInsensitiveContains("stale shm ring")
     }
@@ -559,6 +570,12 @@ final class BridgeProcessManager: ObservableObject {
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
         stdoutPipe = nil
         stderrPipe = nil
+    }
+
+    private func resetMetricsState() {
+        latestMetrics = nil
+        lastMetricsAt = nil
+        metricsStale = false
     }
 
     @discardableResult
@@ -597,6 +614,7 @@ final class BridgeProcessManager: ObservableObject {
 
     private func transitionToIdle() {
         clearPipeHandlers()
+        resetMetricsState()
         state = .idle
         connectionPhase = .stopped
         lastStopReason = nil

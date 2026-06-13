@@ -21,12 +21,12 @@ Requirements for the v0.6 Public Release Safety Fixes milestone.
 
 ### App Lifecycle Reliability
 
-- [ ] **APP-06**: Device catalog refresh cannot deadlock on helper stderr output while listing audio devices.
-- [ ] **APP-07**: Metrics state reset clears `latestMetrics`, `lastMetricsAt`, and `metricsStale` together on start and idle transitions.
+- [x] **APP-06**: Device catalog refresh cannot deadlock on helper stderr output while listing audio devices.
+- [x] **APP-07**: Metrics state reset clears `latestMetrics`, `lastMetricsAt`, and `metricsStale` together on start and idle transitions.
 
 ### Release Automation
 
-- [ ] **DIST-05**: The DMG command installer replaces `/Applications/APM44 Bridge.app` deterministically by removing any existing bundle, copying with privileged `ditto`, and setting root ownership.
+- [x] **DIST-05**: The DMG command installer replaces `/Applications/APM44 Bridge.app` deterministically by removing any existing bundle, copying with privileged `ditto`, and setting root ownership.
 - [ ] **CI-02**: GitHub CI runs `tests/test_release_scripts.sh` so release-script regressions fail the public CI gate.
 
 ## v2 Requirements
@@ -72,9 +72,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HAL-04 | Phase 23 | Complete |
 | CONV-01 | Phase 24 | Complete |
 | METR-04 | Phase 24 | Complete |
-| APP-06 | Phase 25 | Pending |
-| APP-07 | Phase 25 | Pending |
-| DIST-05 | Phase 25 | Pending |
+| APP-06 | Phase 25 | Complete |
+| APP-07 | Phase 25 | Complete |
+| DIST-05 | Phase 25 | Complete |
 | CI-02 | Phase 26 | Pending |
 
 **Coverage:**

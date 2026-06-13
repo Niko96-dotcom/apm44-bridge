@@ -312,6 +312,16 @@ run_dist_01_staple_before_dmg_order() {
   fi
 }
 
+# DIST-05: generated DMG command installer replaces the app bundle deterministically.
+run_dist_05_dmg_command_installer_check() {
+  local script="$ROOT/scripts/build-release-dmg.sh"
+
+  assert_contains "$script" 'sudo rm -rf "/Applications/APM44 Bridge.app"'
+  assert_contains "$script" 'sudo ditto "\$DIR/APM44 Bridge.app" "/Applications/APM44 Bridge.app"'
+  assert_contains "$script" 'sudo chown -R root:wheel "/Applications/APM44 Bridge.app"'
+  assert_not_contains "$script" 'cp -R "\$DIR/APM44 Bridge.app" /Applications/'
+}
+
 # REL-03: sign-notarize.yml must fail the workflow if verify-app-build.sh fails.
 run_sign_notarize_workflow_check() {     # [REL-03]
   local workflow="$ROOT/.github/workflows/sign-notarize.yml"
@@ -372,6 +382,8 @@ run_release_all_unnotarized_override     # [REL-02]
 run_release_all_notary_ready_sequence
 
 run_dist_01_staple_before_dmg_order      # [DIST-01]
+
+run_dist_05_dmg_command_installer_check  # [DIST-05]
 
 run_sign_notarize_workflow_check         # [REL-03]
 

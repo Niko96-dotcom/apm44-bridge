@@ -78,7 +78,7 @@ enum DeviceCatalog {
         process.arguments = ["--list-devices"]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
         try process.run()
         // Drain stdout before waiting. A child that fills the ~64 KB pipe
         // buffer blocks on write until the reader consumes it, so reading

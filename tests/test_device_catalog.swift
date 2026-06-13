@@ -62,4 +62,17 @@ final class DeviceCatalogTests: XCTestCase {
         let filtered = DeviceCatalog.filterMonitoringOutputs([airpods, usb])
         XCTAssertEqual(filtered.count, 2)
     }
+
+    func testRefreshDoesNotUseUnreadStderrPipe() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot.appendingPathComponent("App/APM44Bridge/DeviceCatalog.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("process.standardError = FileHandle.nullDevice"))
+        XCTAssertFalse(source.contains("process.standardError = Pipe()"))
+    }
 }
