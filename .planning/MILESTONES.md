@@ -2,6 +2,28 @@
 
 ## Completed
 
+### v0.6 - Public Release Safety Fixes
+
+**Shipped:** 2026-06-13
+**Phases completed:** 4 phases, 7 plans, 10 requirements
+
+**Delivered:**
+
+- Hardened HAL mono-lane timestamp pairing so unrelated left/right timestamps cannot become stereo shared-memory output, while preserving the known rollover case.
+- Removed the unsafe legacy AudioToolbox converter public path from CLI parsing, docs, build inputs, tests, and runtime engine options.
+- Replaced realtime metrics floating-field atomics with packed `uint64_t` storage and regression coverage.
+- Fixed app-side helper stderr handling and metrics lifecycle resets so refresh/start/idle transitions cannot hang or show stale metrics state.
+- Made the generated DMG command installer replace `/Applications/APM44 Bridge.app` deterministically with privileged `ditto` and root ownership.
+- Added public CI release-script regression coverage and a source guard that fails if the CI step is removed or reordered.
+- Ran full local CI: secret scan, 19 native tests, release-script regressions, 46 Swift tests, and installed-sync dry-run.
+
+**Known caveats at close:**
+
+- Target-machine Cubase/AirPods live soak remains operator-dependent and outside v0.6 scope.
+- Signed PKG-primary distribution, GitHub release upload automation, Logic/Ableton validation, and support bundle export remain deferred to future milestones.
+
+**Archive:** [milestones/v0.6-ROADMAP.md](milestones/v0.6-ROADMAP.md), [milestones/v0.6-REQUIREMENTS.md](milestones/v0.6-REQUIREMENTS.md), [milestones/v0.6-MILESTONE-AUDIT.md](milestones/v0.6-MILESTONE-AUDIT.md)
+
 ### v0.5 - Release Readiness Hardening
 
 **Shipped:** 2026-06-13

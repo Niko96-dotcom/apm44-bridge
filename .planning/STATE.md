@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.6
 milestone_name: Public Release Safety Fixes
-status: milestone_complete
-stopped_at: Milestone complete (Phase 26 was final phase)
-last_updated: 2026-06-13T16:56:11.166Z
-last_activity: 2026-06-13 -- Phase 26 completed and v0.6 milestone ready for audit
+status: Awaiting next milestone
+stopped_at: v0.6 milestone archived; phase directory cleanup pending
+last_updated: "2026-06-13T16:57:59.447Z"
+last_activity: 2026-06-13 — Milestone v0.6 completed and archived
 progress:
   total_phases: 4
   completed_phases: 4
@@ -28,10 +28,10 @@ mystery relaunches.
 
 ## Current Position
 
-Phase: 26
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-06-13 -- Phase 26 completed and v0.6 milestone ready for audit
+Phase: Milestone v0.6 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-13 — Milestone v0.6 completed and archived
 
 ## Performance Metrics
 
@@ -161,6 +161,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Start Phase 23 planning with `$gsd-plan-phase 23`.
-- Optional: use `$gsd-discuss-phase 23` first if you want to clarify the HAL
-  rollover tolerance and mismatch-drop behavior before implementation planning.
+- Start the next milestone with /gsd-new-milestone
