@@ -76,7 +76,7 @@ final class BridgeProcessManager: ObservableObject {
 
     var isTransitioning: Bool {
         switch state {
-        case .starting, .stopping, .reconnecting: return true
+        case .starting, .stopping: return true
         default: return false
         }
     }

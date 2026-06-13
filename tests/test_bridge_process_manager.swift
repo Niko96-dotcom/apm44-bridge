@@ -349,6 +349,31 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
+    func testReconnectingRetryCanBeInterruptedByStop() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [60]
+
+        manager.start()
+        manager.testTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        guard case .reconnecting = manager.state else {
+            XCTFail("Expected reconnecting retry wait, got \(manager.state)")
+            return
+        }
+
+        XCTAssertFalse(
+            manager.isTransitioning,
+            "Reconnecting is a retry wait, so Stop Bridge must remain clickable"
+        )
+
+        manager.stop()
+
+        XCTAssertEqual(manager.state, .idle)
+    }
+
     func testRetryExhaustionLandsInError() async {
         let launcher = MockProcessLauncher()
         launcher.failLaunchesAfterFirstSuccess = true
