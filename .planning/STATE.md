@@ -6,9 +6,9 @@ status: planning
 last_updated: "2026-06-14T05:29:57.611Z"
 last_activity: 2026-06-14
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 9
   completed_plans: 0
   percent: 0
 ---
@@ -23,14 +23,14 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** v0.9 Public Polish Final Hardening
+**Current focus:** Phase 33 - ASBD Memory Contract
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 33 - ASBD Memory Contract
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-14 — Milestone v0.9 started
+Status: Ready to plan
+Last activity: 2026-06-14 — Milestone v0.9 roadmap created
 
 ## Performance Metrics
 
@@ -85,6 +85,16 @@ Last activity: 2026-06-14 — Milestone v0.9 started
 
 - Manual signing, HAL driver notarization, public truth cleanup, SRC label
   behavior, and release-candidate validation closure completed
+
+**Velocity (v0.9):**
+
+- Total plans scheduled: 9
+- Phases: 33-37 (5 phases)
+- Timeline: 2026-06-14 start
+- 17/17 requirements mapped to roadmap phases
+- Final public-polish hardening scope: ASBD memory contract, shared-memory
+  compatibility truth, public docs/version/default/path consistency, release
+  codesign self-gating, GitHub workflow intent, and closure evidence
 
 ## Accumulated Context
 
@@ -152,6 +162,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
   notarization; Phase 31 covers public version/latency docs, converter file
   cleanup, and SRC quality label truth; Phase 32 covers final regression and
   release-candidate validation evidence.
+- v0.9 roadmap: Phase 33 covers ASBD byte-layout validation; Phase 34 covers
+  shared-memory build-id/sample-rate compatibility truth; Phase 35 covers public
+  version/default/path documentation consistency; Phase 36 covers
+  `release-all.sh` codesign verification and `sign-notarize.yml` intent; Phase
+  37 covers full regression and public-polish closure evidence.
 
 ### Pending Todos
 
