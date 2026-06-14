@@ -30,12 +30,12 @@ mystery relaunches.
 
 ### Public Documentation Truth
 
-- [ ] **DOC-01**: README, changelog, install docs, release docs, artifact names,
+- [x] **DOC-01**: README, changelog, install docs, release docs, artifact names,
   issue-template placeholders, and validation commands use one current release
   version identity.
-- [ ] **DOC-02**: Latency preset docs and release checklists identify Safe as
+- [x] **DOC-02**: Latency preset docs and release checklists identify Safe as
   the fresh-install default when that is the app default.
-- [ ] **DOC-03**: Release docs consistently use the actual HAL driver build
+- [x] **DOC-03**: Release docs consistently use the actual HAL driver build
   path, `build/Driver/APM44Bridge.driver`.
 
 ### Release Automation
@@ -99,9 +99,9 @@ mystery relaunches.
 | SHM-01 | Phase 34 | Complete |
 | SHM-02 | Phase 34 | Complete |
 | SHM-03 | Phase 34 | Complete |
-| DOC-01 | Phase 35 | Pending |
-| DOC-02 | Phase 35 | Pending |
-| DOC-03 | Phase 35 | Pending |
+| DOC-01 | Phase 35 | Complete |
+| DOC-02 | Phase 35 | Complete |
+| DOC-03 | Phase 35 | Complete |
 | REL-01 | Phase 36 | Pending |
 | REL-02 | Phase 36 | Pending |
 | REL-03 | Phase 36 | Pending |

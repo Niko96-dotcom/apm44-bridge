@@ -15,7 +15,7 @@ Distribution checklist for **apm44-bridge**, **APM44 Bridge.app**, and **APM44Br
 |----------|----------------|--------------|
 | Bridge daemon | `build/BridgeDaemon/apm44-bridge` | none (CLI) |
 | Menu bar app | `build/Release/APM44 Bridge.app` | `App/APM44Bridge/APM44Bridge.entitlements` |
-| HAL plug-in | `build/Release/APM44Bridge.driver` | `Driver/APM44Bridge.entitlements` |
+| HAL plug-in | `build/Driver/APM44Bridge.driver` | `Driver/APM44Bridge.entitlements` |
 
 ## Distribution posture
 
@@ -144,7 +144,7 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 HAL plug-ins load inside `coreaudiod`. Use hardened runtime and the driver entitlements plist:
 
 ```bash
-DRIVER="build/Release/APM44Bridge.driver"
+DRIVER="build/Driver/APM44Bridge.driver"
 codesign --force --sign "$SIGN_ID" \
   --timestamp --options runtime \
   --entitlements Driver/APM44Bridge.entitlements \

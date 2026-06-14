@@ -25,7 +25,7 @@ Map each step to requirements. Record pass/fail in the phase SUMMARY or VERIFICA
 | Step | Pass? |
 |------|-------|
 | Low / Balanced / Safe selectable | |
-| Balanced default on fresh install | |
+| Safe default on fresh install | |
 | Each preset restarts bridge when changed while running | |
 
 ## APP-03 — SRC quality

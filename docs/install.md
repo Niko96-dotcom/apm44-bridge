@@ -45,8 +45,8 @@ The app is **menu bar only** (by design). It does not appear in the Dock. Use th
 
 In the menu bar panel:
 
-- **Safe (~30 ms)** + highest SRC quality — best for long sessions and subtle click-free monitoring.
-- **Balanced** — default; HAL path uses at least ~20 ms internal buffer automatically.
+- **Safe (~30 ms)** + highest SRC quality — fresh-install default; best for long sessions and subtle click-free monitoring.
+- **Balanced** — lower-latency everyday option after setup; HAL path uses at least ~20 ms internal buffer automatically.
 - **Low** — lowest latency; may click if the DAW or Bluetooth adds jitter.
 
 If you hear rare tiny clicks, switch to **Safe**, use **USB-C** AirPods, and

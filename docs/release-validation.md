@@ -1,9 +1,9 @@
 # Release validation checklist
 
-This checklist is the v0.8 release-candidate closeout path for the current
-DMG-primary distribution flow. It separates credential-free verification from Apple
-Developer credential checks so local-only artifacts are never confused with a
-public release.
+This checklist is the v0.9 public-polish validation path for the current
+0.1.1 DMG-primary distribution flow. It separates credential-free verification
+from Apple Developer credential checks so local-only artifacts are never
+confused with a public release.
 
 ## Final automated verification
 

@@ -50,7 +50,7 @@ Phase numbering continues from shipped history:
   match the exact interleaved and non-interleaved IOProc memory assumptions.
 - [x] **Phase 34: Shared-Memory Compatibility Truth** - Align build-id and (completed 2026-06-14)
   sample-rate compatibility behavior with public release/security docs.
-- [ ] **Phase 35: Public Version and Defaults Truth** - Normalize release
+- [x] **Phase 35: Public Version and Defaults Truth** - Normalize release (completed 2026-06-14)
   version identity, Safe latency default wording, and HAL driver build path
   references.
 - [ ] **Phase 36: Release Automation and Workflow Intent** - Run strict release
@@ -132,7 +132,7 @@ defaults agree with the code and current release identity.
 4. Source or script tests catch the most important public-truth regressions
    where practical.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 35-01 - Normalize release version identity across public docs, artifacts, and

@@ -460,6 +460,25 @@ run_ci_03_local_ci_app_bundle_proof_check() {
   assert_contains "$script" 'embedded helper missing'
 }
 
+run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
+  local install_doc="$ROOT/docs/install.md"
+  local menu_qa="$ROOT/docs/menu-bar-qa.md"
+  local release_doc="$ROOT/docs/release.md"
+  local validation_doc="$ROOT/docs/release-validation.md"
+
+  assert_contains "$install_doc" "Safe (~30 ms)"
+  assert_contains "$install_doc" "fresh-install default"
+  assert_contains "$menu_qa" "Safe default on fresh install"
+  assert_not_contains "$menu_qa" "Balanced default on fresh install"
+
+  assert_contains "$release_doc" "build/Driver/APM44Bridge.driver"
+  assert_not_contains "$release_doc" "build/Release/APM44Bridge.driver"
+
+  assert_contains "$validation_doc" "v0.9 public-polish validation path"
+  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.1.1}.dmg'
+  assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
+}
+
 run_codesign_verify_case() {
   local mode="$1"
   local override="$2"
@@ -536,6 +555,8 @@ run_ci_02_release_script_tests_in_github_ci # [CI-02]
 run_sign_01_03_workflow_release_app_alignment_check # [SIGN-01][SIGN-02][SIGN-03]
 
 run_ci_03_local_ci_app_bundle_proof_check # [CI-01][CI-02][CI-03]
+
+run_doc_truth_check # [DOC-01][DOC-02][DOC-03]
 
 run_codesign_verify_case strict-ok 0 success "codesign-strict-ok"
 run_codesign_verify_case no-runtime 0 failure "codesign-no-runtime"        # [REL-01]
