@@ -9,14 +9,14 @@ mystery relaunches.
 
 ### Core Audio Format Contract
 
-- [ ] **ASBD-01**: `AsbdMatchesFloat32Stereo` rejects stereo Float32 ASBDs whose
+- [x] **ASBD-01**: `AsbdMatchesFloat32Stereo` rejects stereo Float32 ASBDs whose
   `mFramesPerPacket` is not exactly `1`.
-- [ ] **ASBD-02**: `AsbdMatchesFloat32Stereo` rejects interleaved stereo Float32
+- [x] **ASBD-02**: `AsbdMatchesFloat32Stereo` rejects interleaved stereo Float32
   ASBDs unless `kAudioFormatFlagIsPacked` is set and both byte-size fields are
   exactly `sizeof(float) * 2`.
-- [ ] **ASBD-03**: `AsbdMatchesFloat32Stereo` rejects non-interleaved stereo
+- [x] **ASBD-03**: `AsbdMatchesFloat32Stereo` rejects non-interleaved stereo
   Float32 ASBDs unless both byte-size fields are exactly `sizeof(float)`.
-- [ ] **ASBD-04**: Regression tests cover incorrect interleaved and
+- [x] **ASBD-04**: Regression tests cover incorrect interleaved and
   non-interleaved byte-size ASBDs so IOProc memory assumptions stay guarded.
 
 ### Shared-Memory Compatibility Truth
@@ -92,10 +92,10 @@ mystery relaunches.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ASBD-01 | Phase 33 | Pending |
-| ASBD-02 | Phase 33 | Pending |
-| ASBD-03 | Phase 33 | Pending |
-| ASBD-04 | Phase 33 | Pending |
+| ASBD-01 | Phase 33 | Complete |
+| ASBD-02 | Phase 33 | Complete |
+| ASBD-03 | Phase 33 | Complete |
+| ASBD-04 | Phase 33 | Complete |
 | SHM-01 | Phase 34 | Pending |
 | SHM-02 | Phase 34 | Pending |
 | SHM-03 | Phase 34 | Pending |

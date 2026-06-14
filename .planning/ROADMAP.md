@@ -46,7 +46,7 @@ Phase numbering continues from shipped history:
 
 ## Phases
 
-- [ ] **Phase 33: ASBD Memory Contract** - Make Float32 stereo ASBD acceptance
+- [x] **Phase 33: ASBD Memory Contract** - Make Float32 stereo ASBD acceptance (completed 2026-06-14)
   match the exact interleaved and non-interleaved IOProc memory assumptions.
 - [ ] **Phase 34: Shared-Memory Compatibility Truth** - Align build-id and
   sample-rate compatibility behavior with public release/security docs.
@@ -79,7 +79,7 @@ Float32 stereo memory layout it will read.
 5. Regression tests reject wrong byte-size ASBDs for both interleaved and
    non-interleaved formats.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 33-01 - Tighten `AsbdMatchesFloat32Stereo` against exact packet/frame byte

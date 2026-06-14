@@ -30,6 +30,9 @@ bool AsbdMatchesFloat32StereoNonInterleaved(const AudioStreamBasicDescription& a
 bool AsbdMatchesFloat32Stereo(const AudioStreamBasicDescription& asbd,
                               double sampleRate,
                               double rateTolerance) {
+  constexpr UInt32 kFloatBytes = sizeof(float);
+  constexpr UInt32 kStereoFrameBytes = kFloatBytes * 2;
+
   if (asbd.mFormatID != kAudioFormatLinearPCM) {
     return false;
   }
@@ -39,7 +42,20 @@ bool AsbdMatchesFloat32Stereo(const AudioStreamBasicDescription& asbd,
   if (asbd.mChannelsPerFrame != 2 || asbd.mBitsPerChannel != 32) {
     return false;
   }
-  return std::fabs(asbd.mSampleRate - sampleRate) <= rateTolerance;
+  if (asbd.mFramesPerPacket != 1) {
+    return false;
+  }
+  if (std::fabs(asbd.mSampleRate - sampleRate) > rateTolerance) {
+    return false;
+  }
+
+  if ((asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0) {
+    return asbd.mBytesPerPacket == kFloatBytes && asbd.mBytesPerFrame == kFloatBytes;
+  }
+
+  return (asbd.mFormatFlags & kAudioFormatFlagIsPacked) != 0 &&
+         asbd.mBytesPerPacket == kStereoFrameBytes &&
+         asbd.mBytesPerFrame == kStereoFrameBytes;
 }
 
 }  // namespace apm44
