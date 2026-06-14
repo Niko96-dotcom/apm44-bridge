@@ -56,7 +56,7 @@ Phase numbering continues from shipped history:
 - [x] **Phase 36: Release Automation and Workflow Intent** - Run strict release (completed 2026-06-14)
   codesign verification inside `release-all.sh` and clarify
   `sign-notarize.yml` artifact intent.
-- [ ] **Phase 37: Regression and Public Polish Closure** - Run the full truth
+- [x] **Phase 37: Regression and Public Polish Closure** - Run the full truth (completed 2026-06-14)
   gates and record remaining operator-owned caveats without overclaiming.
 
 ## Phase Details
@@ -188,7 +188,7 @@ that remains operator-owned.
    release readiness from operator-owned publication/target-hardware validation.
 4. Requirements traceability is reconciled before milestone closeout.
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Planned work:
 - 37-01 - Run full v0.9 regression gate and record final public-polish evidence

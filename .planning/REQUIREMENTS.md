@@ -58,9 +58,9 @@ mystery relaunches.
 
 ### Verification Closure
 
-- [ ] **QA-01**: Native, Swift, release-script, and installed-sync CI gates pass
+- [x] **QA-01**: Native, Swift, release-script, and installed-sync CI gates pass
   after the v0.9 changes.
-- [ ] **QA-02**: v0.9 closeout records any remaining operator-owned publication
+- [x] **QA-02**: v0.9 closeout records any remaining operator-owned publication
   or target-hardware validation caveats without reopening completed release
   automation work.
 
@@ -107,8 +107,8 @@ mystery relaunches.
 | REL-03 | Phase 36 | Complete |
 | GHA-01 | Phase 36 | Complete |
 | GHA-02 | Phase 36 | Complete |
-| QA-01 | Phase 37 | Pending |
-| QA-02 | Phase 37 | Pending |
+| QA-01 | Phase 37 | Complete |
+| QA-02 | Phase 37 | Complete |
 
 **Coverage:**
 - v0.9 requirements: 17 total
