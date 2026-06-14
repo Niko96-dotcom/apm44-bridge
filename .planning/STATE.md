@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9
 milestone_name: Public Polish Final Hardening
-status: milestone_complete
-last_updated: 2026-06-14T05:52:01.489Z
-last_activity: 2026-06-14
+status: Awaiting next milestone
+stopped_at: v0.9 milestone archived; ready for next milestone planning
+last_updated: "2026-06-14T05:54:32.307Z"
+last_activity: 2026-06-14 - Milestone v0.9 completed and archived
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 5
   total_plans: 9
   completed_plans: 9
-  percent: 0
-stopped_at: Milestone complete (Phase 37 was final phase)
+  percent: 100
 ---
 
 # Project State
@@ -24,14 +24,14 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Milestone complete
+**Current focus:** Awaiting next milestone
 
 ## Current Position
 
-Phase: 37
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-06-14
+Phase: Milestone v0.9 complete
+Plan: -
+Status: Awaiting next milestone
+Last activity: 2026-06-14 - Milestone v0.9 completed and archived
 
 ## Performance Metrics
 
@@ -89,13 +89,13 @@ Last activity: 2026-06-14
 
 **Velocity (v0.9):**
 
-- Total plans scheduled: 9
+- Total plans completed: 9
 - Phases: 33-37 (5 phases)
-- Timeline: 2026-06-14 start
-- 17/17 requirements mapped to roadmap phases
-- Final public-polish hardening scope: ASBD memory contract, shared-memory
-  compatibility truth, public docs/version/default/path consistency, release
-  codesign self-gating, GitHub workflow intent, and closure evidence
+- Timeline: 2026-06-14
+- 17/17 requirements satisfied by automated release-polish evidence
+- ASBD memory contract, shared-memory compatibility truth, public
+  docs/version/default/path consistency, release codesign self-gating, GitHub
+  workflow intent, and closure evidence completed
 
 ## Accumulated Context
 
@@ -163,6 +163,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
   notarization; Phase 31 covers public version/latency docs, converter file
   cleanup, and SRC quality label truth; Phase 32 covers final regression and
   release-candidate validation evidence.
+
 - v0.9 roadmap: Phase 33 covers ASBD byte-layout validation; Phase 34 covers
   shared-memory build-id/sample-rate compatibility truth; Phase 35 covers public
   version/default/path documentation consistency; Phase 36 covers
@@ -175,7 +176,7 @@ None.
 
 ### Blockers/Concerns
 
-None. v0.7 audit passed with no code-level blockers.
+None. v0.9 audit passed with no code-level blockers.
 
 ## Deferred Items
 
@@ -198,11 +199,15 @@ Items acknowledged and deferred at milestone close:
 | observability | Support bundle export | future |
 | publication | GitHub release publication/upload for v0.7 DMG | operator-owned |
 | live soak | Final Cubase/AirPods target hardware soak | operator-dependent |
+| publication | GitHub release upload/publication for v0.9 DMG | operator-owned |
+| live soak | v0.9 target USB-C AirPods Max and Cubase soak | operator-dependent |
+| notarization | v0.9 Apple credential-backed public notarization | release-Mac action |
+| packaging | v0.9 signed PKG installer promotion | future |
 
 ## Session Continuity
 
-Last session: 2026-06-13T17:47:36.238Z
-Stopped at: v0.7 milestone archived; ready for next milestone planning
+Last session: 2026-06-14
+Stopped at: v0.9 milestone archived; ready for next milestone planning
 Resume file: None
 
 ## Operator Next Steps

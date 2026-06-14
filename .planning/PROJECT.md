@@ -20,15 +20,14 @@ A producer can start monitoring once and trust Cubase at 44.1 kHz to keep
 playing through USB-C AirPods at 48 kHz without silent wedges or mystery
 relaunches.
 
-## Current State (v0.8 shipped 2026-06-13)
+## Current State (v0.9 shipped 2026-06-14)
 
-**Validated:** v0.8 Release Candidate Closure milestone shipped 2026-06-13.
-All fourteen v0.8 requirements are satisfied by automated release-candidate
-evidence or recorded operator validation commands. The public release path now
-has fail-closed manual signing credentials, HAL driver build coverage in the
-manual signing workflow, strict driver-only notarization handling, current
-release docs, distinct SRC quality behavior, and final release-Mac plus
-target-hardware validation instructions.
+**Validated:** v0.9 Public Polish Final Hardening milestone shipped 2026-06-14.
+All seventeen v0.9 requirements are satisfied by automated evidence. The public
+release path now has exact Core Audio ASBD memory-layout validation,
+shared-memory build-ID and sample-rate compatibility gates, current public
+version/default/path documentation, release-command codesign self-gating, and a
+truthful GitHub signing workflow posture.
 
 **What works now:**
 - v0.2 deterministic app lifecycle, restart, hotplug, and stale-ring recovery.
@@ -82,6 +81,13 @@ target-hardware validation instructions.
   public latency estimates.
 - `docs/release-validation.md` records the final release-Mac and target-hardware
   operator validation sequence.
+- ASBD validation rejects Float32 stereo packet/frame layouts that do not match
+  the IOProc memory contract.
+- Shared-memory opening rejects mismatched build IDs and non-44.1 kHz rings.
+- Public docs and release-script checks agree on 0.1.1 artifacts, Safe as the
+  fresh-install latency default, and `build/Driver/APM44Bridge.driver`.
+- `scripts/release-all.sh` verifies release codesigning before notarization, and
+  `sign-notarize.yml` is documented as maintainer release evidence.
 
 **Known caveats (carried forward):**
 - v0.5.0 has been tagged and the signed/notarized/stapled DMG has been
@@ -94,22 +100,9 @@ target-hardware validation instructions.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone: v0.9 Public Polish Final Hardening
+## Planning Status
 
-**Goal:** Close the final code, documentation, and release-automation polish gaps
-before treating APM44 Bridge as public-ready.
-
-**Target features:**
-- Strictly validate ASBD Float32 stereo byte layout before IOProc code trusts
-  interleaved or non-interleaved buffer memory.
-- Align shared-memory build-id and sample-rate wording with the actual hard
-  validation behavior, or enforce the missing compatibility checks.
-- Normalize public version, latency-default, release path, and artifact wording
-  across user-facing docs and maintainer docs.
-- Make the one-command release path run strict codesign verification before
-  notarization.
-- Clarify whether `sign-notarize.yml` produces public artifacts or is only
-  maintainer evidence.
+No milestone is active. Start the next milestone with `$gsd-new-milestone`.
 
 ## Requirements
 
@@ -208,22 +201,23 @@ before treating APM44 Bridge as public-ready.
   — v0.8 (Phase 30)
 - [x] Public release docs, SRC quality behavior, and release-candidate
   validation evidence were aligned for the v0.8 candidate. — v0.8 (Phases 31-32)
+- [x] `AsbdMatchesFloat32Stereo` rejects Float32 stereo ASBDs whose
+  bytes-per-frame, bytes-per-packet, frames-per-packet, packed flag, or
+  non-interleaved flag do not exactly match the IOProc memory contract. —
+  v0.9 (Phase 33)
+- [x] Shared-memory open validation rejects mismatched build IDs and sample
+  rates before trusting a ring. — v0.9 (Phase 34)
+- [x] Public docs and templates use one release version identity, the real Safe
+  fresh-install latency default, and the actual HAL driver build path
+  `build/Driver/APM44Bridge.driver`. — v0.9 (Phase 35)
+- [x] `scripts/release-all.sh` runs strict release codesign verification after
+  signed artifacts exist and before notarization continues. — v0.9 (Phase 36)
+- [x] `.github/workflows/sign-notarize.yml` is explicitly documented as release
+  evidence, not the public artifact publication path. — v0.9 (Phase 36)
 
 ### Active
 
-- [ ] `AsbdMatchesFloat32Stereo` rejects Float32 stereo ASBDs whose
-  bytes-per-frame, bytes-per-packet, frames-per-packet, packed flag, or
-  non-interleaved flag do not exactly match the IOProc memory contract.
-- [ ] Shared-memory documentation accurately distinguishes hard validation gates
-  from diagnostic build-id evidence, or the code enforces build-id/sample-rate
-  compatibility before opening a ring.
-- [ ] Public docs and templates use one release version identity, the real Safe
-  fresh-install latency default, and the actual HAL driver build path
-  `build/Driver/APM44Bridge.driver`.
-- [ ] `scripts/release-all.sh` runs strict release codesign verification after
-  signed artifacts exist and before notarization continues.
-- [ ] `.github/workflows/sign-notarize.yml` is either artifact-producing or
-  explicitly documented as release evidence / notary dry-run only.
+None. Start the next milestone with `$gsd-new-milestone`.
 
 ### Out of Scope
 
@@ -310,7 +304,7 @@ before treating APM44 Bridge as public-ready.
 | Treat v0.6 as a public-release safety fix pass | The post-v0.5 review identifies narrow correctness and distribution risks that should close before wider public confidence | ✓ Good — shipped public-release safety fixes |
 | Treat v0.7 as final release automation polish | The latest audit says the product is close but manual signing, CI bundle proof, strict codesign checks, and small runtime guards should close before public release | ✓ Good — shipped final release automation polish |
 | Treat v0.8 as release-candidate closure | The latest audit identifies the remaining release-candidate blockers in signing workflow driver coverage, fail-closed credentials, HAL driver notarization, docs truth, and final validation evidence | ✓ Good — release-candidate closure shipped |
-| Treat v0.9 as final public-polish hardening | The remaining audit scope is narrow: exact Core Audio memory contracts, public truth, and release-command evidence before publication | — Pending |
+| Treat v0.9 as final public-polish hardening | The remaining audit scope was narrow: exact Core Audio memory contracts, public truth, and release-command evidence before publication | ✓ Good — shipped final public-polish hardening |
 
 ## Evolution
 
@@ -330,4 +324,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-14 after v0.9 Public Polish Final Hardening milestone start*
+*Last updated: 2026-06-14 after v0.9 Public Polish Final Hardening closeout*

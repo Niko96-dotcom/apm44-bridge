@@ -1,5 +1,37 @@
 # Milestones: APM44 Bridge
 
+## v0.9 Public Polish Final Hardening (Shipped: 2026-06-14)
+
+**Phases completed:** 5 phases, 9 plans, 17 requirements
+
+**Delivered:**
+
+- Enforced the exact Float32 stereo ASBD memory contract before IOProc code
+  trusts interleaved or non-interleaved buffer layout.
+- Promoted shared-memory build-ID and fixed 44.1 kHz sample-rate compatibility
+  from ambiguous documentation wording to hard validation gates.
+- Normalized public release truth around the current 0.1.1 artifact identity,
+  Safe as the fresh-install latency default, and
+  `build/Driver/APM44Bridge.driver` as the HAL driver build path.
+- Made `scripts/release-all.sh` run strict release codesign verification before
+  the normal notarization path continues.
+- Clarified `.github/workflows/sign-notarize.yml` as maintainer release
+  evidence, not the authoritative public DMG publication path.
+- Ran full local CI: secret scan, native CTest, release-script regressions,
+  Swift tests, app embed, and installed-sync dry-run.
+
+**Known caveats at close:**
+
+- GitHub release upload/publication remains maintainer-owned.
+- Apple credential-backed public notarization must be run on the release Mac.
+- Target USB-C AirPods Max and Cubase soak remains hardware/operator
+  validation.
+- Signed PKG installer promotion remains future scope.
+
+**Archive:** [milestones/v0.9-ROADMAP.md](milestones/v0.9-ROADMAP.md), [milestones/v0.9-REQUIREMENTS.md](milestones/v0.9-REQUIREMENTS.md), [milestones/v0.9-MILESTONE-AUDIT.md](milestones/v0.9-MILESTONE-AUDIT.md), [milestones/v0.9-phases/](milestones/v0.9-phases/)
+
+---
+
 ## v0.8 Release Candidate Closure (Shipped: 2026-06-13)
 
 **Phases completed:** 3 phases, 5 plans, 14 requirements
@@ -8,15 +40,20 @@
 
 - Made the manual signing workflow build both the daemon and HAL driver before
   signing, and fail closed when `APPLE_SIGN_ID` is missing.
+
 - Made `notarize=true` fail closed when the `AC_NOTARY` keychain profile is
   unavailable on the release runner.
+
 - Routed `scripts/notarize-hal-driver.sh` through the shared strict
   `require_notary_accepted` helper and added accepted/rejected driver-only
   notarization regression coverage.
+
 - Aligned release docs and workflow comments with the current release-candidate
   posture while keeping `APM44Bridge-0.1.1.dmg` as the current artifact story.
+
 - Mapped Standard / High / Best SRC quality labels to distinct converter modes
   and public latency estimates.
+
 - Recorded release-Mac and target-hardware operator validation commands, then
   ran full local CI: secret scan, 19 native tests, release-script regressions,
   47 Swift tests, app embed, and installed-sync dry-run.
