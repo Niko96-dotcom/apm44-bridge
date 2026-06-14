@@ -1,5 +1,42 @@
 # Milestones: APM44 Bridge
 
+## v1.0 Realtime Race Blocker Closure (Shipped: 2026-06-14)
+
+**Phases completed:** 4 phases, 7 plans, 17 requirements
+
+**Key accomplishments:**
+
+- Removed producer-side `DriftController` mutation from the input callback path;
+  input overruns are now reported through a dedicated atomic counter while
+  output callbacks retain drift-state ownership.
+
+- Made the HAL stopped-IO lifecycle guard (`ShmIoHandler::ioRunning_`) atomic
+  across start, stop, and mixed-output callbacks.
+
+- Documented the libASPL serialized IO callback contract that protects
+  mono-lane pending state, and added serialized left/right callback coverage.
+
+- Added source-audit guards for `BridgeInputOverrun`, `BridgeEngine`,
+  `ShmIoHandler`, and the mono-lane serialization contract.
+
+- Ran full local CI: secret scan, 19 native tests, release-script regressions,
+  47 Swift tests, app embed, and installed-sync dry-run.
+
+**Known caveats at close:**
+
+- The installed HAL driver/ring on this machine were stale versus the current
+  build during closeout. Before claiming live driver proof, reinstall/reload the
+  current driver with:
+  `APM44_DRIVER_PATH="$PWD/build/Driver/APM44Bridge.driver" bash scripts/install-driver.sh`
+- Target Cubase 15 and USB-C AirPods Max smoke/soak remains operator-owned
+  hardware validation.
+- GitHub release upload/publication, Apple credential-backed notarization, and
+  signed PKG promotion remain operator/future scope.
+
+**Archive:** [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md), [milestones/v1.0-REQUIREMENTS.md](milestones/v1.0-REQUIREMENTS.md), [milestones/v1.0-MILESTONE-AUDIT.md](milestones/v1.0-MILESTONE-AUDIT.md), [milestones/v1.0-phases/](milestones/v1.0-phases/)
+
+---
+
 ## v0.9 Public Polish Final Hardening (Shipped: 2026-06-14)
 
 **Phases completed:** 5 phases, 9 plans, 17 requirements
@@ -8,15 +45,20 @@
 
 - Enforced the exact Float32 stereo ASBD memory contract before IOProc code
   trusts interleaved or non-interleaved buffer layout.
+
 - Promoted shared-memory build-ID and fixed 44.1 kHz sample-rate compatibility
   from ambiguous documentation wording to hard validation gates.
+
 - Normalized public release truth around the current 0.1.1 artifact identity,
   Safe as the fresh-install latency default, and
   `build/Driver/APM44Bridge.driver` as the HAL driver build path.
+
 - Made `scripts/release-all.sh` run strict release codesign verification before
   the normal notarization path continues.
+
 - Clarified `.github/workflows/sign-notarize.yml` as maintainer release
   evidence, not the authoritative public DMG publication path.
+
 - Ran full local CI: secret scan, native CTest, release-script regressions,
   Swift tests, app embed, and installed-sync dry-run.
 
@@ -26,6 +68,7 @@
 - Apple credential-backed public notarization must be run on the release Mac.
 - Target USB-C AirPods Max and Cubase soak remains hardware/operator
   validation.
+
 - Signed PKG installer promotion remains future scope.
 
 **Archive:** [milestones/v0.9-ROADMAP.md](milestones/v0.9-ROADMAP.md), [milestones/v0.9-REQUIREMENTS.md](milestones/v0.9-REQUIREMENTS.md), [milestones/v0.9-MILESTONE-AUDIT.md](milestones/v0.9-MILESTONE-AUDIT.md), [milestones/v0.9-phases/](milestones/v0.9-phases/)

@@ -122,6 +122,7 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   drift_.reset();
   drift_.setTargetFillFrames(targetFillFrames);
   drift_.setMaxPpm(virtualDevice_ ? kVirtualDeviceMaxPpm : DriftController::kMaxPpm);
+  inputOverruns_.store(0, std::memory_order_relaxed);
   inputDemand_.reset();
   virtualPrebuffer_.reset(targetFillFrames);
 
@@ -149,7 +150,9 @@ double BridgeEngine::converterRatio() const {
 
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
   float* dropCh[2] = {inputDropScratch0_.data(), inputDropScratch1_.data()};
-  PushDroppingNewInput(ring_, dropCh, drift_, channels, frames);
+  if (PushDroppingNewInput(ring_, dropCh, channels, frames)) {
+    inputOverruns_.fetch_add(1, std::memory_order_relaxed);
+  }
 }
 
 void BridgeEngine::publishMetricsSnapshot() {
@@ -158,7 +161,7 @@ void BridgeEngine::publishMetricsSnapshot() {
   next.smoothedRatio = drift_.smoothedRatio();
   next.ppm = drift_.currentPpm();
   next.underruns = drift_.underrunCount();
-  next.overruns = drift_.overrunCount();
+  next.overruns = inputOverruns_.load(std::memory_order_relaxed);
   next.xruns = xruns_.load(std::memory_order_relaxed);
   PublishMetrics(publisher_, next);
 }
@@ -376,7 +379,7 @@ void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>
   const MetricsSnapshot stopped = readMetricsSnapshot();
   std::cerr << "apm44-bridge: stopped. fill_ms=" << stopped.fillMs
             << " ratio=" << drift_.smoothedRatio() << " ppm=" << drift_.currentPpm()
-            << " underruns=" << drift_.underrunCount() << " overruns=" << drift_.overrunCount()
+            << " underruns=" << drift_.underrunCount() << " overruns=" << stopped.overruns
             << " xruns=" << stopped.xruns << "\n";
 }
 

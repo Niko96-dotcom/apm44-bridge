@@ -6,6 +6,7 @@
 #include <aspl/IORequestHandler.hpp>
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -60,11 +61,14 @@ class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestH
 
   MmapShmRing ring_;
   std::array<float, kDefaultShmCapacityFrames * kShmChannels> pendingInterleaved_{};
+  // libASPL Device serializes IORequestHandler realtime callbacks (see
+  // third_party/libASPL/include/aspl/Device.hpp), so mono-lane pending
+  // state stays lock-free and callback-local to that serialized IO path.
   std::array<std::array<PendingLaneBlock, kPendingLaneQueueDepth>, kShmChannels> pendingLanes_{};
   std::array<std::size_t, kShmChannels> pendingRead_{};
   std::array<std::size_t, kShmChannels> pendingWrite_{};
   std::array<std::size_t, kShmChannels> pendingCount_{};
-  bool ioRunning_ = false;
+  std::atomic<bool> ioRunning_{false};
 };
 
 }  // namespace apm44

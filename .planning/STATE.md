@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Realtime Race Blocker Closure
-status: planning
-last_updated: "2026-06-14T06:25:19.440Z"
-last_activity: 2026-06-14
+status: Awaiting next milestone
+stopped_at: v1.0 milestone completed and archived; awaiting next milestone
+last_updated: "2026-06-14T06:45:11.802Z"
+last_activity: 2026-06-14 — Milestone v1.0 completed and archived
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 4
   total_plans: 7
-  completed_plans: 0
-  percent: 0
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -23,20 +24,31 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Phase 38: Input and Output Drift Ownership
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 38 - Input and Output Drift Ownership
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-06-14 - Milestone v1.0 roadmap created
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-14 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
+**Velocity (v1.0):**
+
+- Total plans completed: 7
+- Phases: 38-41 (4 phases)
+- Timeline: 2026-06-14
+- 17/17 requirements satisfied by automated source-audit evidence, targeted
+  native behavior tests, and full local CI
+- Producer-side drift mutation removed, input overrun reporting made atomic,
+  HAL IO running guard made atomic, mono-lane serialization contract documented
+  and regression-gated
+
 **Velocity (v0.6):**
 
-- Total plans completed: 21
+- Total plans completed: 28
 - Phases: 23-26 (4 phases)
 - Timeline: 2026-06-13
 - 10/10 requirements satisfied by automated release-safety evidence
@@ -168,9 +180,13 @@ Decisions are logged in PROJECT.md Key Decisions table.
   version/default/path documentation consistency; Phase 36 covers
   `release-all.sh` codesign verification and `sign-notarize.yml` intent; Phase
   37 covers full regression and public-polish closure evidence.
+
 - v1.0 roadmap: Phase 38 covers input/output drift ownership; Phase 39 covers
   HAL `ioRunning_` atomicity; Phase 40 covers mono-lane callback serialization
   proof; Phase 41 covers regression and release validation closure.
+- v1.0 closeout: Full local CI passed, installed-sync dry-run passed, and live
+  HAL driver/ring proof was recorded as operator-owned until the current driver
+  is reinstalled/reloaded.
 
 ### Pending Todos
 
@@ -178,10 +194,9 @@ None.
 
 ### Blockers/Concerns
 
-v1.0 is active because the 2026-06-14 audit found realtime race blockers in
-cross-callback `DriftController` access and `ShmIoHandler::ioRunning_`, plus a
-high-priority mono-lane callback serialization assumption that must be proven,
-documented, or redesigned before public release.
+None for the active planning state. v1.0 closed the realtime race blockers in
+source and regression coverage; live installed HAL proof remains an
+operator-owned validation step after reinstalling the current driver.
 
 ## Deferred Items
 
@@ -208,13 +223,15 @@ Items acknowledged and deferred at milestone close:
 | live soak | v0.9 target USB-C AirPods Max and Cubase soak | operator-dependent |
 | notarization | v0.9 Apple credential-backed public notarization | release-Mac action |
 | packaging | v0.9 signed PKG installer promotion | future |
+| installed HAL | v1.0 live driver/ring proof after reinstalling current build | operator-owned |
+| live soak | v1.0 target USB-C AirPods Max and Cubase soak | operator-dependent |
 
 ## Session Continuity
 
 Last session: 2026-06-14
-Stopped at: v1.0 milestone initialized; ready to plan Phase 38
+Stopped at: v1.0 milestone completed and archived; awaiting next milestone
 Resume file: None
 
 ## Operator Next Steps
 
-- Start Phase 38 with /gsd-plan-phase 38
+- Start the next milestone with /gsd-new-milestone

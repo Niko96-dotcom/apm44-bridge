@@ -83,6 +83,7 @@ class BridgeEngine {
   std::vector<float> inputDropScratch1_;
 
   std::atomic<uint64_t> xruns_{0};
+  std::atomic<uint64_t> inputOverruns_{0};
   bool running_ = false;
 
   // Seqlock state, extracted into MetricsPublisher so the contract

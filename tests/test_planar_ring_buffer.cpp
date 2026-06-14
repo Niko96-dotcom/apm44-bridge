@@ -1,6 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "apm44/DriftController.h"
 #include "apm44/PlanarRingBuffer.h"
 #include "engine/BridgeInputOverrun.h"
 
@@ -79,16 +78,13 @@ TEST_CASE("PlanarRingBuffer 10k push pop alternation", "[planar_ring]") {
 }
 
 // RT-01 / RT-02 / RT-05: producer-side overrun handling must drop the
-// unaccepted tail and notify the drift controller without ever calling
+// unaccepted tail and return an overrun flag without ever calling
 // `pop` from the producer path. The test instantiates a non-production
 // `PlanarRingBuffer` directly — no `/apm44_bridge_ring` is touched.
 TEST_CASE("ProducerPushDroppingNewInputDropsUnacceptedAndNotifiesOverrun",
           "[planar_ring][rt][RT-01][RT-02][SEC-02]") {
   apm44::PlanarRingBuffer ring;
   ring.prepare(8);  // capacity 8, max writable 7
-
-  apm44::DriftController drift;
-  drift.reset();
 
   // Fill the ring to its max writable depth.
   float fillCh0[8] = {1, 1, 1, 1, 1, 1, 1, 1};
@@ -106,11 +102,10 @@ TEST_CASE("ProducerPushDroppingNewInputDropsUnacceptedAndNotifiesOverrun",
   const float* incIn[2] = {incCh0, incCh1};
   float unusedDropScratch[2] = {};
   float* dropScratch[2] = {unusedDropScratch, unusedDropScratch};
-  const std::uint64_t overrunsBefore = drift.overrunCount();
 
-  apm44::PushDroppingNewInput(ring, dropScratch, drift, incIn, 4);
+  const bool inputOverrun = apm44::PushDroppingNewInput(ring, dropScratch, incIn, 4);
 
-  REQUIRE(drift.overrunCount() == overrunsBefore + 1);
+  REQUIRE(inputOverrun);
   // Consumer-visible fill is unchanged: 7 frames still pending read.
   REQUIRE(ring.availableToRead() == 7);
 }
@@ -120,19 +115,15 @@ TEST_CASE("ProducerPathSucceedsWhenRingHasCapacity",
   apm44::PlanarRingBuffer ring;
   ring.prepare(8);
 
-  apm44::DriftController drift;
-  drift.reset();
-
   float ch0[4] = {1, 2, 3, 4};
   float ch1[4] = {5, 6, 7, 8};
   const float* in[2] = {ch0, ch1};
   float scratch[2] = {};
   float* dropScratch[2] = {scratch, scratch};
 
-  const std::uint64_t overrunsBefore = drift.overrunCount();
-  apm44::PushDroppingNewInput(ring, dropScratch, drift, in, 4);
+  const bool inputOverrun = apm44::PushDroppingNewInput(ring, dropScratch, in, 4);
 
   // No overrun, and the consumer can read exactly the 4 pushed frames.
-  REQUIRE(drift.overrunCount() == overrunsBefore);
+  REQUIRE_FALSE(inputOverrun);
   REQUIRE(ring.availableToRead() == 4);
 }

@@ -1,6 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "apm44/DriftController.h"
 #include "apm44/MmapShmRing.h"
 #include "apm44/PlanarRingBuffer.h"
 #include "engine/BridgeControlLoop.h"
@@ -61,17 +60,14 @@ TEST_CASE("PlanarRingBuffer drop-input overrun preserves consumer-visible fill",
   float drop0[1] = {};
   float drop1[1] = {};
   float* dropScratch[2] = {drop0, drop1};
-  apm44::DriftController drift;
-  drift.reset();
-
   const float new0[2] = {90, 91};
   const float new1[2] = {92, 93};
   const float* incoming[2] = {new0, new1};
-  apm44::PushDroppingNewInput(ring, dropScratch, drift, incoming, 2);
+  const bool inputOverrun = apm44::PushDroppingNewInput(ring, dropScratch, incoming, 2);
 
-  // Overrun was reported, fill preserved at 3 (no producer-side pop).
+  // Overrun was reported to the caller, fill preserved at 3 (no producer-side pop).
+  REQUIRE(inputOverrun);
   REQUIRE(ring.availableToRead() == 3);
-  REQUIRE(drift.overrunCount() == 1);
 
   // Consumer pops the original 3 frames — they are unchanged, the
   // incoming 2 frames were dropped, not stored.
@@ -112,4 +108,50 @@ TEST_CASE("no WriteSilence helper exists in IoProcHandlers",
   const std::string source = ReadFile("BridgeDaemon/src/engine/IoProcHandlers.cpp");
 
   REQUIRE_FALSE(Contains(source, "WriteSilence"));
+}
+
+TEST_CASE("BridgeInputOverrun has no producer-side drift dependency",
+          "[hardening_audit][DRIFT-01][DRIFT-05]") {
+  const std::string source = ReadFile("BridgeDaemon/src/engine/BridgeInputOverrun.h");
+
+  REQUIRE_FALSE(Contains(source, "DriftController"));
+  REQUIRE_FALSE(Contains(source, "notifyOverrun"));
+  REQUIRE(Contains(source, "inline bool PushDroppingNewInput"));
+  REQUIRE(Contains(source, "return accepted < frames;"));
+}
+
+TEST_CASE("BridgeEngine publishes input overruns from atomic counter",
+          "[hardening_audit][DRIFT-02][DRIFT-04]") {
+  const std::string header = ReadFile("BridgeDaemon/src/engine/BridgeEngine.h");
+  const std::string source = ReadFile("BridgeDaemon/src/engine/BridgeEngine.cpp");
+
+  REQUIRE(Contains(header, "std::atomic<uint64_t> inputOverruns_{0};"));
+  REQUIRE(Contains(source, "inputOverruns_.fetch_add(1, std::memory_order_relaxed);"));
+  REQUIRE(Contains(source, "next.overruns = inputOverruns_.load(std::memory_order_relaxed);"));
+  REQUIRE_FALSE(Contains(source, "next.overruns = drift_.overrunCount();"));
+}
+
+TEST_CASE("ShmIoHandler IO running guard is atomic",
+          "[hardening_audit][HALIO-01][HALIO-02][HALIO-03]") {
+  const std::string header = ReadFile("Driver/src/ShmIoHandler.h");
+  const std::string source = ReadFile("Driver/src/ShmIoHandler.cpp");
+
+  REQUIRE(Contains(header, "#include <atomic>"));
+  REQUIRE(Contains(header, "std::atomic<bool> ioRunning_{false};"));
+  REQUIRE_FALSE(Contains(header, "bool ioRunning_ = false;"));
+  REQUIRE(Contains(source, "ioRunning_.store(true, std::memory_order_release);"));
+  REQUIRE(Contains(source, "ioRunning_.store(false, std::memory_order_release);"));
+  REQUIRE(Contains(source, "ioRunning_.load(std::memory_order_acquire)"));
+}
+
+TEST_CASE("mono-lane pending state cites serialized IO callback contract",
+          "[hardening_audit][MONO-01][MONO-03]") {
+  const std::string header = ReadFile("Driver/src/ShmIoHandler.h");
+  const std::string libasplDevice = ReadFile("third_party/libASPL/include/aspl/Device.hpp");
+  const std::string libasplSource = ReadFile("third_party/libASPL/src/Device.cpp");
+
+  REQUIRE(Contains(header, "libASPL Device serializes IORequestHandler realtime callbacks"));
+  REQUIRE(Contains(header, "pendingLanes_"));
+  REQUIRE(Contains(libasplDevice, "They are always invoked on realtime thread, serialized."));
+  REQUIRE(Contains(libasplSource, "std::lock_guard ioLock(ioMutex_);"));
 }

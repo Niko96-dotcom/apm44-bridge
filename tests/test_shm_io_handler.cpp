@@ -90,6 +90,49 @@ TEST_CASE("ShmIoHandler combines Float32 mono lanes into stereo shm frames",
   shm_unlink(ringName.c_str());
 }
 
+TEST_CASE("ShmIoHandler serialized left-right mono-lane callbacks form stereo frames",
+          "[shm_io_handler][MONO-02]") {
+  const std::string ringName = TestRingName('z');
+  apm44::ShmIoHandler handler(ringName);
+  REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+
+  auto context = std::make_shared<aspl::Context>();
+  aspl::DeviceParameters deviceParams;
+  deviceParams.SampleRate = apm44::kApm44DriverSampleRate;
+  deviceParams.ChannelCount = apm44::kApm44DriverChannelCount;
+  auto device = std::make_shared<aspl::Device>(context, deviceParams);
+  auto left = std::make_shared<apm44::Apm44OutputStream>(context, device, 1);
+  auto right = std::make_shared<apm44::Apm44OutputStream>(context, device, 2);
+
+  std::vector<float> leftA{0.10f, 0.20f};
+  std::vector<float> rightA{-0.10f, -0.20f};
+  std::vector<float> leftB{0.30f, 0.40f};
+  std::vector<float> rightB{-0.30f, -0.40f};
+
+  handler.OnProcessMixedOutput(left, 0.0, 1024.0, leftA.data(), 2, 1);
+  handler.OnProcessMixedOutput(right, 0.0, 1024.0, rightA.data(), 2, 1);
+  handler.OnProcessMixedOutput(left, 0.0, 1026.0, leftB.data(), 2, 1);
+  handler.OnProcessMixedOutput(right, 0.0, 1026.0, rightB.data(), 2, 1);
+
+  std::vector<float> out(8);
+  REQUIRE(consumer.popInterleaved(out.data(), 4) == 4);
+  REQUIRE(out[0] == Catch::Approx(leftA[0]).margin(1e-7f));
+  REQUIRE(out[1] == Catch::Approx(rightA[0]).margin(1e-7f));
+  REQUIRE(out[2] == Catch::Approx(leftA[1]).margin(1e-7f));
+  REQUIRE(out[3] == Catch::Approx(rightA[1]).margin(1e-7f));
+  REQUIRE(out[4] == Catch::Approx(leftB[0]).margin(1e-7f));
+  REQUIRE(out[5] == Catch::Approx(rightB[0]).margin(1e-7f));
+  REQUIRE(out[6] == Catch::Approx(leftB[1]).margin(1e-7f));
+  REQUIRE(out[7] == Catch::Approx(rightB[1]).margin(1e-7f));
+
+  handler.OnStopIO();
+  consumer.close();
+  shm_unlink(ringName.c_str());
+}
+
 TEST_CASE("ShmIoHandler pairs mono lanes across HAL timestamp period rollover",
           "[shm_io_handler]") {
   const std::string ringName = TestRingName('r');

@@ -52,12 +52,12 @@ OSStatus ShmIoHandler::OnStartIO() {
   if (!ensureRingReady()) {
     return kAudioHardwareUnspecifiedError;
   }
-  ioRunning_ = true;
+  ioRunning_.store(true, std::memory_order_release);
   return kAudioHardwareNoError;
 }
 
 void ShmIoHandler::OnStopIO() {
-  ioRunning_ = false;
+  ioRunning_.store(false, std::memory_order_release);
   // Keep shm mapped so apm44-bridge can stay connected across transport stop/start.
 }
 
@@ -67,7 +67,8 @@ void ShmIoHandler::OnProcessMixedOutput(const std::shared_ptr<aspl::Stream>& str
                                         Float32* frames,
                                         UInt32 frameCount,
                                         UInt32 channelCount) {
-  if (!ioRunning_ || frames == nullptr || frameCount == 0 || !ring_.isMapped()) {
+  if (!ioRunning_.load(std::memory_order_acquire) || frames == nullptr || frameCount == 0 ||
+      !ring_.isMapped()) {
     return;
   }
   if (stream) {

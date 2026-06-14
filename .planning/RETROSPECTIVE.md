@@ -151,6 +151,53 @@
 
 ---
 
+## Milestone: v1.0 — Realtime Race Blocker Closure
+
+**Shipped:** 2026-06-14
+**Phases:** 4 | **Plans:** 7
+
+### What Was Built
+
+- Removed producer-side drift mutation from the input callback path.
+- Routed input-overrun metrics through a dedicated atomic counter.
+- Made `ShmIoHandler::ioRunning_` atomic across HAL lifecycle and IO callbacks.
+- Documented the libASPL serialized IO callback contract for mono-lane pending
+  state.
+- Added source-audit and behavior regression tests for all blocker fixes.
+
+### What Worked
+
+- Treating the audit as the scope anchor kept the milestone narrow and
+  race-focused.
+- Source-audit tests made forbidden realtime patterns enforceable without
+  needing fragile live hardware timing.
+- Full `scripts/ci.sh` stayed the trusted truth gate and caught repo-wide drift
+  risks after targeted native tests passed.
+
+### What Was Inefficient
+
+- Installed HAL verification could not be closed on the current machine because
+  the installed driver/ring were stale versus the newly built source.
+- The SDK milestone closeout archived the roadmap and requirements, but live
+  planning docs still needed a manual truth cleanup pass.
+
+### Key Lessons
+
+1. Input and output callback ownership should be testable as a source contract,
+   not only inferred from runtime behavior.
+2. Cross-callback booleans in HAL paths should default to atomics unless a
+   stronger serialization contract is documented at the field.
+3. Live driver/ring proof must start with an explicit reinstall/reload step
+   whenever source changes touch the HAL boundary.
+
+### Cost Observations
+
+- Timeline: single-day execution (2026-06-14) across 4 phases.
+- Velocity: 7 plans, mostly source hardening plus targeted regression proof.
+- No new runtime dependencies or architectural rewrites.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -162,6 +209,7 @@
 | v0.2 | 5-8 | Lifecycle reliability layer on shipped core |
 | v0.4 | 13-16 | Runtime correctness and public release validation closure |
 | v0.5 | 17-22 | Release-readiness verification, regression gating, and artifact hardening |
+| v1.0 | 38-41 | Realtime race ownership, HAL atomic guard, and source-audit proof |
 
 ### Cumulative Quality
 
@@ -171,6 +219,7 @@
 | v0.2 | Swift transitions + Catch2 hardening | Pending operator checklist |
 | v0.4 | CI + release-script regressions + signed DMG validation | Operator publication/live soak caveats recorded |
 | v0.5 | CI + TSAN metrics + release-script regressions + signed DMG Gatekeeper acceptance | DMG artifact ready for operator publication; live soak still operator-dependent |
+| v1.0 | CI + source-audit race guards + targeted native behavior tests | Installed HAL reinstall/live soak remains operator-dependent |
 
 ### Top Lessons (Verified Across Milestones)
 

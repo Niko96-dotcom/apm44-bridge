@@ -20,14 +20,13 @@ A producer can start monitoring once and trust Cubase at 44.1 kHz to keep
 playing through USB-C AirPods at 48 kHz without silent wedges or mystery
 relaunches.
 
-## Current State (v0.9 shipped 2026-06-14)
+## Current State (v1.0 shipped 2026-06-14)
 
-**Validated:** v0.9 Public Polish Final Hardening milestone shipped 2026-06-14.
-All seventeen v0.9 requirements are satisfied by automated evidence. The public
-release path now has exact Core Audio ASBD memory-layout validation,
-shared-memory build-ID and sample-rate compatibility gates, current public
-version/default/path documentation, release-command codesign self-gating, and a
-truthful GitHub signing workflow posture.
+**Validated:** v1.0 Realtime Race Blocker Closure milestone shipped 2026-06-14.
+All seventeen v1.0 requirements are satisfied by automated evidence. The
+realtime path no longer mutates drift state from the input callback, input
+overruns are counted atomically, the HAL stopped-IO guard is atomic, and the
+mono-lane callback serialization assumption is documented and regression-gated.
 
 **What works now:**
 - v0.2 deterministic app lifecycle, restart, hotplug, and stale-ring recovery.
@@ -88,6 +87,14 @@ truthful GitHub signing workflow posture.
   fresh-install latency default, and `build/Driver/APM44Bridge.driver`.
 - `scripts/release-all.sh` verifies release codesigning before notarization, and
   `sign-notarize.yml` is documented as maintainer release evidence.
+- Input callbacks no longer mutate `DriftController`; output callbacks own
+  drift PI state while input overruns publish through an atomic counter.
+- `ShmIoHandler::ioRunning_` is atomic across HAL start, stop, and mixed-output
+  callbacks.
+- Mono-lane pending state cites the libASPL serialized IO callback contract and
+  is covered by serialized left/right callback regression tests.
+- Source-audit guards fail if producer-side drift mutation, non-atomic HAL IO
+  running state, or an undocumented mono-lane callback contract returns.
 
 **Known caveats (carried forward):**
 - v0.5.0 has been tagged and the signed/notarized/stapled DMG has been
@@ -97,28 +104,19 @@ truthful GitHub signing workflow posture.
   installer UX are intentionally promoted.
 - Live USB-C AirPods/Cubase soak evidence remains operator-dependent hardware
   validation; automated and release-artifact gates are complete.
+- The installed HAL driver/ring on this machine were stale during v1.0 closeout;
+  reinstall/reload the current driver before claiming live driver proof.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone: v1.0 Realtime Race Blocker Closure
+## Current Milestone
 
-**Goal:** Remove or prove the remaining cross-callback realtime data-race risks
-before public release so input, output, and HAL IO paths have explicit ownership
-and regression coverage.
-
-**Target features:**
-- Input callback no longer mutates `DriftController`; output callback owns drift
-  PI state and underflow accounting, while input overruns are counted atomically.
-- `ShmIoHandler::ioRunning_` is atomic across HAL start/stop/control and IO
-  processing callbacks.
-- HAL mono-lane assembly has a documented/proven libASPL callback serialization
-  contract or is redesigned to avoid unsafe shared mutable callback state.
-- Source-audit and behavior tests prevent these realtime race regressions from
-  returning, followed by full release validation and Cubase/AirPods soak.
+No active milestone. v1.0 Realtime Race Blocker Closure is shipped and archived.
+Start the next milestone with `$gsd-new-milestone`.
 
 ## Planning Status
 
-v1.0 Realtime Race Blocker Closure is active. Start with Phase 38.
+Awaiting next milestone.
 
 ## Requirements
 
@@ -230,17 +228,19 @@ v1.0 Realtime Race Blocker Closure is active. Start with Phase 38.
   signed artifacts exist and before notarization continues. — v0.9 (Phase 36)
 - [x] `.github/workflows/sign-notarize.yml` is explicitly documented as release
   evidence, not the public artifact publication path. — v0.9 (Phase 36)
+- [x] Producer-side `DriftController` mutation is removed from the input
+  callback path, and input overruns report through a dedicated atomic counter.
+  — v1.0 (Phase 38)
+- [x] The HAL stopped-IO lifecycle guard (`ioRunning_`) is atomic across start,
+  stop, and mixed-output callbacks. — v1.0 (Phase 39)
+- [x] Mono-lane callback assembly has a documented libASPL serialized IO
+  callback contract and behavior coverage. — v1.0 (Phase 40)
+- [x] Source-audit and behavior regression tests guard the blocker fixes, full
+  CI passes, and release validation caveats are recorded. — v1.0 (Phase 41)
 
 ### Active
 
-- [ ] Remove producer-side `DriftController` mutation from the input callback
-  path and report input overruns through a dedicated atomic counter.
-- [ ] Make the HAL stopped-IO lifecycle guard (`ioRunning_`) atomic across start,
-  stop, and mixed-output callbacks.
-- [ ] Prove, document, or redesign the mono-lane callback assembly contract so
-  shared lane state is not an unproven realtime race.
-- [ ] Add source-audit and behavior regression tests for the blocker fixes and
-  run full release validation before publication.
+None. Start the next milestone with `$gsd-new-milestone`.
 
 ### Out of Scope
 
@@ -332,7 +332,7 @@ v1.0 Realtime Race Blocker Closure is active. Start with Phase 38.
 | Treat v0.7 as final release automation polish | The latest audit says the product is close but manual signing, CI bundle proof, strict codesign checks, and small runtime guards should close before public release | ✓ Good — shipped final release automation polish |
 | Treat v0.8 as release-candidate closure | The latest audit identifies the remaining release-candidate blockers in signing workflow driver coverage, fail-closed credentials, HAL driver notarization, docs truth, and final validation evidence | ✓ Good — release-candidate closure shipped |
 | Treat v0.9 as final public-polish hardening | The remaining audit scope was narrow: exact Core Audio memory contracts, public truth, and release-command evidence before publication | ✓ Good — shipped final public-polish hardening |
-| Treat v1.0 as realtime race blocker closure | The latest audit identifies remaining cross-callback mutable state in realtime/HAL paths that should be fixed or proven before public release | — Pending |
+| Treat v1.0 as realtime race blocker closure | The latest audit identifies remaining cross-callback mutable state in realtime/HAL paths that should be fixed or proven before public release | Good - shipped race blocker closure |
 
 ## Evolution
 
@@ -352,4 +352,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-14 after v1.0 Realtime Race Blocker Closure milestone start*
+*Last updated: 2026-06-14 after v1.0 Realtime Race Blocker Closure closeout*
