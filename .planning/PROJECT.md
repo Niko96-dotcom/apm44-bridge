@@ -94,9 +94,22 @@ target-hardware validation instructions.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone: none
+## Current Milestone: v0.9 Public Polish Final Hardening
 
-Start the next milestone with `$gsd-new-milestone`.
+**Goal:** Close the final code, documentation, and release-automation polish gaps
+before treating APM44 Bridge as public-ready.
+
+**Target features:**
+- Strictly validate ASBD Float32 stereo byte layout before IOProc code trusts
+  interleaved or non-interleaved buffer memory.
+- Align shared-memory build-id and sample-rate wording with the actual hard
+  validation behavior, or enforce the missing compatibility checks.
+- Normalize public version, latency-default, release path, and artifact wording
+  across user-facing docs and maintainer docs.
+- Make the one-command release path run strict codesign verification before
+  notarization.
+- Clarify whether `sign-notarize.yml` produces public artifacts or is only
+  maintainer evidence.
 
 ## Requirements
 
@@ -187,23 +200,30 @@ Start the next milestone with `$gsd-new-milestone`.
 - [x] Clean running-process termination transitions through the central idle
   reset path. — v0.7 (Phase 28, APP-01)
 - [x] Full final release-polish verification covers v0.7 changes. — v0.7 (Phase 29, QA-01)
+- [x] Manual signing workflow builds the HAL driver target before calling
+  `scripts/sign-release.sh`. — v0.8 (Phase 30)
+- [x] Manual signing workflow fails when required signing or notarization
+  credentials are missing. — v0.8 (Phase 30)
+- [x] Driver-only notarization uses the shared strict notary acceptance helper.
+  — v0.8 (Phase 30)
+- [x] Public release docs, SRC quality behavior, and release-candidate
+  validation evidence were aligned for the v0.8 candidate. — v0.8 (Phases 31-32)
 
 ### Active
 
-- [ ] Manual signing workflow builds the HAL driver target before calling
-  `scripts/sign-release.sh`.
-- [ ] Manual signing workflow fails instead of succeeding when required signing
-  or notarization credentials are missing.
-- [ ] Driver-only notarization uses the shared strict notary acceptance helper.
-- [ ] Release-script tests detect signing workflow drift that omits the driver
-  build target.
-- [ ] Public release version language and default latency docs match current
-  code and artifact truth.
-- [ ] Empty legacy converter files are removed or intentionally documented.
-- [ ] SRC quality labels map to distinct behavior or are collapsed before public
-  release.
-- [ ] Final release-candidate validation commands and operator evidence
-  expectations are recorded.
+- [ ] `AsbdMatchesFloat32Stereo` rejects Float32 stereo ASBDs whose
+  bytes-per-frame, bytes-per-packet, frames-per-packet, packed flag, or
+  non-interleaved flag do not exactly match the IOProc memory contract.
+- [ ] Shared-memory documentation accurately distinguishes hard validation gates
+  from diagnostic build-id evidence, or the code enforces build-id/sample-rate
+  compatibility before opening a ring.
+- [ ] Public docs and templates use one release version identity, the real Safe
+  fresh-install latency default, and the actual HAL driver build path
+  `build/Driver/APM44Bridge.driver`.
+- [ ] `scripts/release-all.sh` runs strict release codesign verification after
+  signed artifacts exist and before notarization continues.
+- [ ] `.github/workflows/sign-notarize.yml` is either artifact-producing or
+  explicitly documented as release evidence / notary dry-run only.
 
 ### Out of Scope
 
@@ -249,6 +269,10 @@ Start the next milestone with `$gsd-new-milestone`.
   and notary credential handling, strict driver-only notarization, version/docs
   truth, legacy converter cleanup, SRC quality labels, and final release-Mac
   validation.
+- v0.9 is seeded from the 2026-06-14 final public-polish audit covering strict
+  ASBD byte-layout validation, shared-memory build-id/sample-rate truth, public
+  version/default/path consistency, release codesign self-gating, and
+  `sign-notarize.yml` artifact intent.
 - `.planning/` is gitignored by default; selected artifacts are force-added for
   local GSD state.
 
@@ -285,7 +309,8 @@ Start the next milestone with `$gsd-new-milestone`.
 | Keep v0.5 DMG-primary and accept operator-dependent publication/soak gaps | Automated release-artifact gates are complete; live hardware sign-off and GitHub upload remain operator responsibilities | ✓ Good — caveats documented before release tag |
 | Treat v0.6 as a public-release safety fix pass | The post-v0.5 review identifies narrow correctness and distribution risks that should close before wider public confidence | ✓ Good — shipped public-release safety fixes |
 | Treat v0.7 as final release automation polish | The latest audit says the product is close but manual signing, CI bundle proof, strict codesign checks, and small runtime guards should close before public release | ✓ Good — shipped final release automation polish |
-| Treat v0.8 as release-candidate closure | The latest audit identifies the remaining release-candidate blockers in signing workflow driver coverage, fail-closed credentials, HAL driver notarization, docs truth, and final validation evidence | — Pending |
+| Treat v0.8 as release-candidate closure | The latest audit identifies the remaining release-candidate blockers in signing workflow driver coverage, fail-closed credentials, HAL driver notarization, docs truth, and final validation evidence | ✓ Good — release-candidate closure shipped |
+| Treat v0.9 as final public-polish hardening | The remaining audit scope is narrow: exact Core Audio memory contracts, public truth, and release-command evidence before publication | — Pending |
 
 ## Evolution
 
@@ -305,4 +330,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-13 after v0.8 Release Candidate Closure milestone start*
+*Last updated: 2026-06-14 after v0.9 Public Polish Final Hardening milestone start*

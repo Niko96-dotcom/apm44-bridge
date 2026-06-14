@@ -1,37 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.8
-milestone_name: Release Candidate Closure
-status: Awaiting next milestone
-stopped_at: v0.7 milestone archived; ready for next milestone planning
-last_updated: "2026-06-13T18:25:45.890Z"
-last_activity: 2026-06-13 — Milestone v0.8 completed and archived
+milestone: v0.9
+milestone_name: Public Polish Final Hardening
+status: planning
+last_updated: "2026-06-14T05:29:57.611Z"
+last_activity: 2026-06-14
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-13)
+See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** A producer can start monitoring once and trust Cubase at 44.1
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Milestone complete
+**Current focus:** v0.9 Public Polish Final Hardening
 
 ## Current Position
 
-Phase: Milestone v0.8 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-13 — Milestone v0.8 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-14 — Milestone v0.9 started
 
 ## Performance Metrics
 
@@ -83,6 +82,7 @@ Last activity: 2026-06-13 — Milestone v0.8 completed and archived
 - Timeline: 2026-06-13
 - 14/14 requirements satisfied by automated release-candidate evidence or
   recorded operator validation commands
+
 - Manual signing, HAL driver notarization, public truth cleanup, SRC label
   behavior, and release-candidate validation closure completed
 
