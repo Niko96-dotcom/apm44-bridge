@@ -269,6 +269,9 @@ Rationale:
 
 - These are official GitHub-maintained actions.
 - Dependabot (`.github/dependabot.yml`) checks GitHub Actions weekly.
+- `.github/workflows/sign-notarize.yml` is maintainer signing/notary evidence
+  only. It does not publish the public DMG unless an explicit signed-artifact
+  upload step is added later.
 - Signing/notarization remains local-maintainer controlled unless a runner is
   explicitly provisioned with Apple credentials.
 - Release publication still requires maintainer review of the produced artifact.

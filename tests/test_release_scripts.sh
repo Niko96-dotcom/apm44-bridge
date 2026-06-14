@@ -143,7 +143,7 @@ if [[ -n "$script" ]]; then
 fi
 
 case "$script" in
-  scripts/build-release-dmg.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh)
+  scripts/build-release-dmg.sh|scripts/codesign-verify-release.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh)
     prefix=""
     if [[ "${APM44_DMG_PACKAGE_ONLY:-0}" == "1" ]]; then
       prefix="APM44_DMG_PACKAGE_ONLY=1 "
@@ -319,18 +319,27 @@ run_dist_01_staple_before_dmg_order() {
     /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
 
   local app_staple_line
+  local codesign_verify_line
+  local notary_dry_run_line
   local driver_staple_line
   local package_only_line
   local dmg_notarize_line
 
   app_staple_line="$(grep -n "xcrun stapler staple build/Release/APM44 Bridge.app" "$LOG" | head -1 | cut -d: -f1)"
+  codesign_verify_line="$(grep -n "bash scripts/codesign-verify-release.sh" "$LOG" | head -1 | cut -d: -f1)"
+  notary_dry_run_line="$(grep -n "bash scripts/notary-dry-run.sh" "$LOG" | head -1 | cut -d: -f1)"
   driver_staple_line="$(grep -n "xcrun stapler staple build/Driver/APM44Bridge.driver" "$LOG" | head -1 | cut -d: -f1)"
   package_only_line="$(grep -n "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
   dmg_notarize_line="$(grep -n "bash scripts/notarize-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
 
-  if [[ -z "$app_staple_line" || -z "$driver_staple_line" || -z "$package_only_line" || -z "$dmg_notarize_line" ]]; then
+  if [[ -z "$app_staple_line" || -z "$codesign_verify_line" || -z "$notary_dry_run_line" || -z "$driver_staple_line" || -z "$package_only_line" || -z "$dmg_notarize_line" ]]; then
     echo "DIST-01: expected staple/package/notarize lines missing from log" >&2
     cat "$LOG" >&2
+    exit 1
+  fi
+
+  if [[ "$codesign_verify_line" -ge "$notary_dry_run_line" ]]; then
+    echo "REL-01: codesign verification must occur before notary dry-run" >&2
     exit 1
   fi
 
@@ -371,6 +380,8 @@ run_sign_notarize_workflow_check() {     # [REL-03]
   assert_contains "$workflow" "cmake --build build --target apm44-bridge APM44Bridge"
   assert_contains "$workflow" "error: APPLE_SIGN_ID secret is required"
   assert_contains "$workflow" "error: AC_NOTARY keychain profile is required"
+  assert_contains "$workflow" "maintainer signing/notary evidence"
+  assert_contains "$workflow" "does not publish the public DMG"
   assert_not_contains "$workflow" "SKIP: APPLE_SIGN_ID"
   assert_not_contains "$workflow" "SKIP: AC_NOTARY"
   if grep -Eq 'verify-app-build\.sh.*(\|\| *true|continue-on-error:\s*true)' "$workflow"; then
@@ -473,6 +484,7 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
 
   assert_contains "$release_doc" "build/Driver/APM44Bridge.driver"
   assert_not_contains "$release_doc" "build/Release/APM44Bridge.driver"
+  assert_contains "$release_doc" "does not publish the public DMG"
 
   assert_contains "$validation_doc" "v0.9 public-polish validation path"
   assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.1.1}.dmg'

@@ -53,7 +53,7 @@ Phase numbering continues from shipped history:
 - [x] **Phase 35: Public Version and Defaults Truth** - Normalize release (completed 2026-06-14)
   version identity, Safe latency default wording, and HAL driver build path
   references.
-- [ ] **Phase 36: Release Automation and Workflow Intent** - Run strict release
+- [x] **Phase 36: Release Automation and Workflow Intent** - Run strict release (completed 2026-06-14)
   codesign verification inside `release-all.sh` and clarify
   `sign-notarize.yml` artifact intent.
 - [ ] **Phase 37: Regression and Public Polish Closure** - Run the full truth
@@ -162,7 +162,7 @@ public artifacts or release evidence only.
 5. Public workflow docs no longer make GitHub Actions look more authoritative
    for public artifacts than it actually is.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 36-01 - Insert release codesign verification into `release-all.sh` and

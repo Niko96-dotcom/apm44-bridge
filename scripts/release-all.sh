@@ -32,6 +32,9 @@ echo "== Build + sign + DMG =="
 bash scripts/build-release-dmg.sh
 
 if [[ "$NOTARY_READY" == "1" ]]; then
+  echo "== Verify release codesigning =="
+  bash scripts/codesign-verify-release.sh
+
   echo "== Notarize release zip (app + driver evidence) =="
   bash scripts/notary-dry-run.sh
 

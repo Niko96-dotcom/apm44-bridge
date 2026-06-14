@@ -40,20 +40,20 @@ mystery relaunches.
 
 ### Release Automation
 
-- [ ] **REL-01**: `scripts/release-all.sh` runs
+- [x] **REL-01**: `scripts/release-all.sh` runs
   `scripts/codesign-verify-release.sh` after signed app/driver artifacts exist
   and before notarization proceeds.
-- [ ] **REL-02**: Release-script regression coverage proves `release-all.sh`
+- [x] **REL-02**: Release-script regression coverage proves `release-all.sh`
   cannot skip strict codesign verification on the normal release path.
-- [ ] **REL-03**: The full release automation path still supports the explicit
+- [x] **REL-03**: The full release automation path still supports the explicit
   local-development override behavior already documented for weak/local signing.
 
 ### GitHub Workflow Intent
 
-- [ ] **GHA-01**: `.github/workflows/sign-notarize.yml` either produces and
+- [x] **GHA-01**: `.github/workflows/sign-notarize.yml` either produces and
   uploads signed release artifacts or is renamed/commented as maintainer
   credential smoke-test / release-evidence workflow.
-- [ ] **GHA-02**: Public workflow wording makes clear whether GitHub Actions is
+- [x] **GHA-02**: Public workflow wording makes clear whether GitHub Actions is
   authoritative for public artifacts or only supports maintainer evidence.
 
 ### Verification Closure
@@ -102,11 +102,11 @@ mystery relaunches.
 | DOC-01 | Phase 35 | Complete |
 | DOC-02 | Phase 35 | Complete |
 | DOC-03 | Phase 35 | Complete |
-| REL-01 | Phase 36 | Pending |
-| REL-02 | Phase 36 | Pending |
-| REL-03 | Phase 36 | Pending |
-| GHA-01 | Phase 36 | Pending |
-| GHA-02 | Phase 36 | Pending |
+| REL-01 | Phase 36 | Complete |
+| REL-02 | Phase 36 | Complete |
+| REL-03 | Phase 36 | Complete |
+| GHA-01 | Phase 36 | Complete |
+| GHA-02 | Phase 36 | Complete |
 | QA-01 | Phase 37 | Pending |
 | QA-02 | Phase 37 | Pending |
 
