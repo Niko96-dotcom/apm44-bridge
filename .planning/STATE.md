@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.9
 milestone_name: Public Polish Final Hardening
 status: ready_to_plan
-last_updated: 2026-06-14T05:41:59.908Z
+last_updated: 2026-06-14T05:45:03.294Z
 last_activity: 2026-06-14
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 9
-  completed_plans: 2
+  completed_plans: 4
   percent: 0
-stopped_at: Phase 33 complete (2/2) — ready to discuss Phase 34
+stopped_at: Phase 34 complete (2/2) — ready to discuss Phase 35
 ---
 
 # Project State
@@ -24,11 +24,11 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Phase 34 — shared memory compatibility truth
+**Current focus:** Phase 35 — public version and defaults truth
 
 ## Current Position
 
-Phase: 34
+Phase: 35
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-06-14
@@ -37,7 +37,7 @@ Last activity: 2026-06-14
 
 **Velocity (v0.6):**
 
-- Total plans completed: 14
+- Total plans completed: 16
 - Phases: 23-26 (4 phases)
 - Timeline: 2026-06-13
 - 10/10 requirements satisfied by automated release-safety evidence

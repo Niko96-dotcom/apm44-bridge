@@ -48,7 +48,7 @@ Phase numbering continues from shipped history:
 
 - [x] **Phase 33: ASBD Memory Contract** - Make Float32 stereo ASBD acceptance (completed 2026-06-14)
   match the exact interleaved and non-interleaved IOProc memory assumptions.
-- [ ] **Phase 34: Shared-Memory Compatibility Truth** - Align build-id and
+- [x] **Phase 34: Shared-Memory Compatibility Truth** - Align build-id and (completed 2026-06-14)
   sample-rate compatibility behavior with public release/security docs.
 - [ ] **Phase 35: Public Version and Defaults Truth** - Normalize release
   version identity, Safe latency default wording, and HAL driver build path
@@ -105,7 +105,7 @@ and sample rate are hard compatibility gates or diagnostic evidence.
    scoped in docs.
 4. Regression tests or documentation checks cover the chosen behavior.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Planned work:
 - 34-01 - Audit `MmapShmRing` open/validation behavior and pick enforcement vs

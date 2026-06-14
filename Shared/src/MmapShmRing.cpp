@@ -52,10 +52,12 @@ std::string DescribeHeaderMismatch(const ShmRingHeader& header) {
       << " expected_version=" << kShmVersion
       << " header_bytes=" << header.header_bytes
       << " expected_header_bytes>=" << sizeof(ShmRingHeader)
+      << " sample_rate=" << header.sample_rate
+      << " expected_sample_rate=" << kShmSampleRate
       << " channels=" << header.channels
       << " expected_channels=" << kShmChannels
       << " producer_build_id='" << RenderShmBuildId(header.producer_build_id) << "'"
-      << " consumer_build_id='" << RenderShmBuildId(kBuildId) << "'";
+      << " expected_consumer_build_id='" << RenderShmBuildId(kBuildId) << "'";
   return out.str();
 }
 
@@ -114,7 +116,7 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
   header_->magic = kShmMagic;
   header_->version = kShmVersion;
   header_->capacity_frames = capacityFrames;
-  header_->sample_rate = 44100;
+  header_->sample_rate = kShmSampleRate;
   header_->channels = kShmChannels;
   header_->header_bytes = static_cast<uint32_t>(sizeof(ShmRingHeader));
   CopyBuildId(header_->producer_build_id);

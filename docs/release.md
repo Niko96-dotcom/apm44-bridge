@@ -45,9 +45,10 @@ or users may be able to open the object while it exists. Do not place secrets,
 credentials, account identifiers, or authorization decisions in the ring.
 
 Current protection is limited to format/build integrity checks: ABI version,
-object size, build id, and generation fields let the daemon reject stale or
-malformed rings. These checks do not prevent another local process from opening
-the shm object.
+44,100 Hz sample rate, channel count, object size/capacity, and producer build
+ID are hard validation gates; generation and shm object identity let the daemon
+detect stale mappings. These checks do not prevent another local process from
+opening the shm object.
 
 Future hardening options include per-user shm naming, tighter owner/group
 permissions installed by a privileged helper, launchd-managed ring setup,

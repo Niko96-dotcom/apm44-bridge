@@ -58,7 +58,12 @@ The helper and driver both include an `APM44_BUILD_ID` fingerprint. The driver w
 - Driver: producer (ring created at driver load in `ShmIoHandler` constructor)
 - Daemon: consumer (`--virtual-device` → ring drain)
 - Shm mode **0666** so coreaudiod (driver) and user daemon can share the ring
-- Ring ABI version and driver build ID are stored in the shm header; mismatches fail fast instead of waiting for DAW playback.
+- Hard validation gates: ring magic, ABI version, header size, declared
+  capacity/object size, channel count, fixed 44,100 Hz sample rate, and producer
+  build ID. Mismatches fail fast instead of waiting for DAW playback.
+- Diagnostic/stale-mapping evidence: driver generation and shm object identity
+  (`st_dev`, `st_ino`, size) are reported and used to detect a ring that was
+  replaced after the daemon mapped it.
 - Tests must construct `MmapShmRing` with a short per-test shm name and must never create/unlink the production `/apm44_bridge_ring`.
 
 ### Security / local IPC
@@ -73,8 +78,9 @@ do not put secrets, credentials, account identifiers, or authorization decisions
 in shared memory.
 
 Current mitigations are integrity-oriented rather than access-control-oriented:
-the ring header carries ABI, build-id, size, and generation fields, and consumers
-fail fast on mismatches or stale mappings.
+the ring header carries ABI, sample-rate, build-id, size, and generation fields.
+Consumers fail fast on hard compatibility mismatches and detect stale mappings
+when the underlying shm object identity or generation changes.
 
 Future hardening options:
 

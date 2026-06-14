@@ -21,11 +21,11 @@ mystery relaunches.
 
 ### Shared-Memory Compatibility Truth
 
-- [ ] **SHM-01**: Shared-memory release/security docs accurately say which ring
+- [x] **SHM-01**: Shared-memory release/security docs accurately say which ring
   fields are hard validation gates and which fields are diagnostic evidence.
-- [ ] **SHM-02**: Build ID is either enforced as a hard compatibility check in
+- [x] **SHM-02**: Build ID is either enforced as a hard compatibility check in
   `MmapShmRing` open/validation or documented only as diagnostic evidence.
-- [ ] **SHM-03**: Ring sample rate compatibility is validated or explicitly
+- [x] **SHM-03**: Ring sample rate compatibility is validated or explicitly
   documented as outside the current hard validation contract.
 
 ### Public Documentation Truth
@@ -96,9 +96,9 @@ mystery relaunches.
 | ASBD-02 | Phase 33 | Complete |
 | ASBD-03 | Phase 33 | Complete |
 | ASBD-04 | Phase 33 | Complete |
-| SHM-01 | Phase 34 | Pending |
-| SHM-02 | Phase 34 | Pending |
-| SHM-03 | Phase 34 | Pending |
+| SHM-01 | Phase 34 | Complete |
+| SHM-02 | Phase 34 | Complete |
+| SHM-03 | Phase 34 | Complete |
 | DOC-01 | Phase 35 | Pending |
 | DOC-02 | Phase 35 | Pending |
 | DOC-03 | Phase 35 | Pending |

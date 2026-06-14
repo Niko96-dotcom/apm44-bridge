@@ -11,6 +11,7 @@ namespace apm44 {
 inline constexpr const char* kShmRingName = "/apm44_bridge_ring";
 inline constexpr uint32_t kShmMagic = 0x344D5041u;  // 'APM4' little-endian
 inline constexpr uint32_t kShmVersion = 2u;
+inline constexpr uint32_t kShmSampleRate = 44100u;
 inline constexpr uint32_t kShmChannels = 2u;
 inline constexpr uint32_t kDefaultShmCapacityFrames = 4096u;
 inline constexpr std::size_t kShmBuildIdBytes = 64u;
@@ -30,7 +31,7 @@ struct ShmRingHeader {
   uint32_t magic = 0;
   uint32_t version = 0;
   uint32_t capacity_frames = 0;
-  uint32_t sample_rate = 44100;
+  uint32_t sample_rate = kShmSampleRate;
   uint32_t channels = kShmChannels;
   uint32_t reserved0 = 0;
   uint32_t header_bytes = 0;
@@ -78,6 +79,12 @@ inline bool ValidateShmHeader(const ShmRingHeader& header) {
     return false;
   }
   if (header.capacity_frames == 0 || header.channels != kShmChannels) {
+    return false;
+  }
+  if (header.sample_rate != kShmSampleRate) {
+    return false;
+  }
+  if (RenderShmBuildId(header.producer_build_id) != RenderShmBuildId(kBuildId)) {
     return false;
   }
   return true;
