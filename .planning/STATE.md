@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9
-milestone_name: Public Polish Final Hardening
-status: Awaiting next milestone
-stopped_at: v0.9 milestone archived; ready for next milestone planning
-last_updated: "2026-06-14T05:54:32.307Z"
-last_activity: 2026-06-14 - Milestone v0.9 completed and archived
+milestone: v1.0
+milestone_name: Realtime Race Blocker Closure
+status: planning
+last_updated: "2026-06-14T06:25:19.440Z"
+last_activity: 2026-06-14
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 7
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,14 +23,14 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Awaiting next milestone
+**Current focus:** Phase 38: Input and Output Drift Ownership
 
 ## Current Position
 
-Phase: Milestone v0.9 complete
-Plan: -
-Status: Awaiting next milestone
-Last activity: 2026-06-14 - Milestone v0.9 completed and archived
+Phase: 38 - Input and Output Drift Ownership
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-14 - Milestone v1.0 roadmap created
 
 ## Performance Metrics
 
@@ -169,6 +168,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
   version/default/path documentation consistency; Phase 36 covers
   `release-all.sh` codesign verification and `sign-notarize.yml` intent; Phase
   37 covers full regression and public-polish closure evidence.
+- v1.0 roadmap: Phase 38 covers input/output drift ownership; Phase 39 covers
+  HAL `ioRunning_` atomicity; Phase 40 covers mono-lane callback serialization
+  proof; Phase 41 covers regression and release validation closure.
 
 ### Pending Todos
 
@@ -176,7 +178,10 @@ None.
 
 ### Blockers/Concerns
 
-None. v0.9 audit passed with no code-level blockers.
+v1.0 is active because the 2026-06-14 audit found realtime race blockers in
+cross-callback `DriftController` access and `ShmIoHandler::ioRunning_`, plus a
+high-priority mono-lane callback serialization assumption that must be proven,
+documented, or redesigned before public release.
 
 ## Deferred Items
 
@@ -207,9 +212,9 @@ Items acknowledged and deferred at milestone close:
 ## Session Continuity
 
 Last session: 2026-06-14
-Stopped at: v0.9 milestone archived; ready for next milestone planning
+Stopped at: v1.0 milestone initialized; ready to plan Phase 38
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Start Phase 38 with /gsd-plan-phase 38

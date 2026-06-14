@@ -100,9 +100,25 @@ truthful GitHub signing workflow posture.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
+## Current Milestone: v1.0 Realtime Race Blocker Closure
+
+**Goal:** Remove or prove the remaining cross-callback realtime data-race risks
+before public release so input, output, and HAL IO paths have explicit ownership
+and regression coverage.
+
+**Target features:**
+- Input callback no longer mutates `DriftController`; output callback owns drift
+  PI state and underflow accounting, while input overruns are counted atomically.
+- `ShmIoHandler::ioRunning_` is atomic across HAL start/stop/control and IO
+  processing callbacks.
+- HAL mono-lane assembly has a documented/proven libASPL callback serialization
+  contract or is redesigned to avoid unsafe shared mutable callback state.
+- Source-audit and behavior tests prevent these realtime race regressions from
+  returning, followed by full release validation and Cubase/AirPods soak.
+
 ## Planning Status
 
-No milestone is active. Start the next milestone with `$gsd-new-milestone`.
+v1.0 Realtime Race Blocker Closure is active. Start with Phase 38.
 
 ## Requirements
 
@@ -217,7 +233,14 @@ No milestone is active. Start the next milestone with `$gsd-new-milestone`.
 
 ### Active
 
-None. Start the next milestone with `$gsd-new-milestone`.
+- [ ] Remove producer-side `DriftController` mutation from the input callback
+  path and report input overruns through a dedicated atomic counter.
+- [ ] Make the HAL stopped-IO lifecycle guard (`ioRunning_`) atomic across start,
+  stop, and mixed-output callbacks.
+- [ ] Prove, document, or redesign the mono-lane callback assembly contract so
+  shared lane state is not an unproven realtime race.
+- [ ] Add source-audit and behavior regression tests for the blocker fixes and
+  run full release validation before publication.
 
 ### Out of Scope
 
@@ -267,6 +290,10 @@ None. Start the next milestone with `$gsd-new-milestone`.
   ASBD byte-layout validation, shared-memory build-id/sample-rate truth, public
   version/default/path consistency, release codesign self-gating, and
   `sign-notarize.yml` artifact intent.
+- v1.0 is seeded from the 2026-06-14 realtime race blocker audit covering
+  producer-side `DriftController` mutation, `ShmIoHandler::ioRunning_` atomicity,
+  mono-lane callback serialization proof, source-audit hardening tests, and full
+  release validation.
 - `.planning/` is gitignored by default; selected artifacts are force-added for
   local GSD state.
 
@@ -305,6 +332,7 @@ None. Start the next milestone with `$gsd-new-milestone`.
 | Treat v0.7 as final release automation polish | The latest audit says the product is close but manual signing, CI bundle proof, strict codesign checks, and small runtime guards should close before public release | ✓ Good — shipped final release automation polish |
 | Treat v0.8 as release-candidate closure | The latest audit identifies the remaining release-candidate blockers in signing workflow driver coverage, fail-closed credentials, HAL driver notarization, docs truth, and final validation evidence | ✓ Good — release-candidate closure shipped |
 | Treat v0.9 as final public-polish hardening | The remaining audit scope was narrow: exact Core Audio memory contracts, public truth, and release-command evidence before publication | ✓ Good — shipped final public-polish hardening |
+| Treat v1.0 as realtime race blocker closure | The latest audit identifies remaining cross-callback mutable state in realtime/HAL paths that should be fixed or proven before public release | — Pending |
 
 ## Evolution
 
@@ -324,4 +352,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-14 after v0.9 Public Polish Final Hardening closeout*
+*Last updated: 2026-06-14 after v1.0 Realtime Race Blocker Closure milestone start*
