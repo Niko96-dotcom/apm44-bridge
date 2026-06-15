@@ -9,7 +9,7 @@ DAW @ 44.1 kHz (project rate)
     ↓  stereo output
 BlackHole 2ch @ 44.1 kHz  (virtual loopback)
     ↓  Core Audio input IOProc
-apm44-bridge (AudioConverter 44100 → 48000)
+apm44-bridge (libsamplerate SRC 44.1 kHz -> 48 kHz)
     ↓  Core Audio output IOProc
 AirPods Max USB-C @ 48 kHz  (physical headphones)
 ```

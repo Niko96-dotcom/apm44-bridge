@@ -71,6 +71,7 @@ class MmapShmRing {
 
   void* base_ = nullptr;
   std::size_t mappedSize_ = 0;
+  std::size_t capacityFrames_ = 0;
   ShmRingHeader* header_ = nullptr;
   ShmRingRole role_ = ShmRingRole::Consumer;
   int fd_ = -1;

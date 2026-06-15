@@ -116,6 +116,7 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
   header_->magic = kShmMagic;
   header_->version = kShmVersion;
   header_->capacity_frames = capacityFrames;
+  capacityFrames_ = capacityFrames;
   header_->sample_rate = kShmSampleRate;
   header_->channels = kShmChannels;
   header_->header_bytes = static_cast<uint32_t>(sizeof(ShmRingHeader));
@@ -202,6 +203,7 @@ bool MmapShmRing::open(ShmRingRole role) {
     recordError(ShmRingErrorCode::CapacityExceedsObject, message);
     return false;
   }
+  capacityFrames_ = header_->capacity_frames;
   CaptureMappedIdentity(fd_, mappedIdentity_, mappedDriverGeneration_, header_);
   return true;
 }
@@ -212,6 +214,7 @@ void MmapShmRing::close() {
   }
   base_ = nullptr;
   mappedSize_ = 0;
+  capacityFrames_ = 0;
   header_ = nullptr;
   mappedIdentity_ = {};
   mappedDriverGeneration_ = 0;
@@ -274,16 +277,15 @@ std::size_t MmapShmRing::availableToRead() const {
 }
 
 std::size_t MmapShmRing::availableToWrite() const {
-  if (!isMapped()) {
+  if (!isMapped() || capacityFrames_ == 0) {
     return 0;
   }
-  const std::size_t cap = header_->capacity_frames;
   const std::size_t used = availableToRead();
-  return cap > used ? cap - used - 1 : 0;
+  return capacityFrames_ > used ? capacityFrames_ - used - 1 : 0;
 }
 
 std::size_t MmapShmRing::pushInterleaved(const float* interleaved, std::size_t frameCount) {
-  if (header_ == nullptr || interleaved == nullptr || frameCount == 0) {
+  if (header_ == nullptr || capacityFrames_ == 0 || interleaved == nullptr || frameCount == 0) {
     return 0;
   }
   const std::size_t canWrite = std::min(frameCount, availableToWrite());
@@ -291,7 +293,7 @@ std::size_t MmapShmRing::pushInterleaved(const float* interleaved, std::size_t f
     return 0;
   }
 
-  const uint32_t cap = header_->capacity_frames;
+  const std::size_t cap = capacityFrames_;
   uint64_t w = header_->write_index.load(std::memory_order_relaxed);
   float* dst = samples();
 
@@ -306,7 +308,7 @@ std::size_t MmapShmRing::pushInterleaved(const float* interleaved, std::size_t f
 }
 
 std::size_t MmapShmRing::popInterleaved(float* interleaved, std::size_t frameCount) {
-  if (header_ == nullptr || interleaved == nullptr || frameCount == 0) {
+  if (header_ == nullptr || capacityFrames_ == 0 || interleaved == nullptr || frameCount == 0) {
     return 0;
   }
   const std::size_t canRead = std::min(frameCount, availableToRead());
@@ -314,7 +316,7 @@ std::size_t MmapShmRing::popInterleaved(float* interleaved, std::size_t frameCou
     return 0;
   }
 
-  const uint32_t cap = header_->capacity_frames;
+  const std::size_t cap = capacityFrames_;
   uint64_t r = header_->read_index.load(std::memory_order_relaxed);
   const float* src = samples();
 
@@ -329,8 +331,8 @@ std::size_t MmapShmRing::popInterleaved(float* interleaved, std::size_t frameCou
 }
 
 std::size_t MmapShmRing::popToPlanar(float* const channelData[2], std::size_t frameCount) {
-  if (!isMapped() || channelData == nullptr || channelData[0] == nullptr ||
-      channelData[1] == nullptr) {
+  if (!isMapped() || capacityFrames_ == 0 || channelData == nullptr ||
+      channelData[0] == nullptr || channelData[1] == nullptr) {
     return 0;
   }
   const std::size_t canRead = std::min(frameCount, availableToRead());
@@ -338,7 +340,7 @@ std::size_t MmapShmRing::popToPlanar(float* const channelData[2], std::size_t fr
     return 0;
   }
 
-  const uint32_t cap = header_->capacity_frames;
+  const std::size_t cap = capacityFrames_;
   uint64_t r = header_->read_index.load(std::memory_order_relaxed);
   const float* src = samples();
 

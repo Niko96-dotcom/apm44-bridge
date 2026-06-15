@@ -223,6 +223,38 @@ TEST_CASE("ShmIoHandler ignores mixed output after IO stops", "[shm_io_handler]"
   shm_unlink(ringName.c_str());
 }
 
+TEST_CASE("ShmIoHandler clears pending mono lanes across restart", "[shm_io_handler]") {
+  const std::string ringName = TestRingName('c');
+  apm44::ShmIoHandler handler(ringName);
+  REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+
+  auto context = std::make_shared<aspl::Context>();
+  aspl::DeviceParameters deviceParams;
+  deviceParams.SampleRate = apm44::kApm44DriverSampleRate;
+  deviceParams.ChannelCount = apm44::kApm44DriverChannelCount;
+  auto device = std::make_shared<aspl::Device>(context, deviceParams);
+  auto left = std::make_shared<apm44::Apm44OutputStream>(context, device, 1);
+  auto right = std::make_shared<apm44::Apm44OutputStream>(context, device, 2);
+
+  std::vector<float> staleLeft{0.10f, 0.20f, 0.30f};
+  std::vector<float> freshRight{-0.10f, -0.20f, -0.30f};
+
+  handler.OnProcessMixedOutput(left, 0.0, 100.0, staleLeft.data(), 3, 1);
+  handler.OnStopIO();
+  REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
+  handler.OnProcessMixedOutput(right, 0.0, 100.0, freshRight.data(), 3, 1);
+
+  std::vector<float> out(6);
+  REQUIRE(consumer.popInterleaved(out.data(), 3) == 0);
+
+  handler.OnStopIO();
+  consumer.close();
+  shm_unlink(ringName.c_str());
+}
+
 TEST_CASE("ShmIoHandler drops incomplete mono lane when same channel repeats",
           "[shm_io_handler]") {
   const std::string ringName = TestRingName('d');

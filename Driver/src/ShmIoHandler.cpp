@@ -52,6 +52,7 @@ OSStatus ShmIoHandler::OnStartIO() {
   if (!ensureRingReady()) {
     return kAudioHardwareUnspecifiedError;
   }
+  resetPendingLanes();
   ioRunning_.store(true, std::memory_order_release);
   return kAudioHardwareNoError;
 }
@@ -154,6 +155,12 @@ int ShmIoHandler::findLaneMatchingBlock(UInt32 channelIndex,
     }
   }
   return -1;
+}
+
+void ShmIoHandler::resetPendingLanes() noexcept {
+  pendingRead_.fill(0);
+  pendingWrite_.fill(0);
+  pendingCount_.fill(0);
 }
 
 void ShmIoHandler::flushPendingLanes() {

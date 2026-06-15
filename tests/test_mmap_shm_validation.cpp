@@ -290,6 +290,46 @@ TEST_CASE("OpenAcceptsCorrectlySizedObject", "[mmap_shm][validation]") {
   CleanupShmObject(name);
 }
 
+TEST_CASE("MmapShmRingUsesCachedCapacityAfterHeaderMutation",
+          "[mmap_shm][validation][hardening]") {
+  const std::string name = IsolatedName("hotcap");
+  apm44::MmapShmRing producer(name);
+  REQUIRE(producer.create(64));
+
+  apm44::MmapShmRing consumer(name);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(producer.header() != nullptr);
+  REQUIRE(consumer.header() != nullptr);
+
+  producer.header()->capacity_frames = 0;
+
+  std::vector<float> interleaved(2 * 8);
+  for (std::size_t i = 0; i < 8; ++i) {
+    interleaved[i * 2 + 0] = static_cast<float>(i + 1);
+    interleaved[i * 2 + 1] = -static_cast<float>(i + 1);
+  }
+  REQUIRE(producer.pushInterleaved(interleaved.data(), 8) == 8);
+
+  std::vector<float> out(2 * 8);
+  REQUIRE(consumer.popInterleaved(out.data(), 8) == 8);
+  REQUIRE(out == interleaved);
+
+  producer.header()->capacity_frames = 1'000'000;
+  REQUIRE(producer.pushInterleaved(interleaved.data(), 8) == 8);
+  std::vector<float> left(8);
+  std::vector<float> right(8);
+  float* planar[2] = {left.data(), right.data()};
+  REQUIRE(consumer.popToPlanar(planar, 8) == 8);
+  for (std::size_t i = 0; i < 8; ++i) {
+    REQUIRE(left[i] == interleaved[i * 2 + 0]);
+    REQUIRE(right[i] == interleaved[i * 2 + 1]);
+  }
+
+  producer.close();
+  consumer.close();
+  CleanupShmObject(name);
+}
+
 TEST_CASE("LiveSizeChangeTriggersStale", "[mmap_shm][validation][SHM-03]") {
   // SHM-03 cannot be exercised on macOS: shm objects report a
   // page-rounded `st_size` that does not change in response to

@@ -56,6 +56,7 @@ class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestH
   PendingLaneBlock& laneAt(UInt32 channelIndex, std::size_t offset);
   void dropLane(UInt32 channelIndex);
   int findLaneMatchingBlock(UInt32 channelIndex, const PendingLaneBlock& block) const;
+  void resetPendingLanes() noexcept;
   void flushPendingLanes();
   void pushLanePair(const PendingLaneBlock& left, const PendingLaneBlock& right);
 
