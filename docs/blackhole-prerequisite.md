@@ -1,6 +1,8 @@
-# BlackHole prerequisite (APM44 Bridge MVP)
+# BlackHole prerequisite (legacy fallback)
 
-APM44 Bridge Phase 1 reads audio from **BlackHole 2ch** at **44.1 kHz**. BlackHole is a separate product — we do not bundle, vendor, or statically link it.
+APM44 Bridge now uses its own HAL driver for the normal production path. The
+older BlackHole route remains documented as a developer fallback. BlackHole is
+a separate product; we do not bundle, vendor, or statically link it.
 
 ## Install
 
@@ -15,7 +17,7 @@ BlackHole is licensed under **GPL-3.0**. APM44 Bridge:
 
 - Does **not** ship BlackHole inside the app or repository
 - Does **not** fork or statically link BlackHole
-- Expects you to install BlackHole yourself for the MVP routing path
+- Expects you to install BlackHole yourself for the fallback routing path
 
 If you distribute a commercial product that bundles BlackHole, you need a separate license from Existential Audio (see their README).
 

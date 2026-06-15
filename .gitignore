@@ -6,6 +6,8 @@ cmake-build-*/
 .env.*
 !.env.example
 .claude/
+.commandcode/
+.mimocode/
 .planning/
 AGENTS.md
 CLAUDE.md

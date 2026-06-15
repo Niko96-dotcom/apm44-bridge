@@ -1,6 +1,8 @@
-# MVP routing: DAW → BlackHole → apm44-bridge → AirPods
+# Legacy fallback routing: DAW → BlackHole → apm44-bridge → AirPods
 
-Phase 1 proves the sample-rate bridge without a custom HAL driver or menu bar app.
+This document preserves the old BlackHole-based fallback route. The normal
+public path is the signed, notarized APM44 Bridge DMG, which installs the app
+and HAL driver.
 
 ## Signal path
 
@@ -58,7 +60,7 @@ Optional overrides:
 ./build/BridgeDaemon/apm44-bridge --list-devices   # full device table
 ```
 
-On start, the bridge prints **actual HAL buffer frame sizes** for input and output. MVP targets 512 frames at 44.1 kHz where the driver allows it; if `AudioDeviceSetProperty` fails, the logged device default is used.
+On start, the bridge prints **actual HAL buffer frame sizes** for input and output. This fallback targets 512 frames at 44.1 kHz where the driver allows it; if `AudioDeviceSetProperty` fails, the logged device default is used.
 
 Leave the bridge running while the DAW plays. Stop with **Ctrl+C**; stderr prints an **xrun** counter (underruns / conversion failures).
 
@@ -79,7 +81,7 @@ Leave the bridge running while the DAW plays. Stop with **Ctrl+C**; stderr print
 4. Start `apm44-bridge`.
 5. Add a test tone (e.g. Operator sine at **440 Hz**) on a track and play.
 
-## Success demo (Phase 1)
+## Success demo
 
 | Step | Action |
 |------|--------|
@@ -106,23 +108,23 @@ Human verification is required for step 5 in environments with real hardware.
 - Almost always a **sample rate mismatch**: BlackHole must be **44100**, AirPods **48000**.
 - Re-check Audio MIDI Setup; do not set AirPods to 44100.
 
-### Crackle / dropouts (MVP)
+### Crackle / dropouts
 
-- Expected occasionally under load; Phase 1 has **no drift control** and minimal buffering.
+- Expected occasionally under load on this fallback route.
 - Note xrun count on exit; reduce DAW buffer if needed.
 
 ### High latency
 
-- MVP adds ring buffer + SRC delay by design; no Low/Balanced/Safe presets until later phases.
+- This fallback path adds ring buffer + SRC delay by design.
 
 ## Related scripts
 
 - `scripts/verify-devices.sh` — machine-readable `--json` flag for automation
 - `apm44-bridge --preflight` — same rate policy inside the binary
 
-## What Phase 1 does not include
+## What this fallback does not include
 
-- Custom **APM44 Bridge** HAL device (Phase 4)
-- **libsamplerate** drift engine (Phase 2)
-- Menu bar app / latency presets (Phase 3)
+- The production **APM44 Bridge** HAL device
+- The menu bar app's production virtual-device flow
+- Release-DMG installer behavior
 - LaunchAgent auto-start

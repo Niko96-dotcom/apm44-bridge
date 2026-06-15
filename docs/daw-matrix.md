@@ -6,8 +6,8 @@ End-to-end checklist for **Cubase 15** (v1.1 primary sign-off), plus **Logic Pro
 
 | Mode | DAW output | Bridge input | Notes |
 |------|------------|--------------|-------|
-| **MVP (now)** | BlackHole 2ch @ 44100 Hz | `apm44-bridge` HAL input | Phase 1–3 stack; user installs BlackHole (GPL, not bundled) |
-| **Production (Phase 4+)** | **APM44 Bridge** @ 44100 Hz | `apm44-bridge --virtual-device` | HAL plug-in; no BlackHole required |
+| **Legacy fallback** | BlackHole 2ch @ 44100 Hz | `apm44-bridge` HAL input | User installs BlackHole (GPL, not bundled) |
+| **Production** | **APM44 Bridge** @ 44100 Hz | `apm44-bridge --virtual-device` | HAL plug-in; no BlackHole required |
 
 Monitoring path in both cases: bridge resamples **44100 → 48000** and plays to **AirPods Max USB-C @ 48000 Hz**. The DAW project rate stays **44100 Hz**.
 
@@ -16,13 +16,11 @@ Monitoring path in both cases: bridge resamples **44100 → 48000** and plays to
 | Step | Pass? | Notes |
 |------|-------|-------|
 | macOS 14+ | | |
-| BlackHole 2ch @ **44100 Hz** (MVP) or **APM44 Bridge** @ **44100 Hz** (production) in Audio MIDI Setup | | |
+| **APM44 Bridge** @ **44100 Hz** in Audio MIDI Setup, or BlackHole 2ch @ **44100 Hz** for fallback validation | | |
 | AirPods Max USB-C @ **48000 Hz** (do **not** force 44100 on headphones) | | |
 | `bash scripts/verify-devices.sh` → exit 0 | | |
 | `./build/BridgeDaemon/apm44-bridge --preflight` → exit 0 | | |
 | Menu bar app **APM44 Bridge** running (or CLI bridge started) | | |
-
-| **Production (Phase 4+)** | **APM44 Bridge** @ 44100 Hz | `apm44-bridge --virtual-device` | HAL plug-in; menu bar spawns automatically when driver detected |
 
 ## Cubase 15 (v1.1 sign-off host)
 
@@ -46,7 +44,7 @@ Monitoring path in both cases: bridge resamples **44100 → 48000** and plays to
 
 ## Logic Pro
 
-| Step | MVP (BlackHole) | Production (APM44 Bridge) | Pass? |
+| Step | Fallback (BlackHole) | Production (APM44 Bridge) | Pass? |
 |------|-----------------|---------------------------|-------|
 | Project / session sample rate **44100 Hz** | ✓ | ✓ | |
 | Output device **BlackHole 2ch** | ✓ | — | |
@@ -66,7 +64,7 @@ Monitoring path in both cases: bridge resamples **44100 → 48000** and plays to
 
 ## Ableton Live
 
-| Step | MVP (BlackHole) | Production (APM44 Bridge) | Pass? |
+| Step | Fallback (BlackHole) | Production (APM44 Bridge) | Pass? |
 |------|-----------------|---------------------------|-------|
 | Preferences → Audio → Sample rate **44100 Hz** | ✓ | ✓ | |
 | Audio Output Device **BlackHole 2ch** | ✓ | — | |
@@ -95,8 +93,8 @@ Monitoring path in both cases: bridge resamples **44100 → 48000** and plays to
 | Logic version | |
 | Ableton version | |
 | Bridge commit / build | |
-| MVP path result | pass / fail |
-| Production path result | pass / fail / pending Phase 4 |
+| Fallback path result | pass / fail |
+| Production path result | pass / fail |
 | QA-02 export check | pass / fail |
 | QA-01 30+ min soak | pass / fail (link notes) |
 
@@ -115,7 +113,7 @@ bash scripts/validate-export-rate.sh --instructions
 
 ## Related docs
 
-- [MVP routing (BlackHole)](mvp-routing.md)
+- [Legacy fallback routing (BlackHole)](mvp-routing.md)
 - [Soak test (QA-01)](soak-test.md)
 - [Menu bar hardware QA](menu-bar-qa.md)
 - [Release signing](release.md)

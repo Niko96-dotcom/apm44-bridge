@@ -1,7 +1,7 @@
 # Release validation checklist
 
-This checklist is the v0.9 public-polish validation path for the current
-0.1.1 DMG-primary distribution flow. It separates credential-free verification
+This checklist is the current 0.1.1 DMG-primary distribution validation path.
+It separates credential-free verification
 from Apple Developer credential checks so local-only artifacts are never
 confused with a public release.
 
@@ -90,8 +90,8 @@ xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
 spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
 
 # 5. Installed app / HAL checks after installing from the DMG
+APM44_APP_PATH="/Applications/APM44 Bridge.app" bash scripts/verify-installed-sync.sh
 bash scripts/verify-hal-driver.sh
-bash scripts/verify-installed-sync.sh
 build/BridgeDaemon/apm44-bridge --shm-status
 ```
 
@@ -106,8 +106,8 @@ hdiutil attach "build/signing/APM44Bridge-${APM44_VERSION:-0.1.1}.dmg"
 # Reboot once if Audio MIDI Setup does not show the HAL device after install.
 
 # 2. HAL visibility and installed build identity
+APM44_APP_PATH="/Applications/APM44 Bridge.app" bash scripts/verify-installed-sync.sh
 bash scripts/verify-hal-driver.sh
-bash scripts/verify-installed-sync.sh
 build/BridgeDaemon/apm44-bridge --shm-status
 
 # 3. Menu-bar app start and DAW route

@@ -44,6 +44,13 @@ Start with:
 
 ## Development
 
+Requirements:
+
+- macOS 14 or newer
+- Xcode 16.x, or Xcode 15.4+
+- CMake 3.28+
+- XcodeGen (`brew install cmake xcodegen`)
+
 ```bash
 git clone --recurse-submodules https://github.com/Niko96-dotcom/apm44-bridge.git
 cd apm44-bridge
@@ -69,8 +76,12 @@ bash scripts/verify-hal-driver.sh
 
 ## Release
 
+End users should install the signed, notarized DMG from GitHub Releases. Source
+builds are useful for development, but a reliable public HAL install on modern
+macOS requires Developer ID signing and notarization.
+
 On a maintainer Mac with Developer ID certificates and a configured notarytool
-profile:
+profile, build the public DMG with:
 
 ```bash
 export SIGN_ID="Developer ID Application: Your Name (TEAMID)"

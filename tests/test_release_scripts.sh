@@ -482,9 +482,36 @@ run_sign_01_03_workflow_release_app_alignment_check() {
 
 run_ci_03_local_ci_app_bundle_proof_check() {
   local script="$ROOT/scripts/ci.sh"
+  local verify_script="$ROOT/scripts/verify-app-build.sh"
+  local menu_script="$ROOT/scripts/verify-menu-bar.sh"
+  local embed_script="$ROOT/scripts/embed-daemon-in-app.sh"
+  local ci_workflow="$ROOT/.github/workflows/ci.yml"
+
   assert_contains "$script" 'APP_PATH="$BUILD_DIR/$CONFIG/APM44 Bridge.app"'
   assert_contains "$script" 'APM44_APP_OUTPUT_DIR="$BUILD_DIR/$CONFIG"'
   assert_contains "$script" 'APM44_APP_PATH="$APP_PATH"'
+  assert_contains "$script" 'CODE_SIGNING_ALLOWED=YES'
+  assert_contains "$script" 'CODE_SIGN_IDENTITY=-'
+  assert_not_contains "$script" 'CODE_SIGNING_ALLOWED=NO'
+
+  assert_contains "$verify_script" 'rm -rf "$APP" "$APP.dSYM"'
+  assert_contains "$verify_script" 'CODE_SIGNING_ALLOWED=YES'
+  assert_contains "$verify_script" 'CODE_SIGN_IDENTITY=-'
+  assert_contains "$verify_script" 'codesign --verify --deep --strict "$APP"'
+  assert_not_contains "$verify_script" 'CODE_SIGNING_ALLOWED=NO'
+
+  assert_contains "$embed_script" 'APM44_SKIP_LOCAL_APP_RESIGN'
+  assert_contains "$embed_script" 'codesign --force --sign - --timestamp=none "$DEST"'
+  assert_contains "$embed_script" 'codesign --verify --deep --strict "$APP"'
+
+  assert_contains "$menu_script" 'CODE_SIGNING_ALLOWED=YES'
+  assert_contains "$menu_script" 'CODE_SIGN_IDENTITY=-'
+  assert_not_contains "$menu_script" 'CODE_SIGNING_ALLOWED=NO'
+
+  assert_contains "$ci_workflow" 'CODE_SIGNING_ALLOWED=YES'
+  assert_contains "$ci_workflow" 'CODE_SIGN_IDENTITY=-'
+  assert_not_contains "$ci_workflow" 'CODE_SIGNING_ALLOWED=NO'
+
   assert_contains "$script" 'bash scripts/embed-daemon-in-app.sh'
   assert_contains "$script" 'bash scripts/verify-installed-sync.sh --dry-run'
   assert_contains "$script" 'embedded helper missing'
@@ -505,7 +532,7 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
   assert_not_contains "$release_doc" "build/Release/APM44Bridge.driver"
   assert_contains "$release_doc" "does not publish the public DMG"
 
-  assert_contains "$validation_doc" "v0.9 public-polish validation path"
+  assert_contains "$validation_doc" "current 0.1.1 DMG-primary distribution validation path"
   assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.1.1}.dmg'
   assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
 }

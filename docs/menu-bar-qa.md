@@ -1,14 +1,14 @@
-# Phase 3 menu bar — hardware QA checklist
+# Menu bar hardware QA checklist
 
-Map each step to requirements. Record pass/fail in the phase SUMMARY or VERIFICATION report.
+Map each step to requirements and record pass/fail in the release or QA notes.
 
 ## Setup
 
-1. BlackHole 2ch installed; nominal rate **44100 Hz** in Audio MIDI Setup.
-2. AirPods Max USB-C connected; nominal rate **48000 Hz**.
-3. Build daemon: `cmake -S . -B build && cmake --build build`
-4. `export APM44_BRIDGE_PATH="$PWD/build/BridgeDaemon/apm44-bridge"`
-5. Run **APM44 Bridge** from Xcode or `open` the Debug `.app`.
+1. Signed, notarized APM44 Bridge DMG installed.
+2. **APM44 Bridge** nominal rate **44100 Hz** in Audio MIDI Setup.
+3. AirPods Max USB-C connected; nominal rate **48000 Hz**.
+4. Run **APM44 Bridge** from `/Applications`.
+5. For developer builds only, set `APM44_BRIDGE_PATH="$PWD/build/BridgeDaemon/apm44-bridge"` and open the Debug app.
 
 ## APP-01 — Menu bar control
 

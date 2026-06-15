@@ -34,7 +34,7 @@ print_instructions() {
   cat <<'EOF'
 === QA-02 export rate validation ===
 
-Principle: DAW output goes to BlackHole (MVP) or APM44 Bridge (production) for
+Principle: DAW output goes to BlackHole (fallback) or APM44 Bridge (production) for
 monitoring only. Bounce/export uses the project sample rate (44100 Hz). The
 bridge resamples to AirPods @ 48 kHz for listening — it does not change export.
 
@@ -48,7 +48,7 @@ bridge resamples to AirPods @ 48 kHz for listening — it does not change export
 
 --- Logic Pro ---
 1. Set project sample rate to 44100 Hz.
-2. Route monitoring output to BlackHole 2ch (MVP) or APM44 Bridge (production).
+2. Route monitoring output to BlackHole 2ch (fallback) or APM44 Bridge (production).
 3. Start apm44-bridge or APM44 Bridge menu bar app; confirm monitoring works.
 4. File → Bounce → Project or Section.
 5. Sample rate: "Use project sample rate" (44100).
@@ -57,7 +57,7 @@ bridge resamples to AirPods @ 48 kHz for listening — it does not change export
 
 --- Ableton Live ---
 1. Preferences → Audio → Sample rate 44100 Hz.
-2. Output: BlackHole 2ch (MVP) or APM44 Bridge (production).
+2. Output: BlackHole 2ch (fallback) or APM44 Bridge (production).
 3. Start bridge; confirm monitoring.
 4. File → Export Audio/Video; sample rate 44100 Hz.
 5. Run: bash scripts/validate-export-rate.sh --check-file /path/to/export.wav

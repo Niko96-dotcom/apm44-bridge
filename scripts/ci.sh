@@ -46,12 +46,20 @@ if [[ "${APM44_SKIP_APP:-0}" != "1" ]]; then
     fi
 
     echo "== Swift unit tests =="
+    rm -rf \
+      "$BUILD_DIR/app/Build/Products/Debug/APM44 Bridge.app" \
+      "$BUILD_DIR/app/Build/Products/$CONFIG/APM44 Bridge.app" \
+      "$BUILD_DIR/app/Build/Products/Debug/APM44 Bridge.app.dSYM" \
+      "$BUILD_DIR/app/Build/Products/$CONFIG/APM44 Bridge.app.dSYM"
     xcodebuild -project App/APM44Bridge.xcodeproj \
       -scheme APM44Bridge \
       -destination 'platform=macOS' \
       -derivedDataPath build/app \
       test -only-testing:APM44BridgeTests \
-      CODE_SIGNING_ALLOWED=NO
+      CODE_SIGNING_ALLOWED=YES \
+      CODE_SIGN_IDENTITY=- \
+      CODE_SIGN_STYLE=Manual \
+      DEVELOPMENT_TEAM=
 
     echo "== Embed daemon in app bundle =="
     APM44_APP_PATH="$APP_PATH" \

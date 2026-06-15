@@ -7,7 +7,7 @@ Guide for **Cubase 15** (German UI supported) with the **APM44 Bridge** HAL path
 1. Install **APM44 Bridge** from the release DMG.
 2. Open **APM44 Bridge** from the menu bar — complete the first-run preflight sheet.
 3. In **Audio MIDI Setup**:
-   - **APM44 Bridge** → **44,100 Hz** (only rate offered after Phase 7 hardening)
+   - **APM44 Bridge** → **44,100 Hz** (the production HAL device only offers 44.1 kHz)
    - **AirPods Max USB-C** → **48,000 Hz** (do not force 44.1 on headphones)
 4. Start bridge from the menu bar (daemon uses `--virtual-device` when HAL is detected).
 

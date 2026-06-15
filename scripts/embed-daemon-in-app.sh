@@ -17,6 +17,8 @@ Environment:
   APM44_DAEMON_PATH   source binary (default build/BridgeDaemon/apm44-bridge)
   APM44_APP_PATH      destination .app (default build/Release/APM44 Bridge.app)
   APM44_BUILD_CONFIG  Release or Debug
+  APM44_SKIP_LOCAL_APP_RESIGN=1
+                      skip local ad-hoc re-sign after embedding
 EOF
   exit 0
 fi
@@ -35,4 +37,13 @@ DEST="$APP/Contents/MacOS/apm44-bridge"
 cp "$DAEMON" "$DEST"
 chmod +x "$DEST"
 echo "Embedded: $DEST"
+
+if [[ "${APM44_SKIP_LOCAL_APP_RESIGN:-0}" != "1" ]]; then
+  codesign --force --sign - --timestamp=none "$DEST"
+  codesign --force --sign - --timestamp=none \
+    --entitlements "$ROOT/App/APM44Bridge/APM44Bridge.entitlements" "$APP"
+  codesign --verify --deep --strict "$APP"
+  echo "Local ad-hoc signature refreshed after embedding helper."
+fi
+
 echo "BridgeBinaryLocator resolves bundled apm44-bridge without APM44_BRIDGE_PATH."

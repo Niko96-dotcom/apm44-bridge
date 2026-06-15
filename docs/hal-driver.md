@@ -1,6 +1,6 @@
 # HAL virtual device (APM44 Bridge)
 
-Phase 4 adds **`APM44Bridge.driver`**, a Core Audio HAL Audio Server Plug-in that exposes **APM44 Bridge** at **44.1 kHz** stereo. The DAW plays to this device; audio is copied into a POSIX shared-memory ring. The user-space daemon reads that ring and continues 44.1 → 48 kHz SRC to AirPods.
+**`APM44Bridge.driver`** is the current production Core Audio HAL Audio Server Plug-in. It exposes **APM44 Bridge** at **44.1 kHz** stereo. The DAW plays to this device; audio is copied into a POSIX shared-memory ring. The user-space daemon reads that ring and continues 44.1 → 48 kHz SRC to AirPods.
 
 BlackHole is **not** required when this path is fully installed and loaded.
 

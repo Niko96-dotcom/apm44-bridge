@@ -2,6 +2,13 @@
 
 All notable user-facing changes will be documented here.
 
+## Unreleased
+
+- Changed tag release automation to verification-only so CI no longer uploads
+  unsigned installable app, driver, or daemon artifacts.
+- Clarified public install, source-build, and legacy BlackHole fallback docs for
+  open-source readers.
+
 ## 0.1.1 - 2026-06-03
 
 - Fixed HAL virtual-device dropout recovery and virtual-source drift tracking.

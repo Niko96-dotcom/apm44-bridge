@@ -15,6 +15,11 @@ notarized, stapled DMG. The final DMG is packaged after the inner app and HAL
 driver are stapled and validated. The PKG flow is maintainer-only until
 Developer ID Installer signing, installer UX, and validation are complete.
 
+If you clone the repository instead of downloading a release, treat that as a
+developer build path. You can run `bash scripts/ci.sh` to build and test the
+project, but a reliable HAL install for normal use should come from the signed,
+notarized DMG release.
+
 ## Install
 
 1. Download the current `APM44Bridge-0.1.1.dmg` release artifact from the release page.

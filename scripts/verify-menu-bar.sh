@@ -25,6 +25,14 @@ rg -n "return 15" App/APM44Bridge/LatencyPreset.swift >/dev/null
 rg -n "return 30" App/APM44Bridge/LatencyPreset.swift >/dev/null
 
 echo "== Swift unit tests =="
-xcodebuild -project App/APM44Bridge.xcodeproj -scheme APM44Bridge -destination 'platform=macOS' -derivedDataPath build/app test -only-testing:APM44BridgeTests CODE_SIGNING_ALLOWED=NO 2>&1 | tail -20
+xcodebuild -project App/APM44Bridge.xcodeproj \
+  -scheme APM44Bridge \
+  -destination 'platform=macOS' \
+  -derivedDataPath build/app \
+  test -only-testing:APM44BridgeTests \
+  CODE_SIGNING_ALLOWED=YES \
+  CODE_SIGN_IDENTITY=- \
+  CODE_SIGN_STYLE=Manual \
+  DEVELOPMENT_TEAM= 2>&1 | tail -20
 
 echo "verify-menu-bar: OK"

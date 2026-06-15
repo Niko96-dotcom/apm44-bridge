@@ -16,7 +16,10 @@ XCODEBUILD_ARGS=(
   -configuration "$CONFIG"
   -derivedDataPath "$DERIVED_DATA_PATH"
   build
-  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGNING_ALLOWED=YES
+  CODE_SIGN_IDENTITY=-
+  CODE_SIGN_STYLE=Manual
+  DEVELOPMENT_TEAM=
 )
 if [[ -n "$APP_OUTPUT_DIR" ]]; then
   XCODEBUILD_ARGS+=("CONFIGURATION_BUILD_DIR=$APP_OUTPUT_DIR")
@@ -32,6 +35,7 @@ echo "DerivedData: $DERIVED_DATA_PATH"
 if [[ -n "$APP_OUTPUT_DIR" ]]; then
   echo "App output: $APP_OUTPUT_DIR"
 fi
+rm -rf "$APP" "$APP.dSYM"
 xcodebuild "${XCODEBUILD_ARGS[@]}"
 
 if [[ ! -x "$EXECUTABLE" ]]; then
@@ -41,4 +45,5 @@ fi
 
 echo "Built app: $APP"
 echo "Executable: $EXECUTABLE"
+codesign --verify --deep --strict "$APP"
 stat -f "Executable mtime: %Sm" "$EXECUTABLE"

@@ -44,7 +44,7 @@ See **[cubase-soak.md](cubase-soak.md)** for the operator checklist.
 3. Start bridge from menu bar; wait for **Running** status.
 4. Play looped material **30+ minutes**; confirm AirPods stay @ **48000 Hz**.
 
-### BlackHole MVP path (legacy)
+### BlackHole fallback path (legacy)
 
 1. Run `bash scripts/verify-devices.sh` — both input (BlackHole @ 44100) and output (AirPods @ 48000) should PASS.
 2. `./build/BridgeDaemon/apm44-bridge --preflight` — exit 0.
