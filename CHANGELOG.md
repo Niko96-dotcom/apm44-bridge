@@ -4,6 +4,17 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+- No user-facing changes since 0.10.0.
+
+## 0.10.0 - 2026-06-15
+
+- Published the current signed, notarized DMG path as the primary public
+  install artifact.
+- Hardened local app rebuilds so stale unsigned app bundles are removed before
+  rebuilding, helpers are embedded before final signing, and the resulting app
+  passes strict codesign verification.
+- Kept GitHub release automation verification-only; public installable assets
+  are built and notarized on a maintainer Mac before upload.
 - Changed tag release automation to verification-only so CI no longer uploads
   unsigned installable app, driver, or daemon artifacts.
 - Clarified public install, source-build, and legacy BlackHole fallback docs for

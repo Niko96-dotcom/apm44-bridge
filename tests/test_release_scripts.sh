@@ -532,8 +532,8 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
   assert_not_contains "$release_doc" "build/Release/APM44Bridge.driver"
   assert_contains "$release_doc" "does not publish the public DMG"
 
-  assert_contains "$validation_doc" "current 0.1.1 DMG-primary distribution validation path"
-  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.1.1}.dmg'
+  assert_contains "$validation_doc" "current 0.10.0 DMG-primary distribution validation path"
+  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.10.0}.dmg'
   assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
 }
 

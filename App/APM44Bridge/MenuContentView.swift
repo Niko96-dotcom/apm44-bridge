@@ -461,6 +461,6 @@ struct MenuContentView: View {
 
 private extension Bundle {
     var shortVersion: String {
-        (infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.1.1"
+        (infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.10.0"
     }
 }

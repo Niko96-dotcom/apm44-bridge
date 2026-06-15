@@ -8,7 +8,8 @@ From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
 
 | Artifact | Use when |
 |----------|----------|
-| **`APM44Bridge-0.1.1.dmg`** | Current DMG-primary public release artifact; run **Install APM44 Bridge.command** inside the DMG |
+| **`APM44Bridge-0.10.0.dmg`** | Current DMG-primary public release artifact; run **Install APM44 Bridge.command** inside the DMG |
+| **`APM44Bridge-0.10.0.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
 
 Maintainer build: `bash scripts/release-all.sh` produces the signed,
 notarized, stapled DMG. The final DMG is packaged after the inner app and HAL
@@ -22,12 +23,31 @@ notarized DMG release.
 
 ## Install
 
-1. Download the current `APM44Bridge-0.1.1.dmg` release artifact from the release page.
-2. Open the DMG and run **Install APM44 Bridge.command**.
-3. Enter your Mac admin password in Terminal when asked. This is expected:
+1. Download the latest `APM44Bridge-<version>.dmg` release artifact from the release page.
+2. Optional: download the matching `.sha256` file and verify the DMG:
+
+   ```bash
+   shasum -a 256 -c APM44Bridge-<version>.dmg.sha256
+   ```
+
+3. Open the DMG and run **Install APM44 Bridge.command**.
+4. Enter your Mac admin password in Terminal when asked. This is expected:
    APM44 Bridge installs a HAL audio driver under
    `/Library/Audio/Plug-Ins/HAL/`, which macOS protects as an admin location.
-4. **Reboot once** if **APM44 Bridge** does not appear in **Audio MIDI Setup** (first HAL install).
+5. **Reboot once** if **APM44 Bridge** does not appear in **Audio MIDI Setup** (first HAL install).
+
+## Verify installation
+
+After the installer finishes:
+
+1. Open **Applications** and confirm **APM44 Bridge.app** is present.
+2. Open **Audio MIDI Setup** and confirm **APM44 Bridge** appears as an audio device.
+3. Optional Terminal check:
+
+   ```bash
+   test -d "/Applications/APM44 Bridge.app" && echo "app installed"
+   test -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" && echo "driver installed"
+   ```
 
 ## After install — every session
 
