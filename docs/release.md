@@ -261,7 +261,7 @@ Optional future: GitHub Actions `macos-latest` job compiling daemon + tests only
 The current release-candidate workflow keeps official GitHub actions tag-pinned
 instead of full-length SHA pinned for the release-adjacent workflows:
 
-- `.github/workflows/release.yml`: `actions/checkout`, `actions/upload-artifact`
+- `.github/workflows/release.yml`: `actions/checkout`
 - `.github/workflows/sign-notarize.yml`: `actions/checkout`
 - `.github/workflows/ci.yml`: `actions/checkout`, `actions/dependency-review-action`
 
@@ -272,6 +272,8 @@ Rationale:
 - `.github/workflows/sign-notarize.yml` is maintainer signing/notary evidence
   only. It does not publish the public DMG unless an explicit signed-artifact
   upload step is added later.
+- `.github/workflows/release.yml` is tag verification only. It does not upload
+  unsigned app, driver, or daemon bundles.
 - Signing/notarization remains local-maintainer controlled unless a runner is
   explicitly provisioned with Apple credentials.
 - Release publication still requires maintainer review of the produced artifact.

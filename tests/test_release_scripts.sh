@@ -390,6 +390,25 @@ run_sign_notarize_workflow_check() {     # [REL-03]
   fi
 }
 
+run_release_workflow_does_not_upload_unsigned_installables() {
+  local workflow="$ROOT/.github/workflows/release.yml"
+  if [[ ! -f "$workflow" ]]; then
+    echo "release workflow file not found: $workflow" >&2
+    exit 1
+  fi
+
+  assert_contains "$workflow" "Release Verification"
+  assert_contains "$workflow" "verification-only"
+  assert_contains "$workflow" "Do not distribute CI-built app, driver, or daemon bundles."
+  assert_contains "$workflow" "bash scripts/release-all.sh"
+  assert_not_contains "$workflow" "actions/upload-artifact"
+  assert_not_contains "$workflow" "Upload artifacts"
+  assert_not_contains "$workflow" "APM44Bridge-unsigned"
+  assert_not_contains "$workflow" "build/Release/APM44 Bridge.app"
+  assert_not_contains "$workflow" "build/Driver/APM44Bridge.driver"
+  assert_not_contains "$workflow" "build/BridgeDaemon/apm44-bridge"
+}
+
 run_notarize_hal_driver_shared_helper_check() {
   local script="$ROOT/scripts/notarize-hal-driver.sh"
   assert_contains "$script" 'source "$ROOT/scripts/notary-result.sh"'
@@ -557,6 +576,8 @@ run_dist_01_staple_before_dmg_order      # [DIST-01]
 run_dist_05_dmg_command_installer_check  # [DIST-05]
 
 run_sign_notarize_workflow_check         # [REL-03]
+
+run_release_workflow_does_not_upload_unsigned_installables
 
 run_notarize_hal_driver_shared_helper_check # [NOTARY-01][NOTARY-02][NOTARY-03]
 

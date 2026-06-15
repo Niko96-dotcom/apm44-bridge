@@ -1,8 +1,10 @@
-name: Release
+name: Release Verification
 
 # CI-01: release-facing workflow; action trust decision in docs/release.md
 # GitHub Actions trust decision: official actions stay tag-pinned for current release candidates;
-# see docs/release.md before moving more release publication into CI.
+# see docs/release.md before moving release publication into CI.
+# This tag workflow is verification-only. It must not upload unsigned app,
+# driver, or daemon bundles as release artifacts.
 on:
   push:
     tags:
@@ -16,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-macos:
+  verify-macos:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
@@ -33,26 +35,17 @@ jobs:
       - name: Prepare submodules
         run: bash scripts/prepare-submodules.sh
 
-      - name: Build Release (unsigned on CI)
+      - name: Build unsigned verification only
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target apm44-bridge APM44Bridge
-          (cd App && xcodegen generate)
-          xcodebuild -project App/APM44Bridge.xcodeproj -scheme APM44Bridge \
-            -configuration Release build CODE_SIGNING_ALLOWED=NO \
-            CONFIGURATION_BUILD_DIR="$PWD/build/Release"
-          bash scripts/embed-daemon-in-app.sh
+          cmake --build build --parallel 4
+          APM44_BUILD_CONFIG=Release \
+            APM44_APP_OUTPUT_DIR="$PWD/build/Release" \
+            bash scripts/verify-app-build.sh
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: APM44Bridge-unsigned
-          path: |
-            build/Release/APM44 Bridge.app
-            build/Driver/APM44Bridge.driver
-            build/BridgeDaemon/apm44-bridge
-
-      - name: Note
+      - name: Public artifact note
         run: |
-          echo "Signed/notarized DMG must be built on a maintainer Mac with AC_NOTARY:"
+          echo "Unsigned verification build passed."
+          echo "Do not distribute CI-built app, driver, or daemon bundles."
+          echo "Public release artifact must be produced with:"
           echo "  bash scripts/release-all.sh"
