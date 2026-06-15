@@ -100,6 +100,20 @@ TEST_CASE("virtual-device output-start failure cleanup avoids null input stop",
   REQUIRE_FALSE(Contains(source, "AudioDeviceStop(devices_.input.deviceId, inputProc_);\n    stop();"));
 }
 
+TEST_CASE("stale shm remap fails closed when output stop fails",
+          "[hardening_audit][SHM-03]") {
+  const std::string source = ReadFile("BridgeDaemon/src/engine/BridgeEngine.cpp");
+
+  const auto stopFailure = source.find("AudioDeviceStop before shm remap failed");
+  const auto poll = source.find("virtualFeed_.pollStaleRing()");
+  REQUIRE(stopFailure != std::string::npos);
+  REQUIRE(poll != std::string::npos);
+  REQUIRE(stopFailure < poll);
+
+  const std::string between = source.substr(stopFailure, poll - stopFailure);
+  REQUIRE(Contains(between, "return VirtualFeedStaleAction::StopForExit;"));
+}
+
 TEST_CASE("no WriteSilence helper exists in IoProcHandlers",
           "[hardening_audit][SEC-03]") {
   // SEC-03: the old/incorrect WriteSilence helper must not be present.

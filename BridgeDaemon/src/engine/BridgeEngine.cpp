@@ -336,7 +336,8 @@ BridgeEngine::VirtualFeedStaleAction BridgeEngine::pollVirtualFeedStaleRing() {
   // Stop output IO before unmapping; onOutput may call drainTo on the audio thread.
   const OSStatus stopStatus = AudioDeviceStop(devices_.output.deviceId, outputProc_);
   if (stopStatus != noErr) {
-    std::cerr << "warning: AudioDeviceStop before shm remap failed: " << stopStatus << "\n";
+    std::cerr << "error: AudioDeviceStop before shm remap failed: " << stopStatus << "\n";
+    return VirtualFeedStaleAction::StopForExit;
   }
 
   const StaleRingPollResult pollResult = virtualFeed_.pollStaleRing();
