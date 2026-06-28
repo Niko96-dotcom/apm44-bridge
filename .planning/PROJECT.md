@@ -109,10 +109,20 @@ mono-lane callback serialization assumption is documented and regression-gated.
 - Some v0.2/v0.3 operator-dependent verification items (live DAW soak, installed
   driver build-ID sync) remain deferred and are recorded in STATE.md.
 
-## Current Milestone
+## Current Milestone: v1.1 Open Source Release Confidence
 
-No active milestone. v1.0 Realtime Race Blocker Closure is shipped and archived.
-Start the next milestone with `$gsd-new-milestone`.
+**Goal:** Add a clear app quit control, then make the public open-source release
+posture professional, verifiable, and safe to promote.
+
+**Target features:**
+- Visible app UI control for gracefully closing APM44 Bridge.
+- Public repository hygiene audit covering docs, metadata, issue templates,
+  license/security/contribution expectations, and private artifact leakage.
+- Release hygiene gate covering secrets, CI, installed app/helper/driver sync,
+  signed/notarized artifacts, checksums, release notes, and GitHub latest
+  release state.
+- Public-profile and GitHub-facing safety review before publishing a new latest
+  release.
 
 ## Planning Status
 
@@ -240,7 +250,15 @@ Awaiting next milestone.
 
 ### Active
 
-None. Start the next milestone with `$gsd-new-milestone`.
+- [ ] App UI exposes a clear Quit control that gracefully exits the menu bar app
+  after stopping app-owned bridge work.
+- [ ] Public repository docs and metadata are accurate for a professional
+  open-source macOS audio utility.
+- [ ] Public repo and release history contain no private planning artifacts,
+  secrets, credential traces, or misleading release claims.
+- [ ] The newest GitHub release is published only after automated, local,
+  installed-system, and release-artifact gates pass or caveats are explicitly
+  recorded.
 
 ### Out of Scope
 
@@ -294,6 +312,10 @@ None. Start the next milestone with `$gsd-new-milestone`.
   producer-side `DriftController` mutation, `ShmIoHandler::ioRunning_` atomicity,
   mono-lane callback serialization proof, source-audit hardening tests, and full
   release validation.
+- v1.1 is seeded from the 2026-06-28 open-source release request: first add a
+  visible app quit control, then make the public repository, GitHub profile,
+  documentation, release artifact, secret posture, and latest GitHub release
+  state safe enough for professional music-industry visibility.
 - `.planning/` is gitignored by default; selected artifacts are force-added for
   local GSD state.
 
@@ -333,6 +355,7 @@ None. Start the next milestone with `$gsd-new-milestone`.
 | Treat v0.8 as release-candidate closure | The latest audit identifies the remaining release-candidate blockers in signing workflow driver coverage, fail-closed credentials, HAL driver notarization, docs truth, and final validation evidence | ✓ Good — release-candidate closure shipped |
 | Treat v0.9 as final public-polish hardening | The remaining audit scope was narrow: exact Core Audio memory contracts, public truth, and release-command evidence before publication | ✓ Good — shipped final public-polish hardening |
 | Treat v1.0 as realtime race blocker closure | The latest audit identifies remaining cross-callback mutable state in realtime/HAL paths that should be fixed or proven before public release | Good - shipped race blocker closure |
+| Treat v1.1 as open-source release confidence | The repo is already public, but public visibility and latest-release promotion need a user-facing quit affordance plus explicit hygiene, secret, docs, artifact, and GitHub release proof | - Pending |
 
 ## Evolution
 
@@ -352,4 +375,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-14 after v1.0 Realtime Race Blocker Closure closeout*
+*Last updated: 2026-06-28 after starting v1.1 Open Source Release Confidence*

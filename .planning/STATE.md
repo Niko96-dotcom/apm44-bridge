@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Realtime Race Blocker Closure
-status: Awaiting next milestone
-stopped_at: v1.0 milestone completed and archived; awaiting next milestone
-last_updated: "2026-06-14T06:45:11.802Z"
-last_activity: 2026-06-14 — Milestone v1.0 completed and archived
+milestone: v1.1
+milestone_name: Open Source Release Confidence
+status: planning
+last_updated: "2026-06-28T12:06:50.899Z"
+last_activity: 2026-06-28
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +27,10 @@ mystery relaunches.
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-14 — Milestone v1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-28 — Milestone v1.1 started
 
 ## Performance Metrics
 
@@ -42,6 +41,7 @@ Last activity: 2026-06-14 — Milestone v1.0 completed and archived
 - Timeline: 2026-06-14
 - 17/17 requirements satisfied by automated source-audit evidence, targeted
   native behavior tests, and full local CI
+
 - Producer-side drift mutation removed, input overrun reporting made atomic,
   HAL IO running guard made atomic, mono-lane serialization contract documented
   and regression-gated
@@ -184,6 +184,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - v1.0 roadmap: Phase 38 covers input/output drift ownership; Phase 39 covers
   HAL `ioRunning_` atomicity; Phase 40 covers mono-lane callback serialization
   proof; Phase 41 covers regression and release validation closure.
+
 - v1.0 closeout: Full local CI passed, installed-sync dry-run passed, and live
   HAL driver/ring proof was recorded as operator-owned until the current driver
   is reinstalled/reloaded.
