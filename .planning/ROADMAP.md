@@ -23,11 +23,13 @@
   2026-06-14) - [archive](milestones/v0.9-ROADMAP.md)
 - Complete **v1.0 Realtime Race Blocker Closure** - Phases 38-41 (shipped
   2026-06-14) - [archive](milestones/v1.0-ROADMAP.md)
+- Active **v1.1 Open Source Release Confidence** - Phases 42-45
 
 ## Current Status
 
-v1.0 is shipped and archived. There is no active milestone. Start the next
-milestone with `$gsd-new-milestone`.
+v1.1 is in planning. It adds one user-facing feature, a visible Quit control,
+then performs the public open-source and release-hygiene pass required before
+promoting a new latest GitHub release.
 
 ## Phase Numbering
 
@@ -43,43 +45,98 @@ Phase numbering continues from shipped history:
 - Phases 30-32: v0.8 Release Candidate Closure.
 - Phases 33-37: v0.9 Public Polish Final Hardening.
 - Phases 38-41: v1.0 Realtime Race Blocker Closure.
+- Phases 42-45: v1.1 Open Source Release Confidence.
 
-## Completed Milestone Summaries
+## Active Milestone: v1.1 Open Source Release Confidence
 
-### v1.0 Realtime Race Blocker Closure
+| Phase | Name | Goal | Requirements |
+|-------|------|------|--------------|
+| 42 | App Quit Control | Add a visible, graceful Quit control to the app UI. | QUIT-01, QUIT-02, QUIT-03, QUIT-04 |
+| 43 | Public Repository Surface | Make public docs, metadata, templates, and open-source posture accurate. | PUB-01, PUB-02, PUB-03, PUB-04 |
+| 44 | Security and Release Hygiene Gate | Prove secrets, public safety, CI, installed sync, and artifact validation before publication. | SEC-01, SEC-02, SEC-03, SEC-04, REL-01, REL-02, REL-03 |
+| 45 | Latest Release Publication Closure | Publish or update the latest GitHub release and verify the public result. | REL-04, REL-05 |
 
-v1.0 closed the realtime race blockers identified in the 2026-06-14 audit.
+### Phase 42: App Quit Control
 
-- [x] Phase 38: Removed producer-side `DriftController` mutation from input
-  overrun handling and published input overruns through a dedicated atomic
-  counter.
-- [x] Phase 39: Made `ShmIoHandler::ioRunning_` atomic across HAL start, stop,
-  and mixed-output callbacks while preserving stopped-IO behavior.
-- [x] Phase 40: Documented the libASPL serialized IO callback contract that
-  makes mono-lane pending state safe, and added serialized left/right callback
-  coverage.
-- [x] Phase 41: Added source-audit regression guards, ran full repo CI, recorded
-  installed-driver caveats, and reconciled traceability.
+**Goal:** Add a visible app UI control that closes APM44 Bridge gracefully.
 
-**Archive:** [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md),
-[milestones/v1.0-REQUIREMENTS.md](milestones/v1.0-REQUIREMENTS.md),
-[milestones/v1.0-MILESTONE-AUDIT.md](milestones/v1.0-MILESTONE-AUDIT.md),
-[milestones/v1.0-phases/](milestones/v1.0-phases/)
+**Requirements:** QUIT-01, QUIT-02, QUIT-03, QUIT-04
+
+**Success criteria:**
+1. App UI exposes a clear Quit control in the existing app surface.
+2. Quit delegates to existing lifecycle/process-management ownership rather
+   than duplicating daemon kill logic in the UI layer.
+3. Quit does not uninstall, reload, or mutate the HAL driver.
+4. Automated and/or manual app-run evidence proves the Quit path exits cleanly.
+
+### Phase 43: Public Repository Surface
+
+**Goal:** Make the repository look and read like a professional open-source
+macOS audio utility.
+
+**Requirements:** PUB-01, PUB-02, PUB-03, PUB-04
+
+**Success criteria:**
+1. README, docs, repo description, homepage, and release links agree on current
+   product behavior and artifact truth.
+2. License, SECURITY, CONTRIBUTING, support expectations, and issue templates
+   are present and accurate.
+3. Install, uninstall, troubleshooting, permissions, HAL behavior, and caveats
+   are documented for public users.
+4. Public tree review confirms private planning/internal artifacts stay out of
+   the public repository.
+
+### Phase 44: Security and Release Hygiene Gate
+
+**Goal:** Run the professional release gate before publishing anything new.
+
+**Requirements:** SEC-01, SEC-02, SEC-03, SEC-04, REL-01, REL-02, REL-03
+
+**Success criteria:**
+1. Secret/private-artifact scans pass for the current release candidate.
+2. Full local CI passes, including native tests, Swift tests, release-script
+   regressions, app embed, and installed-sync dry-run.
+3. Installed app/helper/driver identity proof is captured before claiming the
+   running installed version is current.
+4. Signed/notarized/stapled/Gatekeeper artifact evidence and checksums are
+   captured, or publication is blocked with a clear reason.
+5. GitHub repo/profile security and metadata review finds no private or
+   misleading public claims.
+
+### Phase 45: Latest Release Publication Closure
+
+**Goal:** Promote the latest GitHub release only after the release gate passes,
+then verify the public result.
+
+**Requirements:** REL-04, REL-05
+
+**Success criteria:**
+1. GitHub release tag, title, notes, assets, checksums, and latest status match
+   the validated artifact.
+2. README/latest-release links resolve to the intended GitHub release.
+3. Release notes document target Cubase 15 / USB-C AirPods Max validation and
+   any remaining operator-dependent caveats.
+4. Final local and GitHub checks are recorded before declaring the milestone
+   ready to ship.
 
 ## Verification Gates
 
 - `scripts/ci.sh`
-- Targeted native/source-audit tests for `BridgeInputOverrun`, `BridgeEngine`,
-  `ShmIoHandler`, and mono-lane callback serialization
+- `scripts/check-secrets.sh`
 - `scripts/verify-installed-sync.sh --dry-run`
-- `scripts/verify-hal-driver.sh` after the current driver is installed
-- `apm44-bridge --shm-status` after the current HAL ring is live
-- Target Cubase 15 and USB-C AirPods Max smoke/soak validation when hardware is
-  available
+- `APM44_APP_PATH="/Applications/APM44 Bridge.app" ./scripts/verify-installed-sync.sh`
+- `bash scripts/verify-hal-driver.sh`
+- `apm44-bridge --shm-status`
+- Developer ID signing, notarization, stapling, Gatekeeper validation, and
+  checksum verification for the public DMG.
+- `gh repo view`, `gh release list`, and post-publication latest-release asset
+  verification.
 
 ## Next Step
 
-Start the next milestone with `$gsd-new-milestone`.
+Plan Phase 42:
+
+`$gsd-plan-phase 42`
 
 ---
-*Last updated: 2026-06-14 after v1.0 milestone closeout*
+*Last updated: 2026-06-28 after v1.1 roadmap creation*

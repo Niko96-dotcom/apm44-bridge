@@ -1,158 +1,101 @@
 # Pitfalls Research
 
-**Domain:** APM44 Bridge public-release safety fixes
-**Researched:** 2026-06-13
+**Domain:** Open-source macOS audio utility release hygiene
+**Researched:** 2026-06-28
 **Confidence:** HIGH
 
 ## Critical Pitfalls
 
-### Pitfall 1: Rollover Exception Becomes Universal Mismatch Acceptance
+### Pitfall 1: Quit control bypasses lifecycle cleanup
 
-**What goes wrong:** Left and right mono lanes with unrelated timestamps can be
-paired into stereo output after the search-ahead logic finds no match.
+**What goes wrong:** The app exits while an app-owned daemon or metrics state is
+left in an ambiguous state.
 
-**Why it happens:** `flushPendingLanes()` falls through to `pushLanePair()` even
-after detecting a mismatch. The rollover test makes this appear intentional, but
-the implementation does not distinguish rollover from arbitrary mismatch.
+**Why it happens:** UI code calls a direct terminate path instead of the existing
+process-manager stop path.
 
-**How to avoid:** Store `zeroTimestamp`, add `SameLogicalLaneBlock()`, and drop
-the older logical lane when no exact queued match or permitted rollover relation
-exists.
+**How to avoid:** Route Quit through the lifecycle owner, reuse existing stop and
+idle-reset behavior, and test the transition.
 
-**Regression:** left@100/right@300 must not push paired stereo; left@300/right@300
-must pair; the rollover case must pair only through the named predicate.
+**Warning signs:** New UI code kills processes directly or touches HAL driver
+state.
 
----
+**Phase to address:** Phase 42.
 
-### Pitfall 2: Lifecycle Flag Exists But Hot Path Ignores It
+### Pitfall 2: Public release claims outrun evidence
 
-**What goes wrong:** A callback after `OnStopIO()` can still push frames if the
-ring is mapped.
+**What goes wrong:** README or release notes imply broader safety,
+compatibility, or freshness than the gates prove.
 
-**Why it happens:** `ioRunning_` is written by start/stop but not checked by
-`OnProcessMixedOutput()`.
+**Why it happens:** Docs are polished separately from release validation.
 
-**How to avoid:** Add `!ioRunning_` to the early return guard before stream
-processing or ring writes.
+**How to avoid:** Link docs to exact release artifacts, checksums, validation
+commands, and caveats.
 
-**Regression:** stop IO, call `OnProcessMixedOutput()`, verify the consumer sees
-zero frames.
+**Warning signs:** "Latest", "stable", or compatibility claims without a
+specific version and validation date.
 
----
+**Phase to address:** Phases 43 and 45.
 
-### Pitfall 3: AudioConverter Input Callback Writes Into Unknown Storage
+### Pitfall 3: Secret or private planning leakage
 
-**What goes wrong:** `InputDataProc` casts `ioData->mBuffers[0].mData` to
-`float*` and writes interleaved input into it.
+**What goes wrong:** Credentials, shell-history traces, `.planning`, internal
+agent files, or private notes become public.
 
-**Why it happens:** `inputInterleaved_` is allocated but not used as callback
-source storage. Converter input callbacks should provide data from owned input,
-not assume writable Core Audio-provided memory.
+**Why it happens:** Release work focuses on artifacts and misses public surface
+review.
 
-**How to avoid:** Pre-interleave into `inputInterleaved_` and set
-`ioData->mBuffers[0].mData` to the owned slice, or remove the legacy converter
-path from public CLI/docs/build.
+**How to avoid:** Run repo secret scans, inspect tracked files, inspect release
+assets, and keep `.planning/` ignored unless intentionally force-added.
 
-**Regression:** source guard that `InputDataProc` assigns `mData` from user-owned
-input and does not write through `ioData` as destination storage.
+**Warning signs:** Public tree contains planning files, local paths, tokens,
+notary credentials, or maintainer-only instructions.
 
----
+**Phase to address:** Phase 44.
 
-### Pitfall 4: Data-Race-Safe Metrics Still May Not Be Realtime-Safe
+### Pitfall 4: GitHub latest release is stale or mismatched
 
-**What goes wrong:** `std::atomic<double>` may be implemented with a lock on a
-target the project later supports.
+**What goes wrong:** Users download an older or incorrectly described artifact.
 
-**Why it happens:** Standard C++ does not guarantee every atomic floating type is
-always lock-free.
+**Why it happens:** Tags, GitHub release names, release notes, and docs drift.
 
-**How to avoid:** Store floating payloads as `std::atomic<uint64_t>` bit patterns
-and assert `uint64_t` lock-freedom at compile time. Preserve the existing
-`PublishMetrics()` / `ReadMetrics()` API.
+**How to avoid:** Verify `gh release list`, tags, checksums, asset names, and
+README links after publication.
 
-**Regression:** compile-time assertion and source/test guard that
-`MetricsPublisherState` no longer contains `std::atomic<double>`.
+**Warning signs:** README and GitHub latest release disagree on version or
+artifact name.
 
----
+**Phase to address:** Phase 45.
 
-### Pitfall 5: Pipe Deadlock Fix Only Covers stdout
+## Looks Done But Is Not Checklist
 
-**What goes wrong:** `DeviceCatalog.refresh()` can still hang if
-`apm44-bridge --list-devices` writes enough stderr.
+- [ ] **Quit UI:** Button exists, but does not go through graceful stop.
+- [ ] **Docs:** README looks polished, but version/artifact names are stale.
+- [ ] **Security:** Current tree scans clean, but release assets or history were
+  not checked.
+- [ ] **Release:** DMG exists, but signing/notary/stapling/Gatekeeper evidence
+  is missing.
+- [ ] **Installed proof:** CI passes, but installed helper/driver build IDs do
+  not match the release artifact.
+- [ ] **GitHub:** Tag exists, but latest release page/assets were not verified.
 
-**Why it happens:** stdout is drained before `waitUntilExit()`, but stderr is set
-to an undrained `Pipe()`.
+## Pitfall-to-Phase Mapping
 
-**How to avoid:** Set `process.standardError = FileHandle.nullDevice` unless
-diagnostics are required. If diagnostics become useful later, drain stdout and
-stderr concurrently.
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Lifecycle bypass | Phase 42 | Swift tests/manual app quit proof. |
+| Overclaiming docs | Phase 43 | Public docs diff review and release-doc consistency checks. |
+| Secret/private leakage | Phase 44 | Secret scan, tracked-file review, release-asset review. |
+| Stale latest release | Phase 45 | `gh release list`, asset checksums, README/latest URL check. |
 
-**Regression:** Swift/source guard for `FileHandle.nullDevice` or concurrent
-stderr drain.
+## Sources
 
----
-
-### Pitfall 6: Stale Metrics Timestamp Survives Across Runs
-
-**What goes wrong:** A new start or idle transition can briefly inherit an old
-`lastMetricsAt`, causing stale metrics UI to appear immediately or incorrectly.
-
-**Why it happens:** start resets `latestMetrics`, `lastXrunCount`, and
-`metricsStale`, but not `lastMetricsAt`; idle cleanup also leaves it untouched.
-
-**How to avoid:** Reset `lastMetricsAt = nil` alongside `latestMetrics = nil` on
-start and idle transitions.
-
-**Regression:** Swift lifecycle test or narrow testing hook proving restart/idle
-clears the timestamp.
+- GitHub Docs: public repository profile files, releases, security policies, and
+  secret scanning.
+- Apple Developer Documentation: notarization, stapling, and Gatekeeper
+  validation expectations.
+- Local APM44 Bridge release history and prior secret-hygiene notes.
 
 ---
-
-### Pitfall 7: Release Tests Are Local-Only
-
-**What goes wrong:** Release-script hardening can regress while GitHub CI stays
-green.
-
-**Why it happens:** `scripts/ci.sh` runs `bash tests/test_release_scripts.sh`,
-but `.github/workflows/ci.yml` does not.
-
-**How to avoid:** Add a GitHub CI step after native tests. Add a source guard to
-`tests/test_release_scripts.sh` so the workflow omission is caught locally too.
-
-**Regression:** release script test checks `.github/workflows/ci.yml` contains
-`bash tests/test_release_scripts.sh`.
-
----
-
-### Pitfall 8: Installer Bundle Copy Can Merge or Partially Overwrite
-
-**What goes wrong:** `cp -R` into `/Applications` can fail on permissions, merge
-with an old bundle, or leave stale files.
-
-**Why it happens:** The generated DMG command uses privileged deterministic HAL
-driver install, then switches to unprivileged app copy.
-
-**How to avoid:** Remove the existing app bundle with sudo, copy with sudo
-`ditto`, and chown to `root:wheel`.
-
-**Regression:** release script source test checks the generated command contains
-the deterministic app install sequence.
-
----
-
-### Pitfall 9: Comments Contradict Realtime Drop Policy
-
-**What goes wrong:** Future maintainers can reintroduce producer-side drop-old
-logic because a comment says the oldest frame is skipped.
-
-**Why it happens:** `pushInterleaved()` kept an old comment after the project
-standardized on drop-new input behavior.
-
-**How to avoid:** Update the comment to say the bounded shm ring accepted only
-the prefix and dropped the incoming tail.
-
-**Regression:** simple source guard or direct review as part of HAL phase.
-
----
-*Pitfalls research for: APM44 Bridge v0.6 Public Release Safety Fixes*
-*Researched: 2026-06-13*
+*Pitfalls research for: APM44 Bridge v1.1*
+*Researched: 2026-06-28*

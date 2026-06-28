@@ -1,74 +1,66 @@
 # Feature Research
 
-**Domain:** APM44 Bridge public-release safety fixes
-**Researched:** 2026-06-13
+**Domain:** Open-source macOS audio utility release hygiene
+**Researched:** 2026-06-28
 **Confidence:** HIGH
 
 ## Feature Landscape
 
-v0.6 is a blocker/fix milestone. The "features" are release-safety capabilities
-that public users should be able to rely on without knowing the internals.
-
 ### Table Stakes
 
-| Capability | Why Expected | Complexity | Repo Evidence |
-|------------|--------------|------------|---------------|
-| HAL mono-lane pairing rejects unrelated timestamp mismatches | Arbitrary left/right pairing can produce rare stereo skew, clicks, or comb filtering | HIGH | `flushPendingLanes()` falls through to `pushLanePair(left, right)` after unmatched mismatches. |
-| HAL rollover pairing is explicit and narrow | Existing rollover test should remain valid without accepting every mismatch | MEDIUM | Test uses left `44032.0` with right `zeroTimestamp=44100.0`, `timestamp=0.0`. |
-| Mixed-output processing respects IO stopped state | Lifecycle flag should defend against callbacks after stop | LOW | `ioRunning_` is set but not checked in `OnProcessMixedOutput()`. |
-| Legacy AudioToolbox converter is not unsafe | Public CLI exposes `--legacy-converter`; debug paths still ship | MEDIUM | `InputDataProc` writes to `ioData->mBuffers[0].mData`; `inputInterleaved_` is allocated but unused as source. |
-| DMG installer copies the app deterministically | Users expect app bundle install not to partially merge or fail with permissions | LOW | Generated command uses unprivileged `cp -R "$DIR/APM44 Bridge.app" /Applications/`. |
-| Metrics publication avoids possibly-locking atomics in realtime path | Data-race-safe is not enough for realtime audio callback publication | MEDIUM | `MetricsPublisherState` stores three `std::atomic<double>` fields. |
-| Device catalog refresh cannot deadlock on stderr | User device list refresh should not hang if child emits stderr | LOW | stdout is drained before wait; stderr is an undrained `Pipe()`. |
-| Metrics stale timestamp resets at lifecycle boundaries | UI should not inherit stale timestamps across starts/idle transitions | LOW | `latestMetrics` and `metricsStale` reset, but `lastMetricsAt` does not. |
-| GitHub CI runs release-script tests | Release hardening should not regress while badge stays green | LOW | `scripts/ci.sh` runs the tests; `.github/workflows/ci.yml` does not. |
-| Drop-policy comments match drop-new behavior | Realtime policy should be clear to future maintainers | LOW | `pushInterleaved()` comment still says oldest is skipped. |
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Visible Quit control | Menu bar apps are expected to expose a clear exit path. | LOW | Should reuse existing process-stop lifecycle. |
+| Graceful app shutdown | Users should not need Activity Monitor or force quit. | MEDIUM | Must avoid deleting HAL driver or corrupting live audio state. |
+| Accurate README and release docs | Public users judge safety from docs before installing audio drivers. | MEDIUM | Must match current artifact names, version, install path, and caveats. |
+| License, security, contribution posture | Open-source repos should make reuse and vulnerability reporting clear. | LOW | Verify files exist and are not stale or overbroad. |
+| Secret and private-artifact scan | Public release should not expose credentials or planning/private files. | MEDIUM | Include current tree, tracked history where practical, and shell-history caveat awareness. |
+| Latest release verification | Users use the latest GitHub release as the product truth. | MEDIUM | Current latest is `v0.10.0` as of 2026-06-28 local check. |
+| Signed/notarized artifact evidence | macOS users need Gatekeeper-safe distribution. | HIGH | Keep DMG-first; PKG remains future unless validated. |
 
 ### Differentiators
 
-| Capability | Value | Notes |
-|------------|-------|-------|
-| Timestamp pairing predicate named and tested | Makes the HAL rollover exception auditable | Prefer a small helper such as `SameLogicalLaneBlock`. |
-| Source guards for release/RT invariants | Cheap protection for scripts/comments/atomics | Existing tests already use source-level guards in `test_hardening_audit.cpp` and release tests. |
-| One release-safety CI lane | Local and GitHub gates become aligned | Add release-script tests after native tests. |
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Release evidence document | Professional public confidence without vague claims. | MEDIUM | Link commands, checksums, notarization, Gatekeeper, and caveats. |
+| Installed-system proof | Separates "build passed" from "the running driver is current." | HIGH | Requires local install/reload and optional target hardware smoke. |
+| Public profile/repo metadata audit | Reduces embarrassment risk beyond code correctness. | LOW | Check description, homepage, topics, issue templates, and release notes. |
 
-### Deferred
+### Anti-Features
 
-| Item | Reason |
-|------|--------|
-| Broad DAW compatibility matrix | Outside the nine concrete blockers. |
-| PKG-primary public installer promotion | DMG command installer can be hardened now; PKG promotion needs separate UX/signing validation. |
-| New DSP/resampler path | v0.6 should not replace the existing SRC architecture. |
-| Hardware soak | Valuable but operator-dependent and not required to fix these code-level blockers. |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| "Quit" that uninstalls the driver | Feels like fully closing everything | Surprising, privileged, and risky during audio sessions | Quit app only; keep uninstall separate and explicit. |
+| Automatic GitHub publication before proof | Saves time | Can publish broken or private artifacts | Publish only after release gate passes. |
+| Marketing-heavy docs | Looks polished | Can hide caveats and reduce trust | Plain, exact, user-facing release truth. |
+| Broad DAW compatibility claims | Attractive for public profile | Not validated | Keep Cubase 15 and USB-C AirPods Max as validation anchor. |
 
-## Scope Recommendation
+## MVP Definition
 
-Capture all nine audit items in v0.6 requirements. The first HAL item should be
-split into explicit sub-requirements because it is the highest-risk item:
+### Launch With
 
-- reject unrelated mono-lane mismatches,
-- preserve only named rollover pairing,
-- add regression coverage for normal, mismatch, and rollover cases.
+- [ ] Quit control implemented and tested.
+- [ ] Docs and metadata audited and updated.
+- [ ] Secret/private-artifact scan completed.
+- [ ] Full local CI and installed-sync gate completed.
+- [ ] Signed/notarized release artifact evidence captured or explicit blocker
+  recorded.
+- [ ] Latest GitHub release state verified after publication.
 
-The legacy converter requirement should be worded as outcome-based: the public
-build either no longer exposes the flag, or the converter callback uses owned
-input storage with regression coverage.
+### Add After Validation
 
-## Regression Expectations
+- [ ] Signed PKG installer promotion, only after Developer ID Installer path is
+  intentionally validated.
+- [ ] Broader DAW compatibility matrix.
+- [ ] Support bundle export.
 
-| Capability | Expected Test Type |
-|------------|--------------------|
-| HAL arbitrary mismatch rejection | Catch2 behavior test using `ShmIoHandler` and `MmapShmRing`. |
-| HAL rollover allowance | Existing rollover test updated to exercise named predicate behavior. |
-| `ioRunning_` guard | Catch2 test that stops IO then calls `OnProcessMixedOutput()` and observes no frames. |
-| Legacy converter safety | Catch2 converter test plus source guard that callback no longer writes into Core Audio-provided input storage. |
-| Metrics lock-free storage | Compile-time static assertions and source/test guard against `std::atomic<double>`. |
-| DeviceCatalog stderr | Swift/source guard for `FileHandle.nullDevice` or concurrent stderr drain. |
-| `lastMetricsAt` reset | Swift lifecycle test or narrow testing accessor. |
-| DMG installer app copy | Release script source test for `sudo rm -rf`, `sudo ditto`, and `sudo chown`. |
-| GitHub CI release tests | Release script source test for `bash tests/test_release_scripts.sh` in `.github/workflows/ci.yml`. |
-| Drop comment | Source guard or direct comment update. |
+## Sources
+
+- GitHub Docs: releases, security policy, secret scanning, repository metadata.
+- Apple Developer Documentation: Developer ID distribution and notarization.
+- Open Source Guides: README, license, contribution, and community expectations.
+- Local repository and GitHub CLI checks on 2026-06-28.
 
 ---
-*Feature research for: APM44 Bridge v0.6 Public Release Safety Fixes*
-*Researched: 2026-06-13*
+*Feature research for: APM44 Bridge v1.1*
+*Researched: 2026-06-28*

@@ -1,139 +1,112 @@
 # Project Research Summary
 
 **Project:** APM44 Bridge
-**Domain:** Public-release safety fixes
-**Researched:** 2026-06-13
+**Domain:** Open-source macOS audio utility release hygiene
+**Researched:** 2026-06-28
 **Confidence:** HIGH
 
 ## Executive Summary
 
-v0.6 should be a narrow public-release safety milestone. The repo scan confirms
-all nine audit items still map to live code or workflow surfaces: HAL mono-lane
-pairing can still pair arbitrary timestamp mismatches, `ioRunning_` is not
-enforced in the hot path, the debug AudioToolbox converter callback writes into
-unknown input storage, the DMG command installer copies the app with
-unprivileged `cp -R`, metrics use `std::atomic<double>`, `DeviceCatalog` leaves
-stderr as an undrained pipe, `lastMetricsAt` is not reset with metrics state,
-GitHub CI omits release-script tests, and the `pushInterleaved()` comment still
-describes the wrong drop policy.
+APM44 Bridge is already public on GitHub, so v1.1 is not about flipping a
+visibility switch. It is about making the public project feel professionally
+safe: a user can quit the app from the UI, docs tell the exact truth, release
+artifacts are signed/notarized and traceable, and the latest GitHub release is
+only promoted after evidence is collected.
 
-The highest-risk item is HAL timestamp pairing. Fixing it requires a small data
-model change, not just a condition tweak: `PendingLaneBlock` must carry
-`zeroTimestamp` so rollover can be a named, narrow predicate based on logical
-absolute time. Once that is in place, arbitrary mismatches should fail closed by
-dropping the older logical lane.
-
-The rest of the milestone is smaller but release-important. The safest plan is
-to split v0.6 into runtime/HAL safety, converter/metrics realtime safety,
-app/release automation hardening, and final regression closure.
+The recommended approach is conservative. Add the Quit control inside the
+existing menu bar app and delegate shutdown to the lifecycle owner. Then perform
+a public-surface and release-gate pass using repo-native scripts, current
+GitHub state, and Apple distribution checks. Do not introduce new frameworks,
+new release paths, or broad compatibility claims.
 
 ## Key Findings
 
-### Runtime and HAL
+### Recommended Stack
 
-- `ShmIoHandler::OnProcessMixedOutput()` ignores `zeroTimestamp` and passes only
-  `timestamp` into pending mono-lane state.
-- `PendingLaneBlock` stores `sampleTime` but not `zeroTimestamp`.
-- `flushPendingLanes()` searches ahead for exact timestamp matches, but if none
-  is found it still pushes the mismatched left/right pair.
-- Existing tests cover normal mono pairing, rollover pairing, dropping stale
-  repeated lanes, queued repeated lanes, and null-stream mono ignore; they do
-  not cover unrelated mismatch rejection or stopped-IO rejection.
-- `pushInterleaved()` comment still says oldest data is implicitly skipped,
-  contradicting the project drop-new/input-tail policy.
+- Existing Swift/AppKit app: add the Quit control without changing UI stack.
+- Existing process lifecycle code: stop app-owned bridge work before app exit.
+- Existing release scripts: strengthen and use current gates rather than adding
+  parallel release procedures.
+- GitHub Releases: remain the public artifact of record.
+- Developer ID signing/notarization: remain required for public macOS trust.
 
-### Converter and Metrics
+### Expected Features
 
-- `--legacy-converter` remains public CLI/debug surface and is documented in
-  `docs/soak-test.md`.
-- `AudioConverterSrc::InputDataProc()` writes interleaved samples into
-  `ioData->mBuffers[0].mData`; `inputInterleaved_` exists but is not used as
-  callback source storage.
-- `MetricsPublisherState` uses `std::atomic<double>` for `fillMs`,
-  `smoothedRatio`, and `ppm`. This is data-race-safe but lacks a portable
-  lock-free realtime guarantee.
-- Existing metrics tests already stress the seqlock and source-guard bare
-  `MetricsSnapshot` copies; they can be extended to guard double storage.
+**Must have:**
+- Visible app Quit control.
+- Graceful quit semantics and regression/manual proof.
+- Public docs and metadata aligned with current release truth.
+- Secret/private-artifact review.
+- Full local CI, installed-sync proof, artifact validation, and latest GitHub
+  release verification.
 
-### Swift App and Release Automation
+**Defer:**
+- Signed PKG promotion.
+- Broad DAW compatibility claims.
+- Support bundle export.
 
-- `DeviceCatalog.refresh()` correctly drains stdout before waiting, but stderr
-  is still an unread `Pipe()`. `FileHandle.nullDevice` is the smallest safe fix.
-- `BridgeProcessManager.start()` resets `latestMetrics`, `lastXrunCount`, and
-  `metricsStale`, but not `lastMetricsAt`. `transitionToIdle()` also leaves
-  metrics timestamp state intact.
-- `scripts/build-release-dmg.sh` generated installer uses deterministic sudo
-  `ditto` for the HAL driver, then unprivileged `cp -R` for the app bundle.
-- Local `scripts/ci.sh` runs `tests/test_release_scripts.sh`; GitHub CI does not.
+### Architecture Approach
 
-## Recommended Requirements Shape
+Keep the product architecture unchanged. v1.1 should touch the menu UI, process
+lifecycle seam, public docs, release scripts/checklists, and GitHub release
+state. It should not alter realtime audio architecture unless a release gate
+finds a blocker.
 
-Use ten requirements rather than nine so HAL pairing is explicit:
+### Critical Pitfalls
 
-1. HAL rejects unrelated mono-lane timestamp mismatches.
-2. HAL preserves rollover pairing only through a named narrow predicate.
-3. HAL ignores mixed-output callbacks while IO is stopped.
-4. Legacy converter is either removed from public build or fixed to use owned
-   input buffers.
-5. DMG command installer replaces the app bundle deterministically with sudo
-   `ditto`.
-6. Metrics publisher stores floating payloads with a lock-free realtime-safe
-   representation.
-7. Device catalog refresh cannot block on stderr.
-8. Metrics timestamp state resets on start and idle transitions.
-9. GitHub CI runs release-script tests.
-10. HAL drop-policy comments match drop-new behavior.
+1. **Quit bypasses cleanup** - avoid by routing through existing lifecycle owner.
+2. **Public claims outrun evidence** - avoid by tying docs and release notes to
+   exact validation proof.
+3. **Secret/private leakage** - avoid by scanning tracked files, release assets,
+   and public-facing docs.
+4. **Stale latest release** - avoid by verifying GitHub latest release after
+   publication.
 
-## Suggested Roadmap
+## Implications for Roadmap
 
-Because v0.5 ended at Phase 22, continue numbering:
+### Phase 42: App Quit Control
 
-| Phase | Name | Goal | Requirement Focus |
-|-------|------|------|-------------------|
-| 23 | HAL Runtime Pairing Safety | Make HAL output fail closed for timestamp mismatch and stopped IO | HAL pairing, rollover, ioRunning, comment |
-| 24 | Realtime Converter and Metrics Safety | Remove unsafe debug converter behavior and make metrics payload storage RT-safe | legacy converter, metrics atomics |
-| 25 | App and Release Automation Reliability | Harden app lifecycle/catalog edges and release/install CI gates | DMG installer, DeviceCatalog, lastMetricsAt, GitHub CI |
-| 26 | Regression and Release Safety Closure | Reconcile all tests and evidence before v0.6 close | full local gate and traceability |
+Implement the visible quit affordance and prove graceful app shutdown.
 
-## Open Decisions
+### Phase 43: Public Documentation and Repository Surface
 
-| Decision | Recommendation | Reason |
-|----------|----------------|--------|
-| Fix or remove `--legacy-converter` | Fix if preserving debug comparison is still useful; remove if public surface minimization wins | Both are acceptable, but the requirement should demand one safe outcome. |
-| Rollover tolerance value | Start with 128 frames | Current rollover test differs by 68 frames; 128 is narrow but leaves margin. |
-| DeviceCatalog stderr behavior | Discard stderr | The app already reports a generic device-list failure; diagnostics are not used. |
-| Metrics double storage | Bit-pack into `atomic<uint64_t>` | More portable realtime guarantee than `atomic<double>`. |
+Audit and update README, docs, metadata, templates, license/security/contribution
+posture, and public claims.
 
-## Validation Commands
+### Phase 44: Security and Release Hygiene Gate
 
-Expected phase and milestone validation should include:
+Run secret/private-artifact checks, release-script gates, CI, installed sync,
+artifact signing/notary/stapling/Gatekeeper validation, and profile/repo safety
+checks.
 
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-bash tests/test_release_scripts.sh
-xcodebuild -project App/APM44Bridge.xcodeproj \
-  -scheme APM44Bridge \
-  -destination 'platform=macOS' \
-  -derivedDataPath build/app \
-  test -only-testing:APM44BridgeTests \
-  CODE_SIGNING_ALLOWED=NO
-gsd-sdk query state.validate
-gsd-sdk query roadmap.analyze
-```
+### Phase 45: Latest GitHub Release Publication Closure
+
+Publish or update the latest GitHub release only after Phase 44 passes, then
+verify assets, checksums, notes, latest URL, and caveats.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| HAL pairing diagnosis | HIGH | Direct source/test evidence confirms fallback behavior. |
-| IO running guard | HIGH | Single obvious guard and direct regression. |
-| Legacy converter safety | HIGH | Callback writes to `ioData` storage; fix shape is clear. |
-| Metrics atomics | HIGH | Source clearly uses `atomic<double>`; bit-pack fix is local. |
-| Swift app fixes | MEDIUM | Implementation is simple; private `lastMetricsAt` may need a small test hook. |
-| Release script/CI fixes | HIGH | Script/workflow locations are direct and existing tests are extensible. |
+| Stack | HIGH | Existing stack is sufficient. |
+| Features | HIGH | User scope is clear and narrow. |
+| Architecture | HIGH | Release confidence should layer on existing lifecycle and scripts. |
+| Pitfalls | HIGH | Prior milestones already identified installed-sync, secrets, and release drift as real risks. |
+
+## Sources
+
+### Primary
+
+- GitHub Docs: repository READMEs, security policies, secret scanning, and
+  release management.
+- Apple Developer Documentation: notarizing and distributing macOS software
+  outside the Mac App Store.
+- Open Source Guides: open-source project README, licensing, contribution, and
+  community expectations.
+- Local checks on 2026-06-28: repo visibility is public; GitHub latest release is
+  `v0.10.0`; `.planning/` remains ignored; working tree has unrelated modified
+  source/script/test files.
 
 ---
-*Research summary for: APM44 Bridge v0.6 Public Release Safety Fixes*
-*Researched: 2026-06-13*
+*Research completed: 2026-06-28*
+*Ready for roadmap: yes*

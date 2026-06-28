@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Open Source Release Confidence
 status: planning
-last_updated: "2026-06-28T12:06:50.899Z"
-last_activity: 2026-06-28
+last_updated: "2026-06-28T12:20:00.000Z"
+last_activity: 2026-06-28 - v1.1 roadmap drafted and awaiting approval
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,20 +17,20 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-14)
+See: .planning/PROJECT.md (updated 2026-06-28)
 
 **Core value:** A producer can start monitoring once and trust Cubase at 44.1
 kHz to keep playing through USB-C AirPods at 48 kHz without silent wedges or
 mystery relaunches.
 
-**Current focus:** Milestone complete
+**Current focus:** v1.1 Open Source Release Confidence roadmap approval
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 42 (draft) - App Quit Control
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-28 — Milestone v1.1 started
+Status: Roadmap drafted; awaiting approval
+Last activity: 2026-06-28 - v1.1 requirements and roadmap drafted
 
 ## Performance Metrics
 
@@ -188,6 +188,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - v1.0 closeout: Full local CI passed, installed-sync dry-run passed, and live
   HAL driver/ring proof was recorded as operator-owned until the current driver
   is reinstalled/reloaded.
+
+- v1.1 roadmap draft: Phase 42 covers the visible Quit UI and graceful app exit;
+  Phase 43 covers public docs/repo surface; Phase 44 covers secret/security,
+  CI, installed-sync, and artifact release gates; Phase 45 covers latest GitHub
+  release publication closure.
 
 ### Pending Todos
 
