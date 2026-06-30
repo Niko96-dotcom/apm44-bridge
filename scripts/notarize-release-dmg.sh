@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${APM44_VERSION:-0.10.0}"
+VERSION="${APM44_VERSION:-0.11.0}"
 DMG="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 PROFILE="${NOTARY_PROFILE:-AC_NOTARY}"
 
@@ -20,4 +20,10 @@ require_notary_accepted "$DMG" "$PROFILE" "DMG"
 echo "Stapling DMG..."
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
+echo "Writing DMG checksum..."
+(
+  cd "$(dirname "$DMG")"
+  shasum -a 256 "$(basename "$DMG")" >"$(basename "$DMG").sha256"
+)
+echo "Checksum ready: $DMG.sha256"
 echo "Notarized DMG ready: $DMG"

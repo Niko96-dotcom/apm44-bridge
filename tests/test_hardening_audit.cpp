@@ -27,6 +27,20 @@ bool Contains(const std::string& haystack, const std::string& needle) {
   return haystack.find(needle) != std::string::npos;
 }
 
+std::string SliceBetween(const std::string& source,
+                         const std::string& begin,
+                         const std::string& end) {
+  const auto beginPos = source.find(begin);
+  if (beginPos == std::string::npos) {
+    return {};
+  }
+  const auto endPos = source.find(end, beginPos);
+  if (endPos == std::string::npos) {
+    return source.substr(beginPos);
+  }
+  return source.substr(beginPos, endPos - beginPos);
+}
+
 }  // namespace
 
 TEST_CASE("MmapShmRing closed ring returns zero safely", "[hardening_audit]") {
@@ -57,13 +71,10 @@ TEST_CASE("PlanarRingBuffer drop-input overrun preserves consumer-visible fill",
   const float* in[2] = {ch0, ch1};
   REQUIRE(ring.push(in, 3) == 3);
 
-  float drop0[1] = {};
-  float drop1[1] = {};
-  float* dropScratch[2] = {drop0, drop1};
   const float new0[2] = {90, 91};
   const float new1[2] = {92, 93};
   const float* incoming[2] = {new0, new1};
-  const bool inputOverrun = apm44::PushDroppingNewInput(ring, dropScratch, incoming, 2);
+  const bool inputOverrun = apm44::PushDroppingNewInput(ring, incoming, 2);
 
   // Overrun was reported to the caller, fill preserved at 3 (no producer-side pop).
   REQUIRE(inputOverrun);
@@ -130,6 +141,7 @@ TEST_CASE("BridgeInputOverrun has no producer-side drift dependency",
 
   REQUIRE_FALSE(Contains(source, "DriftController"));
   REQUIRE_FALSE(Contains(source, "notifyOverrun"));
+  REQUIRE_FALSE(Contains(source, "dropScratch"));
   REQUIRE(Contains(source, "inline bool PushDroppingNewInput"));
   REQUIRE(Contains(source, "return accepted < frames;"));
 }
@@ -168,4 +180,44 @@ TEST_CASE("mono-lane pending state cites serialized IO callback contract",
   REQUIRE(Contains(header, "pendingLanes_"));
   REQUIRE(Contains(libasplDevice, "They are always invoked on realtime thread, serialized."));
   REQUIRE(Contains(libasplSource, "std::lock_guard ioLock(ioMutex_);"));
+}
+
+TEST_CASE("app quit control routes through app lifecycle without HAL mutation",
+          "[hardening_audit][QUIT-02][QUIT-03]") {
+  const std::string manager = ReadFile("App/APM44Bridge/BridgeProcessManager.swift");
+  const std::string view = ReadFile("App/APM44Bridge/MenuContentView.swift");
+  const std::string quitMethod =
+      SliceBetween(manager, "func quitApplication() async", "private func initiateStop");
+  const std::string quitButton =
+      SliceBetween(view, "Task { await manager.quitApplication() }",
+                   ".disabled(manager.isTransitioning)");
+
+  REQUIRE(Contains(manager, "func quitApplication() async"));
+  REQUIRE(Contains(manager, "await stopAsync()"));
+  REQUIRE(Contains(manager, "applicationTerminator()"));
+  REQUIRE(Contains(view, "Label(\"Quit APM44 Bridge\", systemImage: \"power\")"));
+  REQUIRE_FALSE(Contains(quitMethod, "install-driver"));
+  REQUIRE_FALSE(Contains(quitMethod, "uninstall"));
+  REQUIRE_FALSE(Contains(quitMethod, "reload"));
+  REQUIRE_FALSE(Contains(quitButton, "install-driver"));
+  REQUIRE_FALSE(Contains(quitButton, "uninstall"));
+  REQUIRE_FALSE(Contains(quitButton, "reload"));
+}
+
+TEST_CASE("public release hygiene keeps planning and private artifacts out of git",
+          "[hardening_audit][PUB-04][SEC-01]") {
+  const std::string gitignore = ReadFile(".gitignore");
+  const std::string releaseValidation = ReadFile("docs/release-validation.md");
+  const std::string prTemplate = ReadFile(".github/pull_request_template.md");
+  const std::string changelog = ReadFile("CHANGELOG.md");
+
+  REQUIRE(Contains(gitignore, ".planning/"));
+  REQUIRE(Contains(releaseValidation, "Public tree hygiene"));
+  REQUIRE(Contains(releaseValidation, "^\\.planning/"));
+  REQUIRE(Contains(releaseValidation, "(^|/)\\.DS_Store$"));
+  REQUIRE(Contains(releaseValidation, "\\.(p8|p12|pem|key)$"));
+  REQUIRE(Contains(releaseValidation, "Expected result: no output."));
+  REQUIRE(Contains(releaseValidation, "Public release evidence belongs in"));
+  REQUIRE(Contains(prTemplate, "No `.planning/`, `.DS_Store`, `.env*`, notary logs"));
+  REQUIRE(Contains(changelog, "local GSD planning history is kept out of the"));
 }

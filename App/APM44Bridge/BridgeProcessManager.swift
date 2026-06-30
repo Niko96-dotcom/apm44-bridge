@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Darwin
 
@@ -51,6 +52,7 @@ final class BridgeProcessManager: ObservableObject {
 
     private let processLauncher: ProcessLaunching
     private let binaryURLOverride: URL?
+    private let applicationTerminator: @MainActor () -> Void
 
     let settings: BridgeSettings
 
@@ -65,11 +67,13 @@ final class BridgeProcessManager: ObservableObject {
     init(
         settings: BridgeSettings,
         processLauncher: ProcessLaunching? = nil,
-        binaryURLOverride: URL? = nil
+        binaryURLOverride: URL? = nil,
+        applicationTerminator: @escaping @MainActor () -> Void = { NSApplication.shared.terminate(nil) }
     ) {
         self.settings = settings
         self.processLauncher = processLauncher ?? LiveProcessLauncher()
         self.binaryURLOverride = binaryURLOverride
+        self.applicationTerminator = applicationTerminator
     }
 
     var binaryURL: URL? { binaryURLOverride ?? BridgeBinaryLocator.resolve() }
@@ -272,6 +276,11 @@ final class BridgeProcessManager: ObservableObject {
             lastStopReason = nil
             clearPipeHandlers()
         }
+    }
+
+    func quitApplication() async {
+        await stopAsync()
+        applicationTerminator()
     }
 
     private func initiateStop(reason: StopReason) {

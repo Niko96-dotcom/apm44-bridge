@@ -12,7 +12,7 @@ sessions at **44.1 kHz** while monitoring through **AirPods Max USB-C at
 Production path:
 
 ```text
-DAW / Cubase / Logic / Ableton
+Cubase 15 / DAW at 44.1 kHz
   -> APM44 Bridge HAL output device at 44.1 kHz
   -> apm44-bridge user-space daemon
   -> AirPods Max USB-C at 48 kHz
@@ -22,13 +22,18 @@ The headphones are not retuned to 44.1 kHz. APM44 Bridge presents a virtual
 44.1 kHz Core Audio output device upstream, resamples in user space, handles
 clock drift, and plays to the physical 48 kHz endpoint.
 
+The v1.1 release-confidence target is **Cubase 15** with **AirPods Max over
+USB-C**. Logic Pro and Ableton Live remain documented matrix targets, but they
+are not broader release claims until their hardware/operator validation is
+recorded.
+
 ## Status
 
 | Component | Status |
 |-----------|--------|
 | HAL driver `APM44Bridge.driver` | 44.1 kHz virtual output device |
 | Bridge daemon `apm44-bridge` | libsamplerate conversion and drift control |
-| Menu bar app `APM44 Bridge` | virtual-device mode, latency presets, first-run checks |
+| Menu bar app `APM44 Bridge` | virtual-device mode, latency presets, first-run checks, visible Quit control |
 | Release packaging | Developer ID signing, DMG-primary public release, maintainer-only PKG scripts |
 
 ## Install

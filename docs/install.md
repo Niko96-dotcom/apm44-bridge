@@ -1,6 +1,8 @@
 # Installing APM44 Bridge (end users)
 
-APM44 Bridge is a **macOS menu bar app** plus a **HAL audio driver**. Producers run Cubase (or another DAW) at **44.1 kHz** into **APM44 Bridge**, and hear monitoring on **AirPods Max USB-C at 48 kHz**.
+APM44 Bridge is a **macOS menu bar app** plus a **HAL audio driver**. The v1.1
+validation anchor is Cubase 15 at **44.1 kHz** into **APM44 Bridge**, with
+monitoring on **AirPods Max USB-C at 48 kHz**.
 
 ## What you download
 
@@ -8,8 +10,8 @@ From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
 
 | Artifact | Use when |
 |----------|----------|
-| **`APM44Bridge-0.10.0.dmg`** | Current DMG-primary public release artifact; run **Install APM44 Bridge.command** inside the DMG |
-| **`APM44Bridge-0.10.0.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
+| **`APM44Bridge-0.11.0.dmg`** | Current DMG-primary public release artifact; run **Install APM44 Bridge.command** inside the DMG |
+| **`APM44Bridge-0.11.0.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
 
 Maintainer build: `bash scripts/release-all.sh` produces the signed,
 notarized, stapled DMG. The final DMG is packaged after the inner app and HAL
@@ -59,12 +61,17 @@ After the installer finishes:
 4. Click the **headphones** icon in the menu bar (check the `…` overflow if the bar is crowded).
 5. Choose **AirPods** output → **Start**.
 6. In **Cubase**: Studio Setup → driver **APM44 Bridge** @ 44.1 kHz; Control Room Monitor L/R → **APM44 Bridge**.
+7. To leave the app without changing the installed driver, use **Quit APM44
+   Bridge** in the menu bar panel.
 
 Full Cubase steps: [first-run-cubase.md](first-run-cubase.md).
 
 ## No Dock icon?
 
 The app is **menu bar only** (by design). It does not appear in the Dock. Use the **headphones** menu bar icon.
+
+Quit closes only the app and any app-owned bridge process. It does not uninstall
+the HAL driver, reload Core Audio, or remove the virtual audio device.
 
 ## Latency / clicks
 

@@ -94,3 +94,19 @@ TEST_CASE("MmapShmRing popToPlanar feeds planar buffer", "[mmap_shm_ring]") {
   consumer.close();
   shm_unlink(ringName.c_str());
 }
+
+TEST_CASE("MmapShmRing clamps impossible shared-memory fill counts", "[mmap_shm_ring]") {
+  const std::string ringName = TestRingName('c');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(8));
+
+  producer.header()->write_index.store(100, std::memory_order_relaxed);
+  producer.header()->read_index.store(0, std::memory_order_relaxed);
+
+  float interleaved[16] = {};
+  REQUIRE(producer.pushInterleaved(interleaved, 1) == 0);
+  REQUIRE(producer.popInterleaved(interleaved, 16) == 7);
+
+  producer.close();
+  shm_unlink(ringName.c_str());
+}

@@ -59,8 +59,8 @@ class BridgeEngine {
   void onOutput(float* const channels[2], std::size_t frames);
 
   // Scratch exposed for interleaved HAL buffer conversion (IOProc only).
-  float* inputScratch0() { return inputDropScratch0_.data(); }
-  float* inputScratch1() { return inputDropScratch1_.data(); }
+  float* inputScratch0() { return inputScratch0_.data(); }
+  float* inputScratch1() { return inputScratch1_.data(); }
   float* outputScratch0() { return outputScratch0_.data(); }
   float* outputScratch1() { return outputScratch1_.data(); }
 
@@ -79,8 +79,8 @@ class BridgeEngine {
 
   std::vector<float> outputScratch0_;
   std::vector<float> outputScratch1_;
-  std::vector<float> inputDropScratch0_;
-  std::vector<float> inputDropScratch1_;
+  std::vector<float> inputScratch0_;
+  std::vector<float> inputScratch1_;
 
   std::atomic<uint64_t> xruns_{0};
   std::atomic<uint64_t> inputOverruns_{0};

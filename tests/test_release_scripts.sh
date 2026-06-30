@@ -306,6 +306,30 @@ run_release_all_notary_ready_sequence() {
   assert_contains "$LOG" "bash scripts/notarize-release-dmg.sh"
 }
 
+run_dmg_checksum_artifact_check() {
+  local out="$TMP/dmg-checksum.out"
+  rm -f "$DMG.sha256"
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_NOTARY_MODE=accepted \
+    NOTARY_PROFILE=TEST_PROFILE \
+    APM44_DMG_PATH="$DMG" \
+    /bin/bash "$ROOT/scripts/notarize-release-dmg.sh" >"$out" 2>&1
+
+  assert_contains "$LOG" "stapler validate"
+  assert_contains "$out" "Checksum ready: $DMG.sha256"
+  if [[ ! -f "$DMG.sha256" ]]; then
+    echo "expected DMG checksum artifact: $DMG.sha256" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$DMG.sha256" "$(basename "$DMG")"
+  (cd "$(dirname "$DMG")" && shasum -a 256 -c "$(basename "$DMG").sha256" >/dev/null)
+}
+
 # DIST-01: enforce that inner app/driver are stapled before the final DMG is packaged,
 # and that the final DMG is notarized after it is built from the stapled artifacts.
 run_dist_01_staple_before_dmg_order() {
@@ -532,9 +556,13 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
   assert_not_contains "$release_doc" "build/Release/APM44Bridge.driver"
   assert_contains "$release_doc" "does not publish the public DMG"
 
-  assert_contains "$validation_doc" "current 0.10.0 DMG-primary distribution validation path"
-  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.10.0}.dmg'
+  assert_contains "$validation_doc" "current 0.11.0 DMG-primary distribution validation path"
+  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.11.0}.dmg'
   assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
+
+  assert_contains "$install_doc" "APM44Bridge-0.11.0.dmg.sha256"
+  assert_contains "$ROOT/scripts/notarize-release-dmg.sh" 'shasum -a 256 "$(basename "$DMG")"'
+  assert_contains "$ROOT/scripts/release-all.sh" "*.dmg.sha256"
 }
 
 run_codesign_verify_case() {
@@ -597,6 +625,8 @@ run_release_all_missing_credentials      # [REL-02]
 run_release_all_unnotarized_override     # [REL-02]
 
 run_release_all_notary_ready_sequence
+
+run_dmg_checksum_artifact_check        # [DOC-04]
 
 run_dist_01_staple_before_dmg_order      # [DIST-01]
 

@@ -33,6 +33,18 @@ bash scripts/rebuild-and-open-app.sh
 
 Or open `App/APM44Bridge.xcodeproj` in Xcode and run the **APM44 Bridge** scheme.
 
+## User controls
+
+The menu bar panel owns normal bridge lifecycle actions:
+
+- **Start** launches the bridge against the selected output device.
+- **Stop** stops app-owned bridge work.
+- **Restart** restarts the app-owned bridge path.
+- **Quit APM44 Bridge** stops app-owned bridge work, then exits the app.
+
+Quit is intentionally an app lifecycle action only. It does not install,
+uninstall, reload, or otherwise mutate the HAL driver.
+
 ## BlackHole
 
 Install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole/releases) separately and set **44.1 kHz** in Audio MIDI Setup. The app does not bundle BlackHole (GPL-3.0).

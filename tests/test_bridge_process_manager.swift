@@ -69,7 +69,8 @@ final class BridgeProcessManagerTests: XCTestCase {
     private func makeManager(
         launcher: MockProcessLauncher? = nil,
         executable: String = "/usr/bin/sleep",
-        launchArguments: [String] = ["3600"]
+        launchArguments: [String] = ["3600"],
+        applicationTerminator: @escaping @MainActor () -> Void = {}
     ) -> (BridgeProcessManager, BridgeSettings, MockProcessLauncher) {
         let mockLauncher = launcher ?? MockProcessLauncher()
         let settings = BridgeSettings()
@@ -77,7 +78,8 @@ final class BridgeProcessManagerTests: XCTestCase {
         let manager = BridgeProcessManager(
             settings: settings,
             processLauncher: mockLauncher,
-            binaryURLOverride: URL(fileURLWithPath: executable)
+            binaryURLOverride: URL(fileURLWithPath: executable),
+            applicationTerminator: applicationTerminator
         )
         manager.setDevicesForTesting([testDevice])
         manager.testDeviceListOverride = [testDevice]
@@ -275,6 +277,60 @@ final class BridgeProcessManagerTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(manager.state, .idle)
         XCTAssertEqual(manager.retryGeneration, generationBefore)
+    }
+
+    func testQuitApplicationStopsRunningBridgeBeforeTerminating() async {
+        var didTerminate = false
+        let (manager, _, launcher) = makeManager {
+            didTerminate = true
+        }
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        let quitTask = Task { await manager.quitApplication() }
+        for _ in 0..<200 {
+            if case .stopping = manager.state { break }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+
+        XCTAssertEqual(manager.state, .stopping)
+        XCTAssertEqual(manager.lastStopReason, .user)
+        XCTAssertFalse(didTerminate)
+
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await quitTask.value
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertTrue(didTerminate)
+    }
+
+    func testQuitApplicationCancelsReconnectWithoutLaunchingOrReloadingDriver() async {
+        var didTerminate = false
+        let (manager, _, launcher) = makeManager {
+            didTerminate = true
+        }
+        manager.testRetryDelays = [60]
+
+        manager.start()
+        manager.testTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        guard case .reconnecting = manager.state else {
+            XCTFail("Expected reconnecting before quit, got \(manager.state)")
+            return
+        }
+        let makeCountBeforeQuit = launcher.makeCount
+
+        await manager.quitApplication()
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, makeCountBeforeQuit)
+        XCTAssertTrue(didTerminate)
     }
 
     func testHotplugWhileIdleRefreshesDevices() async {

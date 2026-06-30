@@ -199,7 +199,8 @@ TEST_CASE("ShmIoHandler rejects unrelated mono lane timestamp mismatches",
   shm_unlink(ringName.c_str());
 }
 
-TEST_CASE("ShmIoHandler ignores mixed output after IO stops", "[shm_io_handler]") {
+TEST_CASE("ShmIoHandler rearms on mixed output after transient IO stop",
+          "[shm_io_handler]") {
   const std::string ringName = TestRingName('s');
   apm44::ShmIoHandler handler(ringName);
   REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
@@ -217,8 +218,53 @@ TEST_CASE("ShmIoHandler ignores mixed output after IO stops", "[shm_io_handler]"
   handler.OnProcessMixedOutput(nullptr, 0.0, 0.0, frames.data(), 3, 2);
 
   std::vector<float> out(frames.size());
+  REQUIRE(consumer.popInterleaved(out.data(), 3) == 3);
+  for (std::size_t i = 0; i < frames.size(); ++i) {
+    REQUIRE(out[i] == Catch::Approx(frames[i]).margin(1e-7f));
+  }
+
+  consumer.close();
+  shm_unlink(ringName.c_str());
+}
+
+TEST_CASE("ShmIoHandler clears stale mono lane when transient IO stop rearms",
+          "[shm_io_handler]") {
+  const std::string ringName = TestRingName('t');
+  apm44::ShmIoHandler handler(ringName);
+  REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+
+  auto context = std::make_shared<aspl::Context>();
+  aspl::DeviceParameters deviceParams;
+  deviceParams.SampleRate = apm44::kApm44DriverSampleRate;
+  deviceParams.ChannelCount = apm44::kApm44DriverChannelCount;
+  auto device = std::make_shared<aspl::Device>(context, deviceParams);
+  auto left = std::make_shared<apm44::Apm44OutputStream>(context, device, 1);
+  auto right = std::make_shared<apm44::Apm44OutputStream>(context, device, 2);
+
+  std::vector<float> staleLeft{0.10f, 0.20f, 0.30f};
+  std::vector<float> freshLeft{0.40f, 0.50f, 0.60f};
+  std::vector<float> freshRight{-0.40f, -0.50f, -0.60f};
+
+  handler.OnProcessMixedOutput(left, 0.0, 100.0, staleLeft.data(), 3, 1);
+  handler.OnStopIO();
+  handler.OnProcessMixedOutput(right, 0.0, 100.0, freshRight.data(), 3, 1);
+
+  std::vector<float> out(6);
   REQUIRE(consumer.popInterleaved(out.data(), 3) == 0);
 
+  handler.OnProcessMixedOutput(left, 0.0, 200.0, freshLeft.data(), 3, 1);
+  handler.OnProcessMixedOutput(right, 0.0, 200.0, freshRight.data(), 3, 1);
+
+  REQUIRE(consumer.popInterleaved(out.data(), 3) == 3);
+  for (std::size_t frame = 0; frame < 3; ++frame) {
+    REQUIRE(out[frame * 2 + 0] == Catch::Approx(freshLeft[frame]).margin(1e-7f));
+    REQUIRE(out[frame * 2 + 1] == Catch::Approx(freshRight[frame]).margin(1e-7f));
+  }
+
+  handler.OnStopIO();
   consumer.close();
   shm_unlink(ringName.c_str());
 }

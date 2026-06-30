@@ -220,6 +220,15 @@ struct MenuContentView: View {
                 .buttonStyle(.bordered)
                 .disabled(manager.isTransitioning || !canStart)
             }
+
+            Button {
+                Task { await manager.quitApplication() }
+            } label: {
+                Label("Quit APM44 Bridge", systemImage: "power")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(manager.isTransitioning)
         }
         .controlSize(.large)
         .accessibilityHint("Controls bridge process lifecycle")
@@ -461,6 +470,6 @@ struct MenuContentView: View {
 
 private extension Bundle {
     var shortVersion: String {
-        (infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.10.0"
+        (infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.11.0"
     }
 }

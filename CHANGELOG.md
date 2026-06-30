@@ -4,7 +4,22 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
-- No user-facing changes since 0.10.0.
+- No user-facing changes since 0.11.0.
+
+## 0.11.0 - 2026-06-30
+
+- Added a visible **Quit APM44 Bridge** control to the menu bar app. Quit stops
+  app-owned bridge work and exits the app without installing, uninstalling, or
+  reloading the HAL driver.
+- Hardened transient HAL restart handling and bounded shared-memory fill counts
+  so impossible producer state cannot inflate reads.
+- Tightened public release documentation around the v1.1 validation anchor:
+  Cubase 15 with AirPods Max over USB-C.
+- Regenerated the public DMG checksum after final DMG stapling so the uploaded
+  checksum always matches the Gatekeeper-assessed artifact.
+- Moved public release evidence toward `CHANGELOG.md` and
+  `docs/release-validation.md`; local GSD planning history is kept out of the
+  public release tree.
 
 ## 0.10.0 - 2026-06-15
 

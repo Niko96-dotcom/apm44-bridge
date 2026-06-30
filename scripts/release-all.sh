@@ -70,5 +70,5 @@ if [[ "$NOTARY_READY" == "1" ]]; then
 else
   echo "Local-only unnotarized artifacts:"
 fi
-ls -la build/signing/*.dmg build/signing/*.pkg 2>/dev/null || true
+ls -la build/signing/*.dmg build/signing/*.dmg.sha256 build/signing/*.pkg 2>/dev/null || true
 ls -la "build/Release/APM44 Bridge.app" build/Driver/APM44Bridge.driver

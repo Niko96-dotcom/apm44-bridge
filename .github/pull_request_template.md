@@ -12,4 +12,5 @@
 
 - [ ] No real-time audio callback allocations, locks, logging, or UI work added
 - [ ] No Apple Developer credentials, key IDs, issuer IDs, or private cert files committed
+- [ ] No `.planning/`, `.DS_Store`, `.env*`, notary logs, or certificate request artifacts committed
 - [ ] Docs updated for user-facing or release-flow changes

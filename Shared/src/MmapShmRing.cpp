@@ -268,12 +268,13 @@ float* MmapShmRing::samples() const {
 }
 
 std::size_t MmapShmRing::availableToRead() const {
-  if (!isMapped()) {
+  if (!isMapped() || capacityFrames_ == 0) {
     return 0;
   }
   const uint64_t w = header_->write_index.load(std::memory_order_acquire);
   const uint64_t r = header_->read_index.load(std::memory_order_acquire);
-  return static_cast<std::size_t>(w - r);
+  const std::size_t used = static_cast<std::size_t>(w - r);
+  return std::min(used, capacityFrames_ - 1);
 }
 
 std::size_t MmapShmRing::availableToWrite() const {

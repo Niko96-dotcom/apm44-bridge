@@ -139,8 +139,8 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
 
   outputScratch0_.resize(kMaxCallbackFrames);
   outputScratch1_.resize(kMaxCallbackFrames);
-  inputDropScratch0_.resize(kMaxCallbackFrames);
-  inputDropScratch1_.resize(kMaxCallbackFrames);
+  inputScratch0_.resize(kMaxCallbackFrames);
+  inputScratch1_.resize(kMaxCallbackFrames);
   return true;
 }
 
@@ -149,8 +149,7 @@ double BridgeEngine::converterRatio() const {
 }
 
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
-  float* dropCh[2] = {inputDropScratch0_.data(), inputDropScratch1_.data()};
-  if (PushDroppingNewInput(ring_, dropCh, channels, frames)) {
+  if (PushDroppingNewInput(ring_, channels, frames)) {
     inputOverruns_.fetch_add(1, std::memory_order_relaxed);
   }
 }

@@ -44,6 +44,7 @@ class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestH
   };
 
   bool ensureRingReady();
+  void armFromRealtimeCallbackIfNeeded();
   static bool laneTimesMatch(const PendingLaneBlock& lhs, const PendingLaneBlock& rhs);
   void pushInterleaved(const Float32* frames, UInt32 frameCount);
   void pushMonoLane(const std::shared_ptr<aspl::Stream>& stream,

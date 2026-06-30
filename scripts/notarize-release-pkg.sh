@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${APM44_VERSION:-0.10.0}"
+VERSION="${APM44_VERSION:-0.11.0}"
 PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 PROFILE="${NOTARY_PROFILE:-AC_NOTARY}"
 

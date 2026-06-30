@@ -100,10 +100,8 @@ TEST_CASE("ProducerPushDroppingNewInputDropsUnacceptedAndNotifiesOverrun",
   float incCh0[4] = {9, 9, 9, 9};
   float incCh1[4] = {9, 9, 9, 9};
   const float* incIn[2] = {incCh0, incCh1};
-  float unusedDropScratch[2] = {};
-  float* dropScratch[2] = {unusedDropScratch, unusedDropScratch};
 
-  const bool inputOverrun = apm44::PushDroppingNewInput(ring, dropScratch, incIn, 4);
+  const bool inputOverrun = apm44::PushDroppingNewInput(ring, incIn, 4);
 
   REQUIRE(inputOverrun);
   // Consumer-visible fill is unchanged: 7 frames still pending read.
@@ -118,10 +116,8 @@ TEST_CASE("ProducerPathSucceedsWhenRingHasCapacity",
   float ch0[4] = {1, 2, 3, 4};
   float ch1[4] = {5, 6, 7, 8};
   const float* in[2] = {ch0, ch1};
-  float scratch[2] = {};
-  float* dropScratch[2] = {scratch, scratch};
 
-  const bool inputOverrun = apm44::PushDroppingNewInput(ring, dropScratch, in, 4);
+  const bool inputOverrun = apm44::PushDroppingNewInput(ring, in, 4);
 
   // No overrun, and the consumer can read exactly the 4 pushed frames.
   REQUIRE_FALSE(inputOverrun);

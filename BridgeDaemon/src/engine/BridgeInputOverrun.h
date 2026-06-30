@@ -16,11 +16,7 @@ namespace apm44 {
 //
 // The output consumer is the only path that may pop frames from the ring
 // (see `VirtualDeviceFeed`).
-//
-// `dropScratch` is retained in the helper shape for the existing call site in
-// `BridgeEngine.cpp`; it is no longer read.
 inline bool PushDroppingNewInput(PlanarRingBuffer& ring,
-                                 float* /*dropScratch*/[2],
                                  const float* const channels[2],
                                  std::size_t frames) {
   const std::size_t accepted = ring.push(channels, frames);

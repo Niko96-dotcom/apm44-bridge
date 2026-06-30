@@ -1,6 +1,6 @@
 # Release validation checklist
 
-This checklist is the current 0.10.0 DMG-primary distribution validation path.
+This checklist is the current 0.11.0 DMG-primary distribution validation path.
 It separates credential-free verification
 from Apple Developer credential checks so local-only artifacts are never
 confused with a public release.
@@ -63,6 +63,23 @@ bash scripts/release-all.sh
 6. Package the final DMG from those stapled inner artifacts.
 7. Notarize, staple, and validate the final public DMG.
 
+## Public tree hygiene
+
+Before tagging or publishing release assets, verify that the public Git tree
+does not include local planning state, macOS metadata, credential-shaped files,
+or private release logs:
+
+```bash
+git ls-files | rg '(^|/)\.DS_Store$|^\.planning/|(^|/)\.env($|\.)|\.(p8|p12|pem|key)$|notary-log.*\.json$|build/signing/cert-request/'
+```
+
+Expected result: no output.
+
+The local `.planning/` directory is for GSD workflow state only. Keep it ignored
+and untracked for public releases. Public release evidence belongs in
+`CHANGELOG.md`, `docs/release-validation.md`, GitHub release notes, and linked
+issues or PRs.
+
 ## Release-Mac validation commands
 
 Run these on the release Mac before tagging or uploading a public artifact:
@@ -86,8 +103,8 @@ bash scripts/release-all.sh
 bash scripts/codesign-verify-release.sh
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.10.0}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.10.0}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.11.0}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.11.0}.dmg"
 
 # 5. Installed app / HAL checks after installing from the DMG
 APM44_APP_PATH="/Applications/APM44 Bridge.app" bash scripts/verify-installed-sync.sh
@@ -101,7 +118,7 @@ Run this on the target Mac with USB-C AirPods Max and Cubase available:
 
 ```bash
 # 1. Clean install from the final DMG
-hdiutil attach "build/signing/APM44Bridge-${APM44_VERSION:-0.10.0}.dmg"
+hdiutil attach "build/signing/APM44Bridge-${APM44_VERSION:-0.11.0}.dmg"
 # Run "Install APM44 Bridge.command" from the mounted DMG.
 # Reboot once if Audio MIDI Setup does not show the HAL device after install.
 
@@ -130,11 +147,11 @@ For the DMG-primary public path, assess these artifacts after
 
 ```bash
 bash scripts/codesign-verify-release.sh
-codesign --verify --verbose "build/signing/APM44Bridge-${APM44_VERSION:-0.10.0}.dmg"
+codesign --verify --verbose "build/signing/APM44Bridge-${APM44_VERSION:-0.11.0}.dmg"
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.10.0}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.10.0}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.11.0}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.11.0}.dmg"
 ```
 
 The final command is the Gatekeeper assessment for the public DMG.
@@ -194,8 +211,8 @@ repackaging:
 
 ```bash
 bash scripts/codesign-verify-release.sh
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.10.0}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.10.0}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.11.0}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.11.0}.dmg"
 ```
 
 If hardware/operator evidence is needed for a final ship decision, run it on a
