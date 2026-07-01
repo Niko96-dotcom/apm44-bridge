@@ -514,6 +514,44 @@ run_release_all_notary_ready_sequence() {
   assert_contains "$LOG" "bash scripts/notarize-release-dmg.sh"
 }
 
+run_release_all_pkg_gate_sequence() {
+  local out="$TMP/release-all-pkg-gate.out"
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_NOTARY_HISTORY=ok \
+    /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
+
+  assert_contains "$LOG" "bash scripts/build-release-pkg.sh"
+  assert_contains "$LOG" "bash scripts/notarize-release-pkg.sh"
+  assert_not_contains "$out" "SKIP pkg"
+
+  local driver_validate_line
+  local pkg_build_line
+  local pkg_notarize_line
+  local package_only_line
+  local dmg_notarize_line
+  driver_validate_line="$(grep -n "xcrun stapler validate build/Driver/APM44Bridge.driver" "$LOG" | head -1 | cut -d: -f1)"
+  pkg_build_line="$(grep -n "bash scripts/build-release-pkg.sh" "$LOG" | head -1 | cut -d: -f1)"
+  pkg_notarize_line="$(grep -n "bash scripts/notarize-release-pkg.sh" "$LOG" | head -1 | cut -d: -f1)"
+  package_only_line="$(grep -n "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
+  dmg_notarize_line="$(grep -n "bash scripts/notarize-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
+
+  if [[ -z "$driver_validate_line" || -z "$pkg_build_line" || -z "$pkg_notarize_line" || -z "$package_only_line" || -z "$dmg_notarize_line" ]]; then
+    echo "release-all PKG gate: expected lines missing from log" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+
+  if [[ "$driver_validate_line" -ge "$pkg_build_line" || "$pkg_build_line" -ge "$pkg_notarize_line" || "$pkg_notarize_line" -ge "$package_only_line" || "$package_only_line" -ge "$dmg_notarize_line" ]]; then
+    echo "release-all PKG gate order is wrong" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+}
+
 run_dmg_checksum_artifact_check() {
   local out="$TMP/dmg-checksum.out"
   rm -f "$DMG.sha256"
@@ -893,6 +931,8 @@ run_release_all_missing_credentials      # [REL-02]
 run_release_all_unnotarized_override     # [REL-02]
 
 run_release_all_notary_ready_sequence
+
+run_release_all_pkg_gate_sequence
 
 run_pkg_identity_gate_cases
 

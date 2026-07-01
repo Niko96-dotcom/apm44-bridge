@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Full maintainer release: build, sign, notarize, and staple the public DMG.
-# Set APM44_BUILD_PKG=1 to also attempt the optional signed PKG path.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -45,23 +44,21 @@ if [[ "$NOTARY_READY" == "1" ]]; then
   xcrun stapler staple build/Driver/APM44Bridge.driver
   xcrun stapler validate build/Driver/APM44Bridge.driver
 
+  echo "== Build public pkg from stapled artifacts =="
+  bash scripts/build-release-pkg.sh
+
+  echo "== Notarize and validate public pkg =="
+  bash scripts/notarize-release-pkg.sh
+
   echo "== Package final DMG from stapled artifacts =="
   # DIST-01: package final DMG from stapled artifacts
   APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh
 
   echo "== Notarize DMG (primary distribution) =="
   bash scripts/notarize-release-dmg.sh
-
-  if [[ "${APM44_BUILD_PKG:-0}" == "1" ]]; then
-    echo "== Build pkg from stapled artifacts =="
-    bash scripts/build-release-pkg.sh
-    echo "== Notarize pkg =="
-    bash scripts/notarize-release-pkg.sh
-  else
-    echo "SKIP pkg: DMG is the public release artifact. Set APM44_BUILD_PKG=1 to build/notarize a PKG."
-  fi
 else
   echo "LOCAL-ONLY UNNOTARIZED: skipping notarization because APM44_ALLOW_UNNOTARIZED=1"
+  echo "LOCAL-ONLY UNNOTARIZED: skipping public PKG gate because APM44_ALLOW_UNNOTARIZED=1"
 fi
 
 echo ""
@@ -70,5 +67,5 @@ if [[ "$NOTARY_READY" == "1" ]]; then
 else
   echo "Local-only unnotarized artifacts:"
 fi
-ls -la build/signing/*.dmg build/signing/*.dmg.sha256 build/signing/*.pkg 2>/dev/null || true
+ls -la build/signing/*.dmg build/signing/*.dmg.sha256 build/signing/*.pkg build/signing/*.pkg.sha256 2>/dev/null || true
 ls -la "build/Release/APM44 Bridge.app" build/Driver/APM44Bridge.driver
