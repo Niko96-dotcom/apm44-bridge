@@ -86,11 +86,22 @@ mkdir -p "$SCRIPTS"
 ditto "$APP" "$PAYLOAD/Applications/APM44 Bridge.app"
 ditto "$DRIVER" "$PAYLOAD/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 
+cat > "$SCRIPTS/preinstall" <<'PRE'
+#!/bin/bash
+set -e
+rm -rf "/Applications/APM44 Bridge.app"
+rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+exit 0
+PRE
+chmod +x "$SCRIPTS/preinstall"
+
 cat > "$SCRIPTS/postinstall" <<'POST'
 #!/bin/bash
 set -e
 chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
 xattr -cr /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver 2>/dev/null || true
+[[ -d "/Applications/APM44 Bridge.app" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
+[[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
 DRIVER_BIN="$(find /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS -maxdepth 1 -type f | head -1)"
 if [[ -z "$DRIVER_BIN" ]]; then
   echo "APM44Bridge.driver executable missing after install" >&2

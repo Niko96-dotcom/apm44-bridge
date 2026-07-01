@@ -405,6 +405,21 @@ run_pkg_identity_gate_cases() {
   run_pkg_builder_case one success "pkg-identity-one"
 }
 
+run_pkg_replacement_script_check() {
+  run_pkg_builder_case one success "pkg-replacement-scripts"
+
+  local preinstall="$ROOT/build/signing/pkg-scripts/preinstall"
+  local postinstall="$ROOT/build/signing/pkg-scripts/postinstall"
+  [[ -x "$preinstall" ]] || { echo "expected executable preinstall at $preinstall" >&2; exit 1; }
+  [[ -x "$postinstall" ]] || { echo "expected executable postinstall at $postinstall" >&2; exit 1; }
+
+  assert_contains "$preinstall" 'rm -rf "/Applications/APM44 Bridge.app"'
+  assert_contains "$preinstall" 'rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"'
+  assert_contains "$postinstall" 'chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver'
+  assert_contains "$postinstall" 'APM44 Bridge.app missing after install'
+  assert_contains "$postinstall" 'APM44Bridge.driver missing after install'
+}
+
 run_notary_case() {
   local script="$1"
   local artifact_env="$2"
@@ -935,6 +950,8 @@ run_release_all_notary_ready_sequence
 run_release_all_pkg_gate_sequence
 
 run_pkg_identity_gate_cases
+
+run_pkg_replacement_script_check
 
 run_dmg_checksum_artifact_check        # [DOC-04]
 
