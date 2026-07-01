@@ -144,7 +144,7 @@ if [[ -n "$BIN" ]]; then
   else
     warn "executable not Developer ID signed — run scripts/sign-release.sh before production install"
   fi
-  if grep -q 'Runtime Version' <<<"$CS_INFO"; then
+  if grep -q 'Runtime Version' <<<"$CS_INFO" || grep -Eq 'flags=.*runtime' <<<"$CS_INFO"; then
     pass "executable has Hardened Runtime"
   else
     warn "Hardened Runtime not detected on executable"

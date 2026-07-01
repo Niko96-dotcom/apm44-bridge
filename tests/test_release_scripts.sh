@@ -126,6 +126,10 @@ if [[ "${1:-}" == "-dv" ]]; then
       echo "Authority=Developer ID Application: APM44 Test Org (LOCALTEAM)" >&2
       echo "Runtime Version=15.0.0" >&2
       ;;
+    runtime-flag)
+      echo "Authority=Developer ID Application: APM44 Test Org (LOCALTEAM)" >&2
+      echo "CodeDirectory v=20200 flags=0x10000(runtime)" >&2
+      ;;
     no-runtime)
       echo "Authority=Developer ID Application: APM44 Test Org (LOCALTEAM)" >&2
       ;;
@@ -1217,6 +1221,7 @@ run_doc_truth_check # [DOC-01][DOC-02][DOC-03]
 run_public_release_hygiene_check # [DOC-04]
 
 run_codesign_verify_case strict-ok 0 success "codesign-strict-ok"
+run_codesign_verify_case runtime-flag 0 success "codesign-runtime-flag"  # [REL-01]
 run_codesign_verify_case no-runtime 0 failure "codesign-no-runtime"        # [REL-01]
 run_codesign_verify_case no-developer-id 0 failure "codesign-no-dev-id"    # [REL-02]
 run_codesign_verify_case ad-hoc 1 success "codesign-local-override"        # [REL-01][REL-02]

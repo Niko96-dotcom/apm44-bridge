@@ -40,7 +40,7 @@ check() {
 
   local info
   info="$(codesign -dv --verbose=2 "$path" 2>&1 || true)"
-  if grep -q 'Runtime Version' <<<"$info"; then
+  if grep -q 'Runtime Version' <<<"$info" || grep -Eq 'flags=.*runtime' <<<"$info"; then
     echo "OK: $label hardened runtime"
   elif [[ "$ALLOW_LOCAL_CODESIGN" == "1" ]]; then
     echo "WARN: $label — hardened runtime flag not detected (APM44_ALLOW_LOCAL_CODESIGN=1)"
