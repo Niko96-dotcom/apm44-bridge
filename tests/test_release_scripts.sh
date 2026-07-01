@@ -538,6 +538,66 @@ run_dmg_checksum_artifact_check() {
   (cd "$(dirname "$DMG")" && shasum -a 256 -c "$(basename "$DMG").sha256" >/dev/null)
 }
 
+run_pkg_validation_order_check() {
+  local out="$TMP/pkg-validation-order.out"
+  rm -f "$PKG.sha256"
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_NOTARY_MODE=accepted \
+    NOTARY_PROFILE=TEST_PROFILE \
+    APM44_PKG_PATH="$PKG" \
+    /bin/bash "$ROOT/scripts/notarize-release-pkg.sh" >"$out" 2>&1
+
+  assert_contains "$LOG" "notarytool submit"
+  assert_contains "$LOG" "stapler staple"
+  assert_contains "$LOG" "stapler validate"
+  assert_contains "$LOG" "pkgutil --check-signature $PKG"
+  assert_contains "$LOG" "spctl --assess --type install --verbose=4 $PKG"
+  assert_contains "$out" "Checksum ready: $PKG.sha256"
+  [[ -f "$PKG.sha256" ]] || { echo "expected package checksum artifact: $PKG.sha256" >&2; cat "$out" >&2; exit 1; }
+  (cd "$(dirname "$PKG")" && shasum -a 256 -c "$(basename "$PKG").sha256" >/dev/null)
+
+  local submit_line
+  local staple_line
+  local validate_line
+  local final_pkgutil_line
+  local spctl_line
+  submit_line="$(grep -n "notarytool submit" "$LOG" | head -1 | cut -d: -f1)"
+  staple_line="$(grep -n "stapler staple" "$LOG" | head -1 | cut -d: -f1)"
+  validate_line="$(grep -n "stapler validate" "$LOG" | head -1 | cut -d: -f1)"
+  final_pkgutil_line="$(grep -n "pkgutil --check-signature $PKG" "$LOG" | tail -1 | cut -d: -f1)"
+  spctl_line="$(grep -n "spctl --assess --type install" "$LOG" | head -1 | cut -d: -f1)"
+
+  if [[ -z "$submit_line" || -z "$staple_line" || -z "$validate_line" || -z "$final_pkgutil_line" || -z "$spctl_line" ]]; then
+    echo "PKG validation order: expected lines missing from log" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+  if [[ "$submit_line" -ge "$staple_line" || "$staple_line" -ge "$validate_line" || "$validate_line" -ge "$final_pkgutil_line" || "$final_pkgutil_line" -ge "$spctl_line" ]]; then
+    echo "PKG validation order is wrong" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+
+  rm -f "$PKG.sha256"
+  reset_log
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_NOTARY_MODE=rejected \
+    NOTARY_PROFILE=TEST_PROFILE \
+    APM44_PKG_PATH="$PKG" \
+    /bin/bash "$ROOT/scripts/notarize-release-pkg.sh" >"$out" 2>&1; then
+    echo "PKG validation order: rejected notarization should fail" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  [[ ! -f "$PKG.sha256" ]] || { echo "rejected package notarization must not create checksum" >&2; cat "$out" >&2; exit 1; }
+}
+
 # DIST-01: enforce that inner app/driver are stapled before the final DMG is packaged,
 # and that the final DMG is notarized after it is built from the stapled artifacts.
 run_dist_01_staple_before_dmg_order() {
@@ -837,6 +897,8 @@ run_release_all_notary_ready_sequence
 run_pkg_identity_gate_cases
 
 run_dmg_checksum_artifact_check        # [DOC-04]
+
+run_pkg_validation_order_check
 
 run_dist_01_staple_before_dmg_order      # [DIST-01]
 

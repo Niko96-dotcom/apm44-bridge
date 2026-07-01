@@ -15,25 +15,37 @@ if [[ ! -f "$PKG" ]]; then
   exit 1
 fi
 
-INSTALLER_ID="${INSTALLER_SIGN_ID:-}"
-if [[ -z "$INSTALLER_ID" ]]; then
-  if identities="$(security find-identity -v -p basic 2>/dev/null)"; then
-    INSTALLER_ID="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' | sed -n '1p')"
-  else
-    INSTALLER_ID=""
+require_developer_id_installer_signature() {
+  echo "Checking pkg signature..."
+  local signature
+  if ! signature="$(pkgutil --check-signature "$PKG" 2>&1)"; then
+    printf '%s\n' "$signature" >&2
+    echo "error: pkg signature check failed - run scripts/build-release-pkg.sh with INSTALLER_SIGN_ID" >&2
+    exit 1
   fi
-fi
+  if ! printf '%s\n' "$signature" | grep -q "Developer ID Installer"; then
+    printf '%s\n' "$signature" >&2
+    echo "error: pkg is not signed by a Developer ID Installer identity - run scripts/build-release-pkg.sh with INSTALLER_SIGN_ID" >&2
+    exit 1
+  fi
+}
 
-if [[ -z "$INSTALLER_ID" ]] || ! security find-identity -v | grep -qF "$INSTALLER_ID"; then
-  echo "error: pkg is unsigned — create a Developer ID Installer cert in Apple Developer," >&2
-  echo "  then set INSTALLER_SIGN_ID and run scripts/build-release-pkg.sh before notarizing." >&2
-  echo "  Or ship the notarized DMG: bash scripts/notarize-release-dmg.sh" >&2
-  exit 1
-fi
-
+require_developer_id_installer_signature
 require_notary_accepted "$PKG" "$PROFILE" "pkg"
 
 echo "Stapling pkg..."
 xcrun stapler staple "$PKG"
 xcrun stapler validate "$PKG"
+
+require_developer_id_installer_signature
+
+echo "Assessing pkg with Gatekeeper..."
+spctl --assess --type install --verbose=4 "$PKG"
+
+echo "Writing pkg checksum..."
+(
+  cd "$(dirname "$PKG")"
+  shasum -a 256 "$(basename "$PKG")" >"$(basename "$PKG").sha256"
+)
+echo "Checksum ready: $PKG.sha256"
 echo "Notarized pkg ready: $PKG"
