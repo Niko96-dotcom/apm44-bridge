@@ -7,6 +7,7 @@ CONFIG="${APM44_BUILD_CONFIG:-Release}"
 VERSION="${APM44_VERSION:-0.11.1}"
 PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 UNSIGNED_PKG="${PKG%.pkg}-unsigned.pkg"
+LOCAL_UNSIGNED_PKG="${PKG%.pkg}-local-unsigned.pkg"
 PAYLOAD="$ROOT/build/signing/pkg-root"
 INSTALLER_ID="${INSTALLER_SIGN_ID:-}"
 G2_CA_URL="https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer"
@@ -28,17 +29,42 @@ fi
 
 resolve_installer_id() {
   if [[ -n "$INSTALLER_ID" ]]; then
+    if [[ "$INSTALLER_ID" != Developer\ ID\ Installer:* ]] || ! security find-identity -v -p basic 2>/dev/null | grep -qF "$INSTALLER_ID"; then
+      echo "error: INSTALLER_SIGN_ID must name a valid Developer ID Installer identity" >&2
+      echo "  set INSTALLER_SIGN_ID=\"Developer ID Installer: Name (TEAMID)\"" >&2
+      return 2
+    fi
     printf '%s\n' "$INSTALLER_ID"
-    return
+    return 0
   fi
 
   local identities
-  identities="$(security find-identity -v -p basic 2>/dev/null | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' || true)"
+  identities="$(security find-identity -v -p basic 2>/dev/null | sed -n 's/.*"\(Developer ID Installer: .*\)".*/\1/p' | sed '/^$/d' || true)"
   local count
-  count="$(printf '%s\n' "$identities" | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [[ -z "$identities" ]]; then
+    count=0
+  else
+    count="$(printf '%s\n' "$identities" | wc -l | tr -d ' ')"
+  fi
   if [[ "$count" == "1" ]]; then
     printf '%s\n' "$identities"
+    return 0
   fi
+
+  if [[ "${APM44_ALLOW_UNSIGNED_PKG:-0}" == "1" ]]; then
+    return 1
+  fi
+
+  if [[ "$count" == "0" ]]; then
+    echo "error: Developer ID Installer identity is required for public PKG output" >&2
+    echo "  run scripts/create-installer-csr.sh, import with scripts/install-installer-cert.sh," >&2
+    echo "  or set INSTALLER_SIGN_ID=\"Developer ID Installer: Name (TEAMID)\"" >&2
+  else
+    echo "error: multiple Developer ID Installer identities found" >&2
+    printf '%s\n' "$identities" >&2
+    echo "  set INSTALLER_SIGN_ID=\"Developer ID Installer: Name (TEAMID)\"" >&2
+  fi
+  return 2
 }
 
 APP="$ROOT/build/$CONFIG/APM44 Bridge.app"
@@ -80,6 +106,7 @@ POST
 chmod +x "$SCRIPTS/postinstall"
 
 mkdir -p "$(dirname "$PKG")"
+rm -f "$PKG" "$UNSIGNED_PKG" "$LOCAL_UNSIGNED_PKG"
 pkgbuild --root "$PAYLOAD" --scripts "$SCRIPTS" \
   --identifier com.niko.apm44.pkg --version "$VERSION" \
   "$UNSIGNED_PKG"
@@ -87,17 +114,27 @@ pkgbuild --root "$PAYLOAD" --scripts "$SCRIPTS" \
 curl -fsSL -o "$G2_CA" "$G2_CA_URL"
 security import "$G2_CA" -k ~/Library/Keychains/login.keychain-db 2>/dev/null || true
 
-INSTALLER_ID="$(resolve_installer_id)"
-if [[ -n "$INSTALLER_ID" ]] && security find-identity -v -p basic 2>/dev/null | grep -qF "$INSTALLER_ID"; then
+if INSTALLER_ID="$(resolve_installer_id)"; then
   productsign --sign "$INSTALLER_ID" "$UNSIGNED_PKG" "$PKG"
   rm -f "$UNSIGNED_PKG"
   echo "Signed pkg: $PKG"
 else
-  mv "$UNSIGNED_PKG" "$PKG"
-  echo "WARN: no Developer ID Installer identity — set INSTALLER_SIGN_ID or run scripts/install-installer-cert.sh first"
+  resolve_status=$?
+  if [[ "$resolve_status" == "1" && "${APM44_ALLOW_UNSIGNED_PKG:-0}" == "1" ]]; then
+    mv "$UNSIGNED_PKG" "$LOCAL_UNSIGNED_PKG"
+    echo "LOCAL-ONLY UNSIGNED PKG: $LOCAL_UNSIGNED_PKG"
+    echo "This package is not publishable. Configure Developer ID Installer signing for public PKG output."
+  else
+    rm -f "$UNSIGNED_PKG"
+    exit "$resolve_status"
+  fi
 fi
 
 echo ""
-echo "PKG created: $PKG"
-echo "Install: sudo installer -pkg \"$PKG\" -target /"
-echo "Notarize: bash scripts/notarize-release-pkg.sh"
+if [[ -f "$PKG" ]]; then
+  echo "PKG created: $PKG"
+  echo "Install: sudo installer -pkg \"$PKG\" -target /"
+  echo "Notarize: bash scripts/notarize-release-pkg.sh"
+else
+  echo "Local-only unsigned PKG created: $LOCAL_UNSIGNED_PKG"
+fi
