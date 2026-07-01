@@ -556,11 +556,11 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
   assert_not_contains "$release_doc" "build/Release/APM44Bridge.driver"
   assert_contains "$release_doc" "does not publish the public DMG"
 
-  assert_contains "$validation_doc" "current 0.11.0 DMG-primary distribution validation path"
-  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.11.0}.dmg'
+  assert_contains "$validation_doc" "current 0.11.1 DMG-primary distribution validation path"
+  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.11.1}.dmg'
   assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
 
-  assert_contains "$install_doc" "APM44Bridge-0.11.0.dmg.sha256"
+  assert_contains "$install_doc" "APM44Bridge-0.11.1.dmg.sha256"
   assert_contains "$ROOT/scripts/notarize-release-dmg.sh" 'shasum -a 256 "$(basename "$DMG")"'
   assert_contains "$ROOT/scripts/release-all.sh" "*.dmg.sha256"
 }

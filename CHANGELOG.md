@@ -4,7 +4,11 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
-- No user-facing changes since 0.11.0.
+- No user-facing changes since 0.11.1.
+
+## 0.11.1 - 2026-07-01
+
+- Updated the menu bar app icon to the new AirPods Max point-cloud artwork.
 
 ## 0.11.0 - 2026-06-30
 
