@@ -40,17 +40,17 @@ mystery relaunches.
 
 ### Install, Upgrade, and Uninstall Proof
 
-- [ ] **INST-01**: Maintainer can install APM44 Bridge from the final mounted
+- [x] **INST-01**: Maintainer can install APM44 Bridge from the final mounted
   DMG/PKG path, not from repo build output, and record that install proof.
-- [ ] **INST-02**: Installed `/Applications/APM44 Bridge.app`, embedded helper,
+- [x] **INST-02**: Installed `/Applications/APM44 Bridge.app`, embedded helper,
   and `/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver` match the validated
   release build identities after install.
-- [ ] **INST-03**: Installed HAL driver proof passes Gatekeeper, Core Audio
+- [x] **INST-03**: Installed HAL driver proof passes Gatekeeper, Core Audio
   visibility, and `apm44-bridge --shm-status` checks before release
   publication.
-- [ ] **INST-04**: Upgrade validation proves installing v1.2 over the current
+- [x] **INST-04**: Upgrade validation proves installing v1.2 over the current
   latest public release replaces stale app/helper/driver state.
-- [ ] **INST-05**: User has a documented and verified uninstall path that
+- [x] **INST-05**: User has a documented and verified uninstall path that
   removes the app and HAL driver without leaving misleading release claims or
   stale instructions.
 
@@ -120,11 +120,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DMG-03 | Phase 47 | Complete |
 | DMG-04 | Phase 47 | Complete |
 | DMG-05 | Phase 47 | Complete |
-| INST-01 | Phase 48 | Pending |
-| INST-02 | Phase 48 | Pending |
-| INST-03 | Phase 48 | Pending |
-| INST-04 | Phase 48 | Pending |
-| INST-05 | Phase 48 | Pending |
+| INST-01 | Phase 48 | Complete |
+| INST-02 | Phase 48 | Complete |
+| INST-03 | Phase 48 | Complete |
+| INST-04 | Phase 48 | Complete |
+| INST-05 | Phase 48 | Complete |
 | DOC-01 | Phase 49 | Pending |
 | DOC-02 | Phase 49 | Pending |
 | DOC-03 | Phase 49 | Pending |
