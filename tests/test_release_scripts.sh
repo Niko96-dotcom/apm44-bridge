@@ -228,6 +228,42 @@ mkdir -p "$(dirname "$out")"
 printf 'fake cert\n' >"$out"
 EOF
 
+cat >"$FAKE_BIN/hdiutil" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+log="${APM44_FAKE_XCRUN_LOG:?}"
+printf '%s\n' "hdiutil $*" >>"$log"
+case "${1:-}" in
+  create)
+    src=""
+    out="${@: -1}"
+    while [[ "$#" -gt 0 ]]; do
+      case "$1" in
+        -srcfolder)
+          src="$2"
+          shift 2
+          ;;
+        *)
+          shift
+          ;;
+      esac
+    done
+    [[ -n "$src" ]] || { echo "fake hdiutil create requires -srcfolder" >&2; exit 64; }
+    mkdir -p "$(dirname "$out")"
+    printf 'fake dmg from %s\n' "$src" >"$out"
+    ;;
+  attach)
+    echo "/dev/disk99 Apple_HFS /Volumes/APM44 Bridge"
+    ;;
+  detach)
+    ;;
+  *)
+    echo "unsupported fake hdiutil command: $*" >&2
+    exit 64
+    ;;
+esac
+EOF
+
 cat >"$FAKE_BIN/pkgutil" <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -287,7 +323,7 @@ if [[ -n "$script" ]]; then
 fi
 
 case "$script" in
-  scripts/build-release-dmg.sh|scripts/codesign-verify-release.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh)
+  scripts/build-release-dmg.sh|scripts/codesign-verify-release.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh|scripts/verify-release-dmg-layout.sh)
     prefix=""
     if [[ "${APM44_DMG_PACKAGE_ONLY:-0}" == "1" ]]; then
       prefix="APM44_DMG_PACKAGE_ONLY=1 "
@@ -307,7 +343,7 @@ set -euo pipefail
 echo "fake ls $*"
 EOF
 
-chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/codesign" "$FAKE_BIN/xcodegen" "$FAKE_BIN/pkgbuild" "$FAKE_BIN/productsign" "$FAKE_BIN/ditto" "$FAKE_BIN/curl" "$FAKE_BIN/pkgutil" "$FAKE_BIN/spctl" "$FAKE_BIN/bash" "$FAKE_BIN/ls"
+chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/codesign" "$FAKE_BIN/xcodegen" "$FAKE_BIN/pkgbuild" "$FAKE_BIN/productsign" "$FAKE_BIN/ditto" "$FAKE_BIN/curl" "$FAKE_BIN/hdiutil" "$FAKE_BIN/pkgutil" "$FAKE_BIN/spctl" "$FAKE_BIN/bash" "$FAKE_BIN/ls"
 
 DMG="$TMP/APM44Bridge.dmg"
 PKG="$TMP/APM44Bridge.pkg"
@@ -564,26 +600,29 @@ run_release_all_pkg_gate_sequence() {
 
   assert_contains "$LOG" "bash scripts/build-release-pkg.sh"
   assert_contains "$LOG" "bash scripts/notarize-release-pkg.sh"
+  assert_contains "$LOG" "bash scripts/verify-release-dmg-layout.sh"
   assert_not_contains "$out" "SKIP pkg"
 
   local driver_validate_line
   local pkg_build_line
   local pkg_notarize_line
   local package_only_line
+  local layout_verify_line
   local dmg_notarize_line
   driver_validate_line="$(grep -n "xcrun stapler validate build/Driver/APM44Bridge.driver" "$LOG" | head -1 | cut -d: -f1)"
   pkg_build_line="$(grep -n "bash scripts/build-release-pkg.sh" "$LOG" | head -1 | cut -d: -f1)"
   pkg_notarize_line="$(grep -n "bash scripts/notarize-release-pkg.sh" "$LOG" | head -1 | cut -d: -f1)"
   package_only_line="$(grep -n "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
+  layout_verify_line="$(grep -n "bash scripts/verify-release-dmg-layout.sh" "$LOG" | head -1 | cut -d: -f1)"
   dmg_notarize_line="$(grep -n "bash scripts/notarize-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
 
-  if [[ -z "$driver_validate_line" || -z "$pkg_build_line" || -z "$pkg_notarize_line" || -z "$package_only_line" || -z "$dmg_notarize_line" ]]; then
+  if [[ -z "$driver_validate_line" || -z "$pkg_build_line" || -z "$pkg_notarize_line" || -z "$package_only_line" || -z "$layout_verify_line" || -z "$dmg_notarize_line" ]]; then
     echo "release-all PKG gate: expected lines missing from log" >&2
     cat "$LOG" >&2
     exit 1
   fi
 
-  if [[ "$driver_validate_line" -ge "$pkg_build_line" || "$pkg_build_line" -ge "$pkg_notarize_line" || "$pkg_notarize_line" -ge "$package_only_line" || "$package_only_line" -ge "$dmg_notarize_line" ]]; then
+  if [[ "$driver_validate_line" -ge "$pkg_build_line" || "$pkg_build_line" -ge "$pkg_notarize_line" || "$pkg_notarize_line" -ge "$package_only_line" || "$package_only_line" -ge "$layout_verify_line" || "$layout_verify_line" -ge "$dmg_notarize_line" ]]; then
     echo "release-all PKG gate order is wrong" >&2
     cat "$LOG" >&2
     exit 1
@@ -604,6 +643,7 @@ run_dmg_checksum_artifact_check() {
     /bin/bash "$ROOT/scripts/notarize-release-dmg.sh" >"$out" 2>&1
 
   assert_contains "$LOG" "stapler validate"
+  assert_contains "$LOG" "spctl --assess --type open --context context:primary-signature --verbose=4 $DMG"
   assert_contains "$out" "Checksum ready: $DMG.sha256"
   if [[ ! -f "$DMG.sha256" ]]; then
     echo "expected DMG checksum artifact: $DMG.sha256" >&2
@@ -612,6 +652,56 @@ run_dmg_checksum_artifact_check() {
   fi
   assert_contains "$DMG.sha256" "$(basename "$DMG")"
   (cd "$(dirname "$DMG")" && shasum -a 256 -c "$(basename "$DMG").sha256" >/dev/null)
+}
+
+run_dmg_pkg_first_layout_check() {
+  local out="$TMP/dmg-pkg-first.out"
+  local staging="$TMP/dmg-staging"
+  local dmg="$TMP/APM44Bridge-pkg-first.dmg"
+  local pkg="$TMP/APM44Bridge-0.11.1.pkg"
+  printf 'signed pkg\n' >"$pkg"
+  rm -rf "$staging" "$dmg"
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_DMG_PACKAGE_ONLY=1 \
+    APM44_DMG_STAGING="$staging" \
+    APM44_DMG_PATH="$dmg" \
+    APM44_PKG_PATH="$pkg" \
+    /bin/bash "$ROOT/scripts/build-release-dmg.sh" >"$out" 2>&1
+
+  [[ -f "$staging/$(basename "$pkg")" ]] || { echo "expected pkg in DMG staging" >&2; cat "$out" >&2; exit 1; }
+  [[ -f "$staging/README.txt" ]] || { echo "expected README in DMG staging" >&2; cat "$out" >&2; exit 1; }
+  [[ ! -e "$staging/APM44 Bridge.app" ]] || { echo "raw app must not be in final DMG staging" >&2; exit 1; }
+  [[ ! -e "$staging/APM44Bridge.driver" ]] || { echo "raw driver must not be in final DMG staging" >&2; exit 1; }
+  [[ ! -e "$staging/Install APM44 Bridge.command" ]] || { echo "command installer must not be in final DMG staging" >&2; exit 1; }
+  assert_contains "$LOG" "hdiutil create"
+}
+
+run_verify_release_dmg_layout_check() {
+  local good="$TMP/dmg-layout-good"
+  local bad="$TMP/dmg-layout-bad"
+  local out="$TMP/dmg-layout.out"
+  rm -rf "$good" "$bad"
+  mkdir -p "$good" "$bad"
+  printf 'pkg\n' >"$good/APM44Bridge-0.11.1.pkg"
+  printf 'readme\n' >"$good/README.txt"
+  mkdir -p "$bad/APM44 Bridge.app" "$bad/APM44Bridge.driver"
+  printf 'pkg\n' >"$bad/APM44Bridge-0.11.1.pkg"
+  printf 'readme\n' >"$bad/README.txt"
+  printf 'cmd\n' >"$bad/Install APM44 Bridge.command"
+
+  env APM44_DMG_STAGING="$good" APM44_VERIFY_DMG_STAGING=1 /bin/bash "$ROOT/scripts/verify-release-dmg-layout.sh" >"$out" 2>&1
+  assert_contains "$out" "verify-release-dmg-layout: OK"
+
+  if env APM44_DMG_STAGING="$bad" APM44_VERIFY_DMG_STAGING=1 /bin/bash "$ROOT/scripts/verify-release-dmg-layout.sh" >"$out" 2>&1; then
+    echo "old raw DMG layout should fail verification" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "raw app bundle must not be exposed"
 }
 
 run_pkg_validation_order_check() {
@@ -1030,6 +1120,10 @@ run_pkg_identity_gate_cases
 run_pkg_replacement_script_check
 
 run_dmg_checksum_artifact_check        # [DOC-04]
+
+run_dmg_pkg_first_layout_check
+
+run_verify_release_dmg_layout_check
 
 run_pkg_validation_order_check
 

@@ -8,6 +8,7 @@ VERSION="${APM44_VERSION:-0.11.1}"
 OUT="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 STAGING="${APM44_DMG_STAGING:-$ROOT/build/signing/dmg-staging}"
 PACKAGE_ONLY="${APM44_DMG_PACKAGE_ONLY:-0}"
+PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<EOF
@@ -18,7 +19,7 @@ Build Release artifacts, embed daemon, sign, and create a DMG for distribution.
 Prerequisites: Developer ID cert, optional notarization (scripts/notary-dry-run.sh)
 
 Environment:
-  APM44_DMG_PACKAGE_ONLY=1  package existing app/driver without rebuilding or re-signing
+  APM44_DMG_PACKAGE_ONLY=1  package the validated PKG without rebuilding or re-signing
 
 Output: build/signing/APM44Bridge-<version>.dmg
 EOF
@@ -56,24 +57,38 @@ if [[ "$PACKAGE_ONLY" != "1" ]]; then
     bash "$ROOT/scripts/sign-release.sh"
   fi
 else
-  echo "Packaging existing app and driver into DMG..."
+  echo "Packaging validated pkg into final DMG..."
 fi
 
 APP="$ROOT/build/$CONFIG/APM44 Bridge.app"
 DRIVER="${APM44_DRIVER_PATH:-$ROOT/build/Driver/APM44Bridge.driver}"
 
-for artifact in "$APP" "$DRIVER"; do
-  if [[ ! -e "$artifact" ]]; then
-    echo "error: missing $artifact — run scripts/build-release-dmg.sh before package-only mode" >&2
-    exit 1
-  fi
-done
-
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
-ditto "$APP" "$STAGING/APM44 Bridge.app"
-ditto "$DRIVER" "$STAGING/APM44Bridge.driver"
-cat > "$STAGING/Install APM44 Bridge.command" <<CMD
+
+if [[ "$PACKAGE_ONLY" == "1" ]]; then
+  if [[ ! -f "$PKG" ]]; then
+    echo "error: missing $PKG — run scripts/build-release-pkg.sh and scripts/notarize-release-pkg.sh first" >&2
+    exit 1
+  fi
+  ditto "$PKG" "$STAGING/$(basename "$PKG")"
+  cat > "$STAGING/README.txt" <<README
+APM44 Bridge Installer
+
+Open the PKG in this disk image to install APM44 Bridge.app and the APM44Bridge HAL driver.
+macOS will ask for an administrator password because the HAL driver installs into /Library/Audio/Plug-Ins/HAL.
+README
+else
+  for artifact in "$APP" "$DRIVER"; do
+    if [[ ! -e "$artifact" ]]; then
+      echo "error: missing $artifact — run scripts/build-release-dmg.sh before package-only mode" >&2
+      exit 1
+    fi
+  done
+
+  ditto "$APP" "$STAGING/APM44 Bridge.app"
+  ditto "$DRIVER" "$STAGING/APM44Bridge.driver"
+  cat > "$STAGING/Install APM44 Bridge.command" <<CMD
 #!/bin/bash
 set -euo pipefail
 DIR="\$(cd "\$(dirname "\$0")" && pwd)"
@@ -97,7 +112,8 @@ sudo chown -R root:wheel "/Applications/APM44 Bridge.app"
 open "/Applications/APM44 Bridge.app"
 echo "Done. If APM44 Bridge does not appear in Audio MIDI Setup, reboot once."
 CMD
-chmod +x "$STAGING/Install APM44 Bridge.command"
+  chmod +x "$STAGING/Install APM44 Bridge.command"
+fi
 
 rm -f "$OUT"
 hdiutil create -volname "APM44 Bridge" -srcfolder "$STAGING" -ov -format UDZO "$OUT"
@@ -106,4 +122,8 @@ if [[ -n "$DMG_SIGN_ID" ]]; then
   codesign --force --sign "$DMG_SIGN_ID" --timestamp "$OUT"
 fi
 echo "DMG created: $OUT"
-echo "Install: open DMG -> run Install APM44 Bridge.command"
+if [[ "$PACKAGE_ONLY" == "1" ]]; then
+  echo "Install: open DMG -> open $(basename "$PKG")"
+else
+  echo "Install: open DMG -> run Install APM44 Bridge.command"
+fi

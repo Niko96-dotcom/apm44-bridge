@@ -148,6 +148,7 @@ For the DMG-primary public path, assess these artifacts after
 ```bash
 bash scripts/codesign-verify-release.sh
 codesign --verify --verbose "build/signing/APM44Bridge-${APM44_VERSION:-0.11.1}.dmg"
+bash scripts/verify-release-dmg-layout.sh
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
 xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.11.1}.dmg"

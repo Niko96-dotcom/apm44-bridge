@@ -54,6 +54,9 @@ if [[ "$NOTARY_READY" == "1" ]]; then
   # DIST-01: package final DMG from stapled artifacts
   APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh
 
+  echo "== Verify final DMG layout =="
+  bash scripts/verify-release-dmg-layout.sh
+
   echo "== Notarize DMG (primary distribution) =="
   bash scripts/notarize-release-dmg.sh
 else

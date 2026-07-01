@@ -20,6 +20,8 @@ require_notary_accepted "$DMG" "$PROFILE" "DMG"
 echo "Stapling DMG..."
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
+echo "Assessing DMG with Gatekeeper..."
+spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
 echo "Writing DMG checksum..."
 (
   cd "$(dirname "$DMG")"
