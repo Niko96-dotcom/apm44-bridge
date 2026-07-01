@@ -239,6 +239,29 @@ case "${1:-}" in
     echo "   Status: signed by a certificate trusted by macOS"
     echo "   1. Developer ID Installer: APM44 Test Org (LOCALTEAM)"
     ;;
+  --payload-files)
+    echo "Applications/APM44 Bridge.app"
+    echo "Applications/APM44 Bridge.app/Contents/MacOS/APM44Bridge"
+    echo "Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+    echo "Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS/APM44Bridge"
+    ;;
+  --expand-full)
+    dest="$3"
+    mkdir -p "$dest/Scripts"
+    cat >"$dest/Scripts/preinstall" <<'PRE'
+#!/bin/bash
+set -e
+rm -rf "/Applications/APM44 Bridge.app"
+rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+exit 0
+PRE
+    cat >"$dest/Scripts/postinstall" <<'POST'
+#!/bin/bash
+set -e
+[[ -d "/Applications/APM44 Bridge.app" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
+[[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
+POST
+    ;;
   *)
     echo "unsupported fake pkgutil command: $*" >&2
     exit 64
@@ -651,6 +674,54 @@ run_pkg_validation_order_check() {
   [[ ! -f "$PKG.sha256" ]] || { echo "rejected package notarization must not create checksum" >&2; cat "$out" >&2; exit 1; }
 }
 
+prepare_verify_pkg_inputs() {
+  mkdir -p "$ROOT/build/Release/APM44 Bridge.app/Contents/MacOS"
+  mkdir -p "$ROOT/build/Driver/APM44Bridge.driver/Contents/MacOS"
+  mkdir -p "$ROOT/build/BridgeDaemon"
+  printf 'verify app\n' >"$ROOT/build/Release/APM44 Bridge.app/Contents/MacOS/APM44Bridge"
+  printf 'verify driver\n' >"$ROOT/build/Driver/APM44Bridge.driver/Contents/MacOS/APM44Bridge"
+  cat >"$ROOT/build/BridgeDaemon/apm44-bridge" <<'BRIDGE'
+#!/bin/bash
+set -euo pipefail
+case "${1:-}" in
+  --version)
+    echo "APM44 Bridge 0.11.1 build=FAKEPKG123"
+    ;;
+  --shm-status)
+    echo "helper_build_id=FAKEPKG123"
+    ;;
+  *)
+    echo "fake bridge"
+    ;;
+esac
+BRIDGE
+  chmod +x "$ROOT/build/BridgeDaemon/apm44-bridge"
+}
+
+run_verify_release_pkg_check() {
+  local out="$TMP/verify-release-pkg.out"
+  rm -f "$PKG.sha256" "$PKG.provenance.txt"
+  printf 'verify pkg\n' >"$PKG"
+  (cd "$(dirname "$PKG")" && shasum -a 256 "$(basename "$PKG")" >"$(basename "$PKG").sha256")
+  prepare_verify_pkg_inputs
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_PKG_PATH="$PKG" \
+    /bin/bash "$ROOT/scripts/verify-release-pkg.sh" >"$out" 2>&1
+
+  assert_contains "$LOG" "pkgutil --payload-files $PKG"
+  assert_contains "$LOG" "pkgutil --expand-full $PKG"
+  assert_contains "$out" "verify-release-pkg: OK"
+  [[ -f "$PKG.provenance.txt" ]] || { echo "expected pkg.provenance.txt" >&2; cat "$out" >&2; exit 1; }
+  assert_contains "$PKG.provenance.txt" "pkg_sha256="
+  assert_contains "$PKG.provenance.txt" "helper_build_id=FAKEPKG123"
+  assert_contains "$PKG.provenance.txt" "app_bundle_sha256="
+  assert_contains "$PKG.provenance.txt" "driver_executable_sha256="
+}
+
 # DIST-01: enforce that inner app/driver are stapled before the final DMG is packaged,
 # and that the final DMG is notarized after it is built from the stapled artifacts.
 run_dist_01_staple_before_dmg_order() {
@@ -956,6 +1027,8 @@ run_pkg_replacement_script_check
 run_dmg_checksum_artifact_check        # [DOC-04]
 
 run_pkg_validation_order_check
+
+run_verify_release_pkg_check
 
 run_dist_01_staple_before_dmg_order      # [DIST-01]
 

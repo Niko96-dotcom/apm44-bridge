@@ -156,16 +156,32 @@ spctl --assess --type open --context context:primary-signature --verbose=4 "buil
 
 The final command is the Gatekeeper assessment for the public DMG.
 
-Optional maintainer-only PKG validation is intentionally separate:
+## PKG-primary package gate
+
+Phase 46 promotes the signed PKG into the normal public release gate:
 
 ```bash
-APM44_BUILD_PKG=1 bash scripts/release-all.sh
-pkgutil --check-signature build/signing/*.pkg
-spctl --assess --type install --verbose=4 build/signing/*.pkg
+bash scripts/release-all.sh
+bash scripts/verify-release-pkg.sh
 ```
 
-Do not treat the PKG as the primary public artifact until Developer ID Installer
-signing and installer UX validation are complete.
+The verifier is non-destructive by default. It checks package signature,
+stapled ticket, Gatekeeper installer assessment, checksum, payload paths,
+replacement install scripts, and package provenance.
+
+Use install-smoke mode only on the release Mac when writing system locations is
+intended:
+
+```bash
+APM44_RUN_PKG_INSTALL_SMOKE=1 bash scripts/verify-release-pkg.sh
+APM44_APP_PATH="/Applications/APM44 Bridge.app" bash scripts/verify-installed-sync.sh
+bash scripts/verify-hal-driver.sh
+build/BridgeDaemon/apm44-bridge --shm-status
+```
+
+Install-smoke mode writes `/Applications/APM44 Bridge.app` and
+`/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver`. Phase 48 still owns final
+mounted DMG/PKG install proof.
 
 ## Local-only override
 
