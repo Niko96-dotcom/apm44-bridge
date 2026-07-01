@@ -1,8 +1,8 @@
 # Phase 46: PKG Installer Promotion - Pattern Map
 
 **Mapped:** 2026-07-01
-**Files analyzed:** 14
-**Analogs found:** 14 / 14
+**Files analyzed:** 15
+**Analogs found:** 15 / 15
 
 ## File Classification
 
@@ -20,6 +20,7 @@
 | `scripts/install-installer-cert.sh` | utility | file-I/O + request-response | `scripts/install-installer-cert.sh` | role-match |
 | `scripts/verify-installed-sync.sh` | utility | request-response + transform | `scripts/verify-installed-sync.sh` | role-match |
 | `scripts/verify-hal-driver.sh` | utility | request-response + file-I/O | `scripts/verify-hal-driver.sh` | role-match |
+| `scripts/verify-release-pkg.sh` | utility | request-response + transform | `scripts/verify-installed-sync.sh`, `scripts/verify-hal-driver.sh`, `scripts/codesign-verify-release.sh` | role-match |
 | `docs/release.md` | config/docs | batch instructions | `docs/release.md` | exact |
 | `docs/release-validation.md` | config/docs | batch validation | `docs/release-validation.md` | exact |
 
@@ -117,6 +118,36 @@ fi
 ```
 
 Planner note: replace the warning/move branch with a public-mode error before final `$PKG` is created. Keep any unsigned output behind an explicit local-only override and label it non-publishable.
+
+---
+
+### `scripts/verify-release-pkg.sh` (utility, request-response + transform)
+
+**Analogs:** `scripts/verify-installed-sync.sh`, `scripts/verify-hal-driver.sh`, `scripts/codesign-verify-release.sh`
+
+**Strict shell entrypoint pattern:**
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VERSION="${APM44_VERSION:-0.11.1}"
+PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
+```
+
+**Verifier behavior pattern:**
+Use the existing verification scripts' style: print named pass/fail checks,
+fail nonzero for missing artifacts or public-release gate failures, and keep
+destructive installed-system checks behind an explicit opt-in. The new verifier
+should default to non-destructive package checks (`pkgutil --check-signature`,
+`xcrun stapler validate`, `spctl --assess --type install`, payload path checks,
+and checksum validation), then run `installer`, `verify-installed-sync.sh`,
+`verify-hal-driver.sh`, and `apm44-bridge --shm-status` only when
+`APM44_RUN_PKG_INSTALL_SMOKE=1` is set.
+
+Planner note: this file is new in Plan 46-04; follow existing script style from
+`verify-installed-sync.sh` and `verify-hal-driver.sh` rather than inventing a
+new reporting framework.
 
 ---
 

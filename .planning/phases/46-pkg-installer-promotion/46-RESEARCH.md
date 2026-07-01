@@ -332,17 +332,17 @@ Full final-artifact install proof is Phase 48, but Phase 46 should provide packa
 |---|-------|---------|---------------|
 | A1 | Research remains valid until 2026-07-08 for Apple signing/notary operational details, while repo-specific script findings remain valid until the scripts change. [ASSUMED] | Metadata | Planner may trust stale Apple operational behavior or changed local scripts too long. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should Phase 46 run a real `sudo installer -pkg` upgrade smoke, or only script it for Phase 48?** [VERIFIED: CONTEXT.md deferred scope]
    - What we know: Phase 46 owns package-level upgrade replacement behavior, while Phase 48 owns final mounted artifact install proof. [VERIFIED: CONTEXT.md]
    - What's unclear: Whether planner should include one real local package install during Phase 46, because it touches currently running app/driver state. [VERIFIED: local process probe]
-   - Recommendation: Add a non-default/manual package install smoke in Phase 46 and leave final mounted DMG/PKG install proof to Phase 48. [VERIFIED: CONTEXT.md]
+   - Decision: Add a non-default/manual package install smoke in Phase 46 and leave final mounted DMG/PKG install proof to Phase 48. The default Phase 46 verifier must be non-destructive; install smoke must require an explicit opt-in such as `APM44_RUN_PKG_INSTALL_SMOKE=1`. [VERIFIED: CONTEXT.md]
 
 2. **Should package build strip AppleDouble metadata entries from payload listings?** [VERIFIED: local package probe]
    - What we know: The research package payload listing contained `._` entries alongside app and driver files. [VERIFIED: pkgutil --payload-files]
    - What's unclear: Whether those entries are expected preservation artifacts for stapled bundle metadata or unnecessary payload noise in this project. [VERIFIED: local package probe]
-   - Recommendation: Do not delete metadata blindly; first add a payload integrity check around codesign/stapler validation of the installed app/driver. [VERIFIED: man ditto(1) + scripts/verify-hal-driver.sh]
+   - Decision: Do not strip AppleDouble metadata blindly in Phase 46. Preserve release payload integrity with `ditto`, then validate package signature, stapled ticket, Gatekeeper installer assessment, payload paths, checksum, and installed app/driver integrity through verifier scripts. Revisit stripping only if a concrete validation failure proves the metadata is harmful. [VERIFIED: man ditto(1) + scripts/verify-hal-driver.sh]
 
 ## Environment Availability
 
