@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${APM44_BUILD_CONFIG:-Release}"
-VERSION="${APM44_VERSION:-0.12.0}"
+VERSION="${APM44_VERSION:-0.12.1}"
 PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 UNSIGNED_PKG="${PKG%.pkg}-unsigned.pkg"
 LOCAL_UNSIGNED_PKG="${PKG%.pkg}-local-unsigned.pkg"
@@ -107,9 +107,20 @@ if [[ -z "$DRIVER_BIN" ]]; then
   echo "APM44Bridge.driver executable missing after install" >&2
   exit 1
 fi
-killall coreaudiod 2>/dev/null || true
+# Reload Core Audio so the freshly installed HAL driver is picked up without a
+# reboot in the common case. launchctl kickstart -k is more reliable than a bare
+# killall; fall back to killall on systems where it is unavailable. Best effort:
+# the app also surfaces a "Reload audio driver" / restart-once path if a
+# first-time install still needs a reboot to enumerate the device.
+if ! launchctl kickstart -k system/com.apple.audio.coreaudiod 2>/dev/null; then
+  killall coreaudiod 2>/dev/null || true
+fi
+# Let coreaudiod respawn and rescan HAL plug-ins before opening the app, so
+# first-run setup does not render during the load gap and wrongly report the
+# driver as missing.
+sleep 4
 CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
-if [[ -n "$CONSOLE_USER" && -d "/Applications/APM44 Bridge.app" ]]; then
+if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && -d "/Applications/APM44 Bridge.app" ]]; then
   sudo -u "$CONSOLE_USER" open "/Applications/APM44 Bridge.app" 2>/dev/null || true
 fi
 exit 0

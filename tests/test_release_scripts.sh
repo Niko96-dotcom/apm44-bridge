@@ -662,7 +662,7 @@ run_dmg_pkg_first_layout_check() {
   local out="$TMP/dmg-pkg-first.out"
   local staging="$TMP/dmg-staging"
   local dmg="$TMP/APM44Bridge-pkg-first.dmg"
-  local pkg="$TMP/APM44Bridge-0.12.0.pkg"
+  local pkg="$TMP/APM44Bridge-0.12.1.pkg"
   printf 'signed pkg\n' >"$pkg"
   rm -rf "$staging" "$dmg"
 
@@ -690,10 +690,10 @@ run_verify_release_dmg_layout_check() {
   local out="$TMP/dmg-layout.out"
   rm -rf "$good" "$bad"
   mkdir -p "$good" "$bad"
-  printf 'pkg\n' >"$good/APM44Bridge-0.12.0.pkg"
+  printf 'pkg\n' >"$good/APM44Bridge-0.12.1.pkg"
   printf 'readme\n' >"$good/README.txt"
   mkdir -p "$bad/APM44 Bridge.app" "$bad/APM44Bridge.driver"
-  printf 'pkg\n' >"$bad/APM44Bridge-0.12.0.pkg"
+  printf 'pkg\n' >"$bad/APM44Bridge-0.12.1.pkg"
   printf 'readme\n' >"$bad/README.txt"
   printf 'cmd\n' >"$bad/Install APM44 Bridge.command"
 
@@ -713,7 +713,7 @@ run_final_install_artifact_verifier_check() {
   local out="$TMP/final-install-artifact.out"
   rm -rf "$mount"
   mkdir -p "$mount"
-  printf 'mounted pkg\n' >"$mount/APM44Bridge-0.12.0.pkg"
+  printf 'mounted pkg\n' >"$mount/APM44Bridge-0.12.1.pkg"
 
   reset_log
   env \
@@ -722,14 +722,14 @@ run_final_install_artifact_verifier_check() {
     APM44_MOUNTED_DMG_PATH="$mount" \
     /bin/bash "$ROOT/scripts/verify-final-install-artifact.sh" >"$out" 2>&1
 
-  assert_contains "$out" "Final install source: $mount/APM44Bridge-0.12.0.pkg"
+  assert_contains "$out" "Final install source: $mount/APM44Bridge-0.12.1.pkg"
   assert_contains "$out" "Install smoke skipped"
   assert_contains "$out" "verify-final-install-artifact: OK"
-  assert_contains "$LOG" "pkgutil --check-signature $mount/APM44Bridge-0.12.0.pkg"
-  assert_contains "$LOG" "stapler validate $mount/APM44Bridge-0.12.0.pkg"
-  assert_contains "$LOG" "spctl --assess --type install --verbose=4 $mount/APM44Bridge-0.12.0.pkg"
+  assert_contains "$LOG" "pkgutil --check-signature $mount/APM44Bridge-0.12.1.pkg"
+  assert_contains "$LOG" "stapler validate $mount/APM44Bridge-0.12.1.pkg"
+  assert_contains "$LOG" "spctl --assess --type install --verbose=4 $mount/APM44Bridge-0.12.1.pkg"
 
-  rm -f "$mount/APM44Bridge-0.12.0.pkg"
+  rm -f "$mount/APM44Bridge-0.12.1.pkg"
   if env \
     PATH="$FAKE_BIN:$PATH" \
     APM44_FAKE_XCRUN_LOG="$LOG" \
@@ -825,7 +825,7 @@ prepare_verify_pkg_inputs() {
 set -euo pipefail
 case "${1:-}" in
   --version)
-    echo "APM44 Bridge 0.12.0 build=FAKEPKG123"
+    echo "APM44 Bridge 0.12.1 build=FAKEPKG123"
     ;;
   --shm-status)
     echo "helper_build_id=FAKEPKG123"
@@ -1096,14 +1096,14 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
   assert_not_contains "$release_doc" "APM44_BUILD_PKG=1"
   assert_not_contains "$release_doc" "maintainer-only PKG"
 
-  assert_contains "$validation_doc" "current 0.12.0 PKG-in-DMG distribution validation path"
-  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.12.0}.dmg'
+  assert_contains "$validation_doc" "current 0.12.1 PKG-in-DMG distribution validation path"
+  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.12.1}.dmg'
   assert_contains "$validation_doc" "bash scripts/check-public-release-hygiene.sh"
   assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
 
-  assert_contains "$install_doc" "APM44Bridge-0.12.0.dmg.sha256"
+  assert_contains "$install_doc" "APM44Bridge-0.12.1.dmg.sha256"
   assert_contains "$install_doc" "Current PKG-in-DMG public release artifact"
-  assert_contains "$install_doc" "APM44Bridge-0.12.0.pkg"
+  assert_contains "$install_doc" "APM44Bridge-0.12.1.pkg"
   assert_not_contains "$install_doc" "DMG-primary public release artifact"
   assert_not_contains "$install_doc" "PKG flow is maintainer-only"
   assert_contains "$ROOT/scripts/notarize-release-dmg.sh" 'shasum -a 256 "$(basename "$DMG")"'
