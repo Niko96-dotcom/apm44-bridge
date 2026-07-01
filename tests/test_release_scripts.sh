@@ -675,12 +675,14 @@ run_pkg_validation_order_check() {
 }
 
 prepare_verify_pkg_inputs() {
-  mkdir -p "$ROOT/build/Release/APM44 Bridge.app/Contents/MacOS"
-  mkdir -p "$ROOT/build/Driver/APM44Bridge.driver/Contents/MacOS"
-  mkdir -p "$ROOT/build/BridgeDaemon"
-  printf 'verify app\n' >"$ROOT/build/Release/APM44 Bridge.app/Contents/MacOS/APM44Bridge"
-  printf 'verify driver\n' >"$ROOT/build/Driver/APM44Bridge.driver/Contents/MacOS/APM44Bridge"
-  cat >"$ROOT/build/BridgeDaemon/apm44-bridge" <<'BRIDGE'
+  VERIFY_APP="$TMP/verify-inputs/APM44 Bridge.app"
+  VERIFY_DRIVER_EXE="$TMP/verify-inputs/APM44Bridge.driver/Contents/MacOS/APM44Bridge"
+  VERIFY_BRIDGE="$TMP/verify-inputs/apm44-bridge"
+  mkdir -p "$VERIFY_APP/Contents/MacOS"
+  mkdir -p "$(dirname "$VERIFY_DRIVER_EXE")"
+  printf 'verify app\n' >"$VERIFY_APP/Contents/MacOS/APM44Bridge"
+  printf 'verify driver\n' >"$VERIFY_DRIVER_EXE"
+  cat >"$VERIFY_BRIDGE" <<'BRIDGE'
 #!/bin/bash
 set -euo pipefail
 case "${1:-}" in
@@ -695,7 +697,7 @@ case "${1:-}" in
     ;;
 esac
 BRIDGE
-  chmod +x "$ROOT/build/BridgeDaemon/apm44-bridge"
+  chmod +x "$VERIFY_BRIDGE"
 }
 
 run_verify_release_pkg_check() {
@@ -710,6 +712,9 @@ run_verify_release_pkg_check() {
     PATH="$FAKE_BIN:$PATH" \
     APM44_FAKE_XCRUN_LOG="$LOG" \
     APM44_PKG_PATH="$PKG" \
+    APM44_APP_PATH="$VERIFY_APP" \
+    APM44_DRIVER_EXECUTABLE="$VERIFY_DRIVER_EXE" \
+    APM44_BRIDGE_BIN="$VERIFY_BRIDGE" \
     /bin/bash "$ROOT/scripts/verify-release-pkg.sh" >"$out" 2>&1
 
   assert_contains "$LOG" "pkgutil --payload-files $PKG"

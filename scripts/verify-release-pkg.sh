@@ -107,7 +107,7 @@ require_script_marker "$preinstall" 'rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Br
 require_script_marker "$postinstall" "APM44 Bridge.app missing after install"
 require_script_marker "$postinstall" "APM44Bridge.driver missing after install"
 
-BRIDGE="$ROOT/build/BridgeDaemon/apm44-bridge"
+BRIDGE="${APM44_BRIDGE_BIN:-$ROOT/build/BridgeDaemon/apm44-bridge}"
 version_out="unavailable"
 if [[ -x "$BRIDGE" ]]; then
   version_out="$("$BRIDGE" --version 2>/dev/null || true)"
@@ -116,8 +116,8 @@ bridge_version="$(printf '%s\n' "$version_out" | first_line)"
 [[ -n "$bridge_version" ]] || bridge_version="unavailable"
 helper_build_id="$(parse_build_id "$version_out")"
 
-APP="$ROOT/build/Release/APM44 Bridge.app"
-DRIVER_EXE="$ROOT/build/Driver/APM44Bridge.driver/Contents/MacOS/APM44Bridge"
+APP="${APM44_APP_PATH:-$ROOT/build/Release/APM44 Bridge.app}"
+DRIVER_EXE="${APM44_DRIVER_EXECUTABLE:-$ROOT/build/Driver/APM44Bridge.driver/Contents/MacOS/APM44Bridge}"
 require_file "$DRIVER_EXE" "driver executable not found at $DRIVER_EXE"
 
 echo "Writing pkg provenance..."
