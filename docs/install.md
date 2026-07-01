@@ -32,7 +32,7 @@ notarized DMG release.
    shasum -a 256 -c APM44Bridge-<version>.dmg.sha256
    ```
 
-3. Open the DMG and run **Install APM44 Bridge.command**.
+3. Open the DMG and open **APM44Bridge-<version>.pkg**.
 4. Enter your Mac admin password in Terminal when asked. This is expected:
    APM44 Bridge installs a HAL audio driver under
    `/Library/Audio/Plug-Ins/HAL/`, which macOS protects as an admin location.
@@ -86,10 +86,20 @@ watch **Hard xruns** and **Recoveries** in the menu bar while playing.
 
 ## Uninstall
 
+From a repository checkout, preview and run the uninstall helper:
+
 ```bash
+bash scripts/uninstall-apm44.sh --dry-run
+bash scripts/uninstall-apm44.sh --yes
+```
+
+Without a repository checkout, remove the installed app and HAL driver manually:
+
+```bash
+sudo rm -rf "/Applications/APM44 Bridge.app"
 sudo rm -rf /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
-sudo killall coreaudiod
-rm -rf "/Applications/APM44 Bridge.app"
+sudo pkgutil --forget com.niko.apm44.pkg 2>/dev/null || true
+sudo killall coreaudiod 2>/dev/null || true
 ```
 
 ## Requirements

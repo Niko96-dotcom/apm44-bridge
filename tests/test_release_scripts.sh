@@ -704,6 +704,50 @@ run_verify_release_dmg_layout_check() {
   assert_contains "$out" "raw app bundle must not be exposed"
 }
 
+run_final_install_artifact_verifier_check() {
+  local mount="$TMP/final-mounted-dmg"
+  local out="$TMP/final-install-artifact.out"
+  rm -rf "$mount"
+  mkdir -p "$mount"
+  printf 'mounted pkg\n' >"$mount/APM44Bridge-0.11.1.pkg"
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_MOUNTED_DMG_PATH="$mount" \
+    /bin/bash "$ROOT/scripts/verify-final-install-artifact.sh" >"$out" 2>&1
+
+  assert_contains "$out" "Final install source: $mount/APM44Bridge-0.11.1.pkg"
+  assert_contains "$out" "Install smoke skipped"
+  assert_contains "$out" "verify-final-install-artifact: OK"
+  assert_contains "$LOG" "pkgutil --check-signature $mount/APM44Bridge-0.11.1.pkg"
+  assert_contains "$LOG" "stapler validate $mount/APM44Bridge-0.11.1.pkg"
+  assert_contains "$LOG" "spctl --assess --type install --verbose=4 $mount/APM44Bridge-0.11.1.pkg"
+
+  rm -f "$mount/APM44Bridge-0.11.1.pkg"
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_MOUNTED_DMG_PATH="$mount" \
+    /bin/bash "$ROOT/scripts/verify-final-install-artifact.sh" >"$out" 2>&1; then
+    echo "final install verifier should fail without mounted pkg" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "expected exactly one top-level pkg"
+}
+
+run_uninstall_script_check() {
+  local out="$TMP/uninstall-dry-run.out"
+  /bin/bash "$ROOT/scripts/uninstall-apm44.sh" --dry-run >"$out" 2>&1
+  assert_contains "$out" "dry-run: would remove /Applications/APM44 Bridge.app"
+  assert_contains "$out" "dry-run: would remove /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+  assert_contains "$out" "dry-run: would forget package receipt com.niko.apm44.pkg"
+  assert_contains "$ROOT/scripts/uninstall-apm44.sh" "sudo rm -rf \"\$APP\""
+  assert_contains "$ROOT/scripts/uninstall-apm44.sh" "sudo pkgutil --forget \"\$PKG_ID\""
+}
+
 run_pkg_validation_order_check() {
   local out="$TMP/pkg-validation-order.out"
   rm -f "$PKG.sha256"
@@ -1124,6 +1168,10 @@ run_dmg_checksum_artifact_check        # [DOC-04]
 run_dmg_pkg_first_layout_check
 
 run_verify_release_dmg_layout_check
+
+run_final_install_artifact_verifier_check
+
+run_uninstall_script_check
 
 run_pkg_validation_order_check
 

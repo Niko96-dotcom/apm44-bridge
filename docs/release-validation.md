@@ -107,6 +107,7 @@ xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.11.1}.dmg"
 spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.11.1}.dmg"
 
 # 5. Installed app / HAL checks after installing from the DMG
+APM44_RUN_FINAL_INSTALL_SMOKE=1 bash scripts/verify-final-install-artifact.sh
 APM44_APP_PATH="/Applications/APM44 Bridge.app" bash scripts/verify-installed-sync.sh
 bash scripts/verify-hal-driver.sh
 build/BridgeDaemon/apm44-bridge --shm-status
@@ -119,7 +120,8 @@ Run this on the target Mac with USB-C AirPods Max and Cubase available:
 ```bash
 # 1. Clean install from the final DMG
 hdiutil attach "build/signing/APM44Bridge-${APM44_VERSION:-0.11.1}.dmg"
-# Run "Install APM44 Bridge.command" from the mounted DMG.
+# Open the mounted PKG, or run:
+APM44_RUN_FINAL_INSTALL_SMOKE=1 bash scripts/verify-final-install-artifact.sh
 # Reboot once if Audio MIDI Setup does not show the HAL device after install.
 
 # 2. HAL visibility and installed build identity
@@ -139,6 +141,26 @@ bash scripts/validate-export-rate.sh --check-file ~/Desktop/your-mix.wav
 ```
 
 Record command output and operator notes in the release issue or tag checklist.
+
+## Uninstall validation
+
+The uninstall helper is dry-run by default:
+
+```bash
+bash scripts/uninstall-apm44.sh --dry-run
+```
+
+Run the destructive uninstall only when the release Mac is ready for system
+changes and admin authorization is available:
+
+```bash
+bash scripts/uninstall-apm44.sh --yes
+```
+
+The destructive mode removes `/Applications/APM44 Bridge.app`,
+`/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver`, forgets the
+`com.niko.apm44.pkg` package receipt when present, and reloads Core Audio
+best-effort.
 
 ## Artifact assessment
 
