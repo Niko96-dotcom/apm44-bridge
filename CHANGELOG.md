@@ -2,9 +2,25 @@
 
 All notable user-facing changes will be documented here.
 
-## Unreleased
+## 0.12.1 - 2026-07-01
 
-- No user-facing changes since 0.11.1.
+- Fixed the menu bar app reporting version **0.11.1** inside the 0.12.x
+  releases; it now reports its real version.
+- First-run setup now tells the truth about the driver. It distinguishes
+  **installed but not loaded yet** (the driver is on disk and macOS needs a
+  one-time restart or Core Audio reload — with a one-click **Reload audio
+  driver** button) from **not installed** (re-run the installer), instead of
+  pointing new users at a developer script they do not have.
+- The installer now reloads Core Audio more reliably after a first-time driver
+  install and waits for the virtual device to enumerate before opening the app,
+  so the setup screen no longer briefly claims the driver is missing.
+
+## 0.12.0 - 2026-07-01
+
+- Promoted the public installer to a Developer ID Installer-signed **PKG inside
+  a signed, notarized, stapled DMG**. Install by opening the DMG and running
+  `APM44Bridge-<version>.pkg`; the direct PKG, checksums, and package provenance
+  are attached for verification.
 
 ## 0.11.1 - 2026-07-01
 

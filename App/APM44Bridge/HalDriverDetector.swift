@@ -7,6 +7,24 @@ enum HalDriverDetector {
     static let deviceName = "APM44 Bridge"
     static let expectedRate: Double = 44100
 
+    /// Absolute path where the HAL driver bundle is installed on disk.
+    static let installedBundlePath = "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+
+    /// True when the driver *bundle* exists on disk, whether or not Core Audio
+    /// has enumerated it yet. A freshly installed HAL driver is on disk
+    /// immediately but is often not loaded until coreaudiod is reloaded or the
+    /// Mac is restarted once.
+    static func isDriverBundleOnDisk() -> Bool {
+        FileManager.default.fileExists(atPath: installedBundlePath)
+    }
+
+    /// Coarse install state that drives first-run guidance.
+    static func status() -> DriverStatus {
+        if isHalInstalled() { return .ready }
+        if isDriverBundleOnDisk() { return .installedNotLoaded }
+        return .notInstalled
+    }
+
     /// True when Core Audio lists an output device named APM44 Bridge (or matching UID).
     static func isHalInstalled() -> Bool {
         findHalDevice() != nil
@@ -141,6 +159,18 @@ enum HalDriverDetector {
         }
         return cfString as String
     }
+}
+
+/// Whether the APM44 HAL driver is enumerated by Core Audio, merely installed
+/// on disk, or absent entirely.
+enum DriverStatus: Equatable {
+    /// Core Audio has enumerated the APM44 Bridge device — ready to use.
+    case ready
+    /// Driver bundle is on disk but Core Audio has not loaded it yet
+    /// (needs a Core Audio reload or a one-time restart).
+    case installedNotLoaded
+    /// No driver bundle on disk — the installer has not run, or it was removed.
+    case notInstalled
 }
 
 enum RoutingMode: Equatable {
