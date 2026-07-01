@@ -34,11 +34,11 @@ recorded.
 | HAL driver `APM44Bridge.driver` | 44.1 kHz virtual output device |
 | Bridge daemon `apm44-bridge` | libsamplerate conversion and drift control |
 | Menu bar app `APM44 Bridge` | virtual-device mode, latency presets, first-run checks, visible Quit control |
-| Release packaging | Developer ID signing, DMG-primary public release, maintainer-only PKG scripts |
+| Release packaging | Developer ID signed PKG inside signed/notarized DMG |
 
 ## Install
 
-Download the latest DMG-primary release from
+Download the latest PKG-in-DMG release from
 [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases).
 
 Start with:
@@ -85,11 +85,12 @@ End users should install the signed, notarized DMG from GitHub Releases. Source
 builds are useful for development, but a reliable public HAL install on modern
 macOS requires Developer ID signing and notarization.
 
-On a maintainer Mac with Developer ID certificates and a configured notarytool
-profile, build the public DMG with:
+On a maintainer Mac with Developer ID Application and Installer certificates
+plus a configured notarytool profile, build the public PKG-in-DMG release with:
 
 ```bash
 export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
+export INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"
 export NOTARY_PROFILE="AC_NOTARY"
 bash scripts/release-all.sh
 ```

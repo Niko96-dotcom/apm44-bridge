@@ -6,6 +6,7 @@ Distribution checklist for **apm44-bridge**, **APM44 Bridge.app**, and **APM44Br
 
 - Apple Developer Program membership (required for HAL load on macOS 15+ in production)
 - **Developer ID Application** certificate in Keychain
+- **Developer ID Installer** certificate in Keychain
 - Xcode 16.x (or 15.4+) with `codesign`, `xcrun notarytool`, `xcrun stapler`
 - App-specific password or App Store Connect API key for notarization
 
@@ -19,18 +20,14 @@ Distribution checklist for **apm44-bridge**, **APM44 Bridge.app**, and **APM44Br
 
 ## Distribution posture
 
-The current release-candidate posture is **DMG-primary** for public distribution.
+The current release-candidate posture is **PKG-primary inside a signed DMG**.
 The public artifact is the signed, notarized, stapled DMG produced by
-`scripts/release-all.sh`.
+`scripts/release-all.sh`; opening it shows the validated installer package as
+the primary install object.
 
-The DMG intentionally contains an admin installer command because the HAL driver
-must be copied to `/Library/Audio/Plug-Ins/HAL/` and owned by `root:wheel`.
-This is the supported public install path until a signed PKG installer becomes
-the primary release artifact.
-
-PKG tooling remains maintainer-only for now. Use `APM44_BUILD_PKG=1` only to
-test the package path after Developer ID Installer signing and validation are
-configured.
+The PKG installs the menu bar app to `/Applications/APM44 Bridge.app` and the
+HAL driver to `/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver`, then reloads
+Core Audio best-effort.
 
 <!-- DIST-02 -->
 
@@ -70,6 +67,7 @@ auto-detects a single local Developer ID Application identity.
 
 ```bash
 export SIGN_ID="Developer ID Application: Your Name (TEAMID)"
+export INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"
 export NOTARY_PROFILE="AC_NOTARY"
 ```
 
@@ -79,7 +77,8 @@ export NOTARY_PROFILE="AC_NOTARY"
 bash scripts/release-all.sh
 ```
 
-The public artifact is `build/signing/APM44Bridge-<version>.dmg`.
+The public artifact is `build/signing/APM44Bridge-<version>.dmg`, containing
+`APM44Bridge-<version>.pkg`.
 
 Use [release-validation.md](release-validation.md) for the final automated
 gate, artifact assessment commands, Gatekeeper assessment, and exact unblock
@@ -92,11 +91,13 @@ commands for Apple credential or hardware-dependent checks.
 3. Sign the daemon, app, and driver.
 4. Submit a signed app/driver evidence zip with `notarytool --wait`.
 5. Staple and validate the inner app and driver.
-6. Repackage the final DMG from those stapled inner artifacts.
-7. Notarize, staple, and validate the final public DMG.
+6. Build, notarize, staple, Gatekeeper-assess, checksum, and verify the public PKG.
+7. Repackage the final DMG with the validated PKG as its primary visible content.
+8. Verify final DMG layout.
+9. Notarize, staple, Gatekeeper-assess, checksum, and validate the final public DMG.
 
-This order matters: the distributed DMG should contain the same stapled app and
-driver that were validated immediately before the final container was created.
+This order matters: the distributed DMG should contain the validated PKG, not
+raw app/driver internals or the old command installer.
 
 Manual steps (after Release build):
 
@@ -109,10 +110,11 @@ xcrun stapler staple "build/Release/APM44 Bridge.app"
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler staple build/Driver/APM44Bridge.driver
 xcrun stapler validate build/Driver/APM44Bridge.driver
+bash scripts/build-release-pkg.sh
+bash scripts/notarize-release-pkg.sh
 APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh
+bash scripts/verify-release-dmg-layout.sh
 bash scripts/notarize-release-dmg.sh
-# optional maintainer-only pkg:
-APM44_BUILD_PKG=1 bash scripts/release-all.sh
 # or driver-only:
 bash scripts/notarize-hal-driver.sh
 ```

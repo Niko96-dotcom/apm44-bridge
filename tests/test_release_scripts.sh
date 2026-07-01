@@ -1077,23 +1077,36 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
   local menu_qa="$ROOT/docs/menu-bar-qa.md"
   local release_doc="$ROOT/docs/release.md"
   local validation_doc="$ROOT/docs/release-validation.md"
+  local readme="$ROOT/README.md"
 
   assert_contains "$install_doc" "Safe (~30 ms)"
   assert_contains "$install_doc" "fresh-install default"
   assert_contains "$menu_qa" "Safe default on fresh install"
   assert_not_contains "$menu_qa" "Balanced default on fresh install"
 
-  assert_contains "$release_doc" "build/Driver/APM44Bridge.driver"
-  assert_not_contains "$release_doc" "build/Release/APM44Bridge.driver"
-  assert_contains "$release_doc" "does not publish the public DMG"
+  assert_contains "$readme" "PKG-in-DMG release"
+  assert_contains "$readme" 'INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"'
 
-  assert_contains "$validation_doc" "current 0.11.1 DMG-primary distribution validation path"
+  assert_contains "$release_doc" "PKG-primary inside a signed DMG"
+  assert_contains "$release_doc" "bash scripts/verify-release-dmg-layout.sh"
+  assert_not_contains "$release_doc" "APM44_BUILD_PKG=1"
+  assert_not_contains "$release_doc" "maintainer-only PKG"
+
+  assert_contains "$validation_doc" "current 0.11.1 PKG-in-DMG distribution validation path"
   assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.11.1}.dmg'
+  assert_contains "$validation_doc" "bash scripts/check-public-release-hygiene.sh"
   assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
 
   assert_contains "$install_doc" "APM44Bridge-0.11.1.dmg.sha256"
   assert_contains "$ROOT/scripts/notarize-release-dmg.sh" 'shasum -a 256 "$(basename "$DMG")"'
   assert_contains "$ROOT/scripts/release-all.sh" "*.dmg.sha256"
+}
+
+run_public_release_hygiene_check() { # [DOC-04]
+  local script="$ROOT/scripts/check-public-release-hygiene.sh"
+  assert_contains "$script" '^\.planning/'
+  assert_contains "$script" "notary-log.*"
+  /bin/bash "$script" >/dev/null
 }
 
 run_codesign_verify_case() {
@@ -1196,6 +1209,8 @@ run_sign_01_03_workflow_release_app_alignment_check # [SIGN-01][SIGN-02][SIGN-03
 run_ci_03_local_ci_app_bundle_proof_check # [CI-01][CI-02][CI-03]
 
 run_doc_truth_check # [DOC-01][DOC-02][DOC-03]
+
+run_public_release_hygiene_check # [DOC-04]
 
 run_codesign_verify_case strict-ok 0 success "codesign-strict-ok"
 run_codesign_verify_case no-runtime 0 failure "codesign-no-runtime"        # [REL-01]

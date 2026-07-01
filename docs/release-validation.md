@@ -1,6 +1,6 @@
 # Release validation checklist
 
-This checklist is the current 0.11.1 DMG-primary distribution validation path.
+This checklist is the current 0.11.1 PKG-in-DMG distribution validation path.
 It separates credential-free verification
 from Apple Developer credential checks so local-only artifacts are never
 confused with a public release.
@@ -87,6 +87,7 @@ Run these on the release Mac before tagging or uploading a public artifact:
 ```bash
 # 1. Secrets and toolchain
 bash scripts/check-secrets.sh
+bash scripts/check-public-release-hygiene.sh
 security find-identity -v -p codesigning
 xcrun notarytool history --keychain-profile "${NOTARY_PROFILE:-AC_NOTARY}"
 
@@ -164,7 +165,7 @@ best-effort.
 
 ## Artifact assessment
 
-For the DMG-primary public path, assess these artifacts after
+For the PKG-in-DMG public path, assess these artifacts after
 `bash scripts/release-all.sh` succeeds:
 
 ```bash
@@ -203,8 +204,7 @@ build/BridgeDaemon/apm44-bridge --shm-status
 ```
 
 Install-smoke mode writes `/Applications/APM44 Bridge.app` and
-`/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver`. Phase 48 still owns final
-mounted DMG/PKG install proof.
+`/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver`.
 
 ## Local-only override
 
