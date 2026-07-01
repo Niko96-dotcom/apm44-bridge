@@ -83,7 +83,28 @@ cat >"$FAKE_BIN/security" <<'EOF'
 set -euo pipefail
 
 if [[ "${1:-}" == "find-identity" ]]; then
-  echo '  1) FAKECERT "Developer ID Installer: APM44 Test Org (LOCALTEAM)"'
+  case "${APM44_FAKE_INSTALLER_IDENTITIES:-one}" in
+    zero)
+      ;;
+    one)
+      echo '  1) FAKECERT "Developer ID Installer: APM44 Test Org (LOCALTEAM)"'
+      ;;
+    multiple)
+      echo '  1) FAKECERT "Developer ID Installer: APM44 Test Org (LOCALTEAM)"'
+      echo '  2) FAKECERT "Developer ID Installer: APM44 Other Org (OTHERTEAM)"'
+      ;;
+    application-only)
+      echo '  1) FAKECERT "Developer ID Application: APM44 Test Org (LOCALTEAM)"'
+      ;;
+    *)
+      echo "unsupported fake identity mode: ${APM44_FAKE_INSTALLER_IDENTITIES}" >&2
+      exit 64
+      ;;
+  esac
+  exit 0
+fi
+
+if [[ "${1:-}" == "import" ]]; then
   exit 0
 fi
 
@@ -133,6 +154,106 @@ set -euo pipefail
 echo "fake xcodegen"
 EOF
 
+cat >"$FAKE_BIN/pkgbuild" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+log="${APM44_FAKE_XCRUN_LOG:?}"
+printf '%s\n' "pkgbuild $*" >>"$log"
+out="${@: -1}"
+mkdir -p "$(dirname "$out")"
+printf 'unsigned pkg\n' >"$out"
+EOF
+
+cat >"$FAKE_BIN/productsign" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+log="${APM44_FAKE_XCRUN_LOG:?}"
+printf '%s\n' "productsign $*" >>"$log"
+if [[ "${1:-}" != "--sign" ]]; then
+  echo "unsupported fake productsign command: $*" >&2
+  exit 64
+fi
+identity="$2"
+src="$3"
+dest="$4"
+if [[ "$identity" != Developer\ ID\ Installer:* ]]; then
+  echo "fake productsign rejected non-installer identity: $identity" >&2
+  exit 1
+fi
+cp "$src" "$dest"
+EOF
+
+cat >"$FAKE_BIN/ditto" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+log="${APM44_FAKE_XCRUN_LOG:?}"
+printf '%s\n' "ditto $*" >>"$log"
+args=("$@")
+src="${args[$((${#args[@]} - 2))]}"
+dest="${args[$((${#args[@]} - 1))]}"
+if printf '%s\n' "$*" | grep -q -- '--keepParent'; then
+  mkdir -p "$(dirname "$dest")"
+  printf 'fake archive for %s\n' "$src" >"$dest"
+else
+  rm -rf "$dest"
+  mkdir -p "$(dirname "$dest")"
+  if [[ -d "$src" ]]; then
+    cp -R "$src" "$dest"
+  else
+    cp "$src" "$dest"
+  fi
+fi
+EOF
+
+cat >"$FAKE_BIN/curl" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+out=""
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    -o)
+      out="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+if [[ -z "$out" ]]; then
+  echo "fake curl requires -o" >&2
+  exit 64
+fi
+mkdir -p "$(dirname "$out")"
+printf 'fake cert\n' >"$out"
+EOF
+
+cat >"$FAKE_BIN/pkgutil" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+log="${APM44_FAKE_XCRUN_LOG:?}"
+printf '%s\n' "pkgutil $*" >>"$log"
+case "${1:-}" in
+  --check-signature)
+    echo "Package \"$2\":"
+    echo "   Status: signed by a certificate trusted by macOS"
+    echo "   1. Developer ID Installer: APM44 Test Org (LOCALTEAM)"
+    ;;
+  *)
+    echo "unsupported fake pkgutil command: $*" >&2
+    exit 64
+    ;;
+esac
+EOF
+
+cat >"$FAKE_BIN/spctl" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+log="${APM44_FAKE_XCRUN_LOG:?}"
+printf '%s\n' "spctl $*" >>"$log"
+echo "accepted"
+EOF
+
 cat >"$FAKE_BIN/bash" <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -163,7 +284,7 @@ set -euo pipefail
 echo "fake ls $*"
 EOF
 
-chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/codesign" "$FAKE_BIN/xcodegen" "$FAKE_BIN/bash" "$FAKE_BIN/ls"
+chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/codesign" "$FAKE_BIN/xcodegen" "$FAKE_BIN/pkgbuild" "$FAKE_BIN/productsign" "$FAKE_BIN/ditto" "$FAKE_BIN/curl" "$FAKE_BIN/pkgutil" "$FAKE_BIN/spctl" "$FAKE_BIN/bash" "$FAKE_BIN/ls"
 
 DMG="$TMP/APM44Bridge.dmg"
 PKG="$TMP/APM44Bridge.pkg"
@@ -195,6 +316,93 @@ assert_not_contains() {
     cat "$file" >&2
     exit 1
   fi
+}
+
+prepare_pkg_inputs() {
+  rm -rf "$ROOT/build/Release/APM44 Bridge.app" "$ROOT/build/Driver/APM44Bridge.driver"
+  mkdir -p "$ROOT/build/Release/APM44 Bridge.app/Contents/MacOS"
+  mkdir -p "$ROOT/build/Driver/APM44Bridge.driver/Contents/MacOS"
+  printf 'fake app\n' >"$ROOT/build/Release/APM44 Bridge.app/Contents/MacOS/APM44Bridge"
+  printf 'fake driver\n' >"$ROOT/build/Driver/APM44Bridge.driver/Contents/MacOS/APM44Bridge"
+}
+
+run_pkg_builder_case() {
+  local mode="$1"
+  local expected="$2"
+  local label="$3"
+  local out="$TMP/$label.out"
+  local status=0
+
+  prepare_pkg_inputs
+  rm -f "$PKG" "${PKG%.pkg}-unsigned.pkg" "${PKG%.pkg}-local-unsigned.pkg"
+  reset_log
+
+  local env_args=(
+    PATH="$FAKE_BIN:$PATH"
+    APM44_FAKE_XCRUN_LOG="$LOG"
+    APM44_FAKE_INSTALLER_IDENTITIES="$mode"
+    APM44_PKG_PATH="$PKG"
+    APM44_DEVID_G2_CA="$TMP/DeveloperIDG2CA.cer"
+  )
+  if [[ "$expected" == "local-unsigned" ]]; then
+    env_args+=(APM44_ALLOW_UNSIGNED_PKG=1)
+  fi
+
+  if env "${env_args[@]}" /bin/bash "$ROOT/scripts/build-release-pkg.sh" >"$out" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+
+  case "$expected" in
+    success)
+      if [[ "$status" -ne 0 ]]; then
+        echo "$label: expected success, got exit $status" >&2
+        cat "$out" >&2
+        exit 1
+      fi
+      [[ -f "$PKG" ]] || { echo "$label: expected final pkg at $PKG" >&2; cat "$out" >&2; exit 1; }
+      assert_contains "$LOG" "productsign --sign Developer ID Installer: APM44 Test Org (LOCALTEAM)"
+      ;;
+    failure)
+      if [[ "$status" -eq 0 ]]; then
+        echo "$label: expected failure, got success" >&2
+        cat "$out" >&2
+        exit 1
+      fi
+      [[ ! -f "$PKG" ]] || { echo "$label: final public pkg should not exist" >&2; cat "$out" >&2; exit 1; }
+      ;;
+    local-unsigned)
+      if [[ "$status" -ne 0 ]]; then
+        echo "$label: expected local unsigned success, got exit $status" >&2
+        cat "$out" >&2
+        exit 1
+      fi
+      [[ ! -f "$PKG" ]] || { echo "$label: final public pkg should not exist" >&2; cat "$out" >&2; exit 1; }
+      [[ -f "${PKG%.pkg}-local-unsigned.pkg" ]] || { echo "$label: expected local unsigned pkg" >&2; cat "$out" >&2; exit 1; }
+      assert_contains "$out" "LOCAL-ONLY UNSIGNED PKG"
+      ;;
+  esac
+
+  LAST_PKG_CASE_OUT="$out"
+}
+
+run_pkg_identity_gate_cases() {
+  run_pkg_builder_case zero failure "pkg-identity-zero"
+  assert_contains "$LAST_PKG_CASE_OUT" "error: Developer ID Installer identity is required for public PKG output"
+  assert_contains "$LAST_PKG_CASE_OUT" "scripts/create-installer-csr.sh"
+
+  run_pkg_builder_case multiple failure "pkg-identity-multiple"
+  assert_contains "$LAST_PKG_CASE_OUT" "error: multiple Developer ID Installer identities found"
+  assert_contains "$LAST_PKG_CASE_OUT" "set INSTALLER_SIGN_ID"
+
+  run_pkg_builder_case application-only failure "pkg-identity-application-only"
+  assert_contains "$LAST_PKG_CASE_OUT" "Developer ID Installer"
+
+  run_pkg_builder_case zero local-unsigned "pkg-identity-local-unsigned"
+  assert_contains "$LAST_PKG_CASE_OUT" "not publishable"
+
+  run_pkg_builder_case one success "pkg-identity-one"
 }
 
 run_notary_case() {
@@ -625,6 +833,8 @@ run_release_all_missing_credentials      # [REL-02]
 run_release_all_unnotarized_override     # [REL-02]
 
 run_release_all_notary_ready_sequence
+
+run_pkg_identity_gate_cases
 
 run_dmg_checksum_artifact_check        # [DOC-04]
 
