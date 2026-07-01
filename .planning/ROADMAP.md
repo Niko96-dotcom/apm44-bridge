@@ -54,7 +54,7 @@ Phase numbering continues from shipped and reconciled history:
 
 | Phase | Name | Goal | Requirements |
 |-------|------|------|--------------|
-| 46 | PKG Installer Promotion | Promote the package installer from maintainer-only experiment to fail-closed public install artifact. | PKG-01, PKG-02, PKG-03, PKG-04, PKG-05 |
+| 46 | 4/4 | Complete    | 2026-07-01 |
 | 47 | Professional DMG Presentation | Make the opened DMG feel product-grade and expose the PKG installer instead of raw internals. | DMG-01, DMG-02, DMG-03, DMG-04, DMG-05 |
 | 48 | Install, Upgrade, and Uninstall Proof | Prove the final mounted artifact installs, upgrades, and uninstalls cleanly with current app/helper/HAL state. | INST-01, INST-02, INST-03, INST-04, INST-05 |
 | 49 | Public Docs and Release Hygiene Gate | Align public docs with the PKG flow and make release automation fail closed before publication. | DOC-01, DOC-02, DOC-03, DOC-04, REL-01, REL-02 |
@@ -62,7 +62,7 @@ Phase numbering continues from shipped and reconciled history:
 
 ## Phase Progress
 
-- [ ] **Phase 46: PKG Installer Promotion** - Signed/notarized/stapled PKG public path.
+- [x] **Phase 46: PKG Installer Promotion** - Signed/notarized/stapled PKG public path. (completed 2026-07-01)
 - [ ] **Phase 47: Professional DMG Presentation** - PKG-first DMG wrapper and layout proof.
 - [ ] **Phase 48: Install, Upgrade, and Uninstall Proof** - Real final-artifact install proof and installed HAL verification.
 - [ ] **Phase 49: Public Docs and Release Hygiene Gate** - Docs, CI, secrets, fail-closed release checks.
@@ -75,13 +75,13 @@ fail-closed public install artifact.
 
 **Requirements:** PKG-01, PKG-02, PKG-03, PKG-04, PKG-05
 
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
-- [ ] 46-01-PLAN.md — Fail-closed package identity and payload staging.
-- [ ] 46-02-PLAN.md — Package notarization, validation, Gatekeeper assessment, and checksum.
-- [ ] 46-03-PLAN.md — Mandatory release-all package gate promotion.
-- [ ] 46-04-PLAN.md — Package upgrade semantics, verifier, and provenance handoff.
+- [x] 46-01-PLAN.md — Fail-closed package identity and payload staging.
+- [x] 46-02-PLAN.md — Package notarization, validation, Gatekeeper assessment, and checksum.
+- [x] 46-03-PLAN.md — Mandatory release-all package gate promotion.
+- [x] 46-04-PLAN.md — Package upgrade semantics, verifier, and provenance handoff.
 
 **Success criteria:**
 1. Public release mode builds a Developer ID Installer-signed package that
