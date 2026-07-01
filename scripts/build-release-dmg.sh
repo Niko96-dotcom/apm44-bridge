@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${APM44_BUILD_CONFIG:-Release}"
-VERSION="${APM44_VERSION:-0.11.1}"
+VERSION="${APM44_VERSION:-0.12.0}"
 OUT="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 STAGING="${APM44_DMG_STAGING:-$ROOT/build/signing/dmg-staging}"
 PACKAGE_ONLY="${APM44_DMG_PACKAGE_ONLY:-0}"

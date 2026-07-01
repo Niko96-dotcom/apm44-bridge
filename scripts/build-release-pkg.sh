@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${APM44_BUILD_CONFIG:-Release}"
-VERSION="${APM44_VERSION:-0.11.1}"
+VERSION="${APM44_VERSION:-0.12.0}"
 PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 UNSIGNED_PKG="${PKG%.pkg}-unsigned.pkg"
 LOCAL_UNSIGNED_PKG="${PKG%.pkg}-local-unsigned.pkg"

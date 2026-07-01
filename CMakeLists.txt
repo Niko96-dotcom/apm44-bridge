@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(APM44Bridge VERSION 0.11.1 LANGUAGES CXX)
+project(APM44Bridge VERSION 0.12.0 LANGUAGES CXX)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Allow pinned third-party projects with older CMake policies")
 

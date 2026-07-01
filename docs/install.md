@@ -1,6 +1,6 @@
 # Installing APM44 Bridge (end users)
 
-APM44 Bridge is a **macOS menu bar app** plus a **HAL audio driver**. The v1.1
+APM44 Bridge is a **macOS menu bar app** plus a **HAL audio driver**. The v1.2
 validation anchor is Cubase 15 at **44.1 kHz** into **APM44 Bridge**, with
 monitoring on **AirPods Max USB-C at 48 kHz**.
 
@@ -10,13 +10,13 @@ From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
 
 | Artifact | Use when |
 |----------|----------|
-| **`APM44Bridge-0.11.1.dmg`** | Current DMG-primary public release artifact; run **Install APM44 Bridge.command** inside the DMG |
-| **`APM44Bridge-0.11.1.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
+| **`APM44Bridge-0.12.0.dmg`** | Current PKG-in-DMG public release artifact; open **APM44Bridge-0.12.0.pkg** inside the DMG |
+| **`APM44Bridge-0.12.0.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
 
 Maintainer build: `bash scripts/release-all.sh` produces the signed,
-notarized, stapled DMG. The final DMG is packaged after the inner app and HAL
-driver are stapled and validated. The PKG flow is maintainer-only until
-Developer ID Installer signing, installer UX, and validation are complete.
+notarized, stapled PKG-in-DMG release. The final DMG is packaged after the
+inner app, HAL driver, and installer package are signed, notarized, stapled,
+and validated.
 
 If you clone the repository instead of downloading a release, treat that as a
 developer build path. You can run `bash scripts/ci.sh` to build and test the
@@ -33,7 +33,7 @@ notarized DMG release.
    ```
 
 3. Open the DMG and open **APM44Bridge-<version>.pkg**.
-4. Enter your Mac admin password in Terminal when asked. This is expected:
+4. Enter your Mac admin password when Installer asks. This is expected:
    APM44 Bridge installs a HAL audio driver under
    `/Library/Audio/Plug-Ins/HAL/`, which macOS protects as an admin location.
 5. **Reboot once** if **APM44 Bridge** does not appear in **Audio MIDI Setup** (first HAL install).
