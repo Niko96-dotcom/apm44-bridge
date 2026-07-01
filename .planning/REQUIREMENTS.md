@@ -24,18 +24,18 @@ mystery relaunches.
 
 ### Professional DMG Presentation
 
-- [ ] **DMG-01**: User opening the public DMG sees a clear product-grade
+- [x] **DMG-01**: User opening the public DMG sees a clear product-grade
   installer entrypoint instead of raw app, HAL driver, and Terminal command
   contents.
-- [ ] **DMG-02**: The public DMG contains the validated installer package as the
+- [x] **DMG-02**: The public DMG contains the validated installer package as the
   primary install object and excludes raw `APM44 Bridge.app`,
   `APM44Bridge.driver`, and `.command` installer internals.
-- [ ] **DMG-03**: Maintainer release mode signs, notarizes, staples, validates,
+- [x] **DMG-03**: Maintainer release mode signs, notarizes, staples, validates,
   and Gatekeeper assesses the final DMG after all contents are final.
-- [ ] **DMG-04**: Maintainer can mount the final DMG and run an automated layout
+- [x] **DMG-04**: Maintainer can mount the final DMG and run an automated layout
   check that proves the visible contents match the expected professional
   installer flow.
-- [ ] **DMG-05**: Checksums are generated only after final PKG and DMG stapling
+- [x] **DMG-05**: Checksums are generated only after final PKG and DMG stapling
   so published checksum files match the exact release bytes.
 
 ### Install, Upgrade, and Uninstall Proof
@@ -115,11 +115,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PKG-03 | Phase 46 | Complete |
 | PKG-04 | Phase 46 | Complete |
 | PKG-05 | Phase 46 | Complete |
-| DMG-01 | Phase 47 | Pending |
-| DMG-02 | Phase 47 | Pending |
-| DMG-03 | Phase 47 | Pending |
-| DMG-04 | Phase 47 | Pending |
-| DMG-05 | Phase 47 | Pending |
+| DMG-01 | Phase 47 | Complete |
+| DMG-02 | Phase 47 | Complete |
+| DMG-03 | Phase 47 | Complete |
+| DMG-04 | Phase 47 | Complete |
+| DMG-05 | Phase 47 | Complete |
 | INST-01 | Phase 48 | Pending |
 | INST-02 | Phase 48 | Pending |
 | INST-03 | Phase 48 | Pending |

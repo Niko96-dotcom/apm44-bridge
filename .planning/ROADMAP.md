@@ -55,7 +55,7 @@ Phase numbering continues from shipped and reconciled history:
 | Phase | Name | Goal | Requirements |
 |-------|------|------|--------------|
 | 46 | 4/4 | Complete    | 2026-07-01 |
-| 47 | Professional DMG Presentation | Make the opened DMG feel product-grade and expose the PKG installer instead of raw internals. | DMG-01, DMG-02, DMG-03, DMG-04, DMG-05 |
+| 47 | 1/1 | Complete    | 2026-07-01 |
 | 48 | Install, Upgrade, and Uninstall Proof | Prove the final mounted artifact installs, upgrades, and uninstalls cleanly with current app/helper/HAL state. | INST-01, INST-02, INST-03, INST-04, INST-05 |
 | 49 | Public Docs and Release Hygiene Gate | Align public docs with the PKG flow and make release automation fail closed before publication. | DOC-01, DOC-02, DOC-03, DOC-04, REL-01, REL-02 |
 | 50 | Latest Release Publication Closure | Publish the clean release to GitHub and reverify the public downloaded assets. | REL-03, REL-04, REL-05 |
@@ -63,7 +63,7 @@ Phase numbering continues from shipped and reconciled history:
 ## Phase Progress
 
 - [x] **Phase 46: PKG Installer Promotion** - Signed/notarized/stapled PKG public path. (completed 2026-07-01)
-- [ ] **Phase 47: Professional DMG Presentation** - PKG-first DMG wrapper and layout proof.
+- [x] **Phase 47: Professional DMG Presentation** - PKG-first DMG wrapper and layout proof. (completed 2026-07-01)
 - [ ] **Phase 48: Install, Upgrade, and Uninstall Proof** - Real final-artifact install proof and installed HAL verification.
 - [ ] **Phase 49: Public Docs and Release Hygiene Gate** - Docs, CI, secrets, fail-closed release checks.
 - [ ] **Phase 50: Latest Release Publication Closure** - Clean tag/release, GitHub assets, downloaded-asset proof.
