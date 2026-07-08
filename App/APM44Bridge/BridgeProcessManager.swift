@@ -262,16 +262,18 @@ final class BridgeProcessManager: ObservableObject {
                 if !stopped {
                     failClosedAfterFailedStop()
                 }
+                _ = reapUnresolvedOrFailClosed()
             }
         } else if case .reconnecting = state {
-            if !lifecycle.forceStopUnresolvedProcess() {
-                failClosedAfterFailedStop()
+            if !reapUnresolvedOrFailClosed() {
                 return
             }
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
             lifecycle.clearPipeHandlers()
+        } else {
+            _ = reapUnresolvedOrFailClosed()
         }
     }
 
@@ -285,20 +287,36 @@ final class BridgeProcessManager: ObservableObject {
             if !stopped {
                 failClosedAfterFailedStop()
             }
+            _ = reapUnresolvedOrFailClosed()
         } else if case .reconnecting = state {
-            if !lifecycle.forceStopUnresolvedProcess() {
-                failClosedAfterFailedStop()
+            if !reapUnresolvedOrFailClosed() {
                 return
             }
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
             lifecycle.clearPipeHandlers()
+        } else {
+            _ = reapUnresolvedOrFailClosed()
         }
     }
 
     func quitApplication() async {
         await stopAsync()
+        // Never exit while an unresolved orphan may still own the output device.
+        if lifecycle.hasUnresolvedLiveProcess {
+            _ = reapUnresolvedOrFailClosed()
+        }
+        if lifecycle.hasUnresolvedLiveProcess {
+            return
+        }
+        if case .error(let message) = state,
+           message.localizedCaseInsensitiveContains("did not stop") {
+            state = .idle
+            bannerMessage = nil
+            connectionPhase = .stopped
+            lastStopReason = nil
+        }
         applicationTerminator()
     }
 
@@ -603,6 +621,17 @@ final class BridgeProcessManager: ObservableObject {
         bannerMessage = "Bridge did not stop"
         connectionPhase = .stopped
         pendingRestartReason = nil
+    }
+
+    /// Force-stop a previously dropped handle. Returns false when an orphan remains live.
+    @discardableResult
+    private func reapUnresolvedOrFailClosed() -> Bool {
+        guard lifecycle.hasUnresolvedLiveProcess else { return true }
+        if lifecycle.forceStopUnresolvedProcess() {
+            return true
+        }
+        failClosedAfterFailedStop()
+        return false
     }
 
     private func transitionToIdle() {

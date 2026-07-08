@@ -775,4 +775,51 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .running)
         XCTAssertEqual(launcher.makeCount, 2)
     }
+
+    // DSL-000004: Quit after escalation failure must force-stop unresolved before exit.
+    func testQuitAfterEscalationFailureForceStopsUnresolvedThenExits() async {
+        var didTerminate = false
+        let (manager, _, launcher) = makeManager {
+            didTerminate = true
+        }
+        manager.testTerminationWaitTimeout = .milliseconds(20)
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let firstProc = launcher.lastProcess
+        XCTAssertNotNil(firstProc)
+
+        await manager.quitApplication()
+
+        XCTAssertGreaterThan(launcher.forceStopCount, 0)
+        XCTAssertFalse(launcher.isProcessRunning(firstProc!))
+        XCTAssertTrue(didTerminate)
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    // DSL-000004: Quit must not exit while an unkillable unresolved orphan remains.
+    func testQuitDoesNotExitWhileUnresolvedOrphanRemains() async {
+        var didTerminate = false
+        let launcher = MockProcessLauncher()
+        launcher.forceStopFails = true
+        let (manager, _, _) = makeManager(launcher: launcher) {
+            didTerminate = true
+        }
+        manager.testTerminationWaitTimeout = .milliseconds(20)
+
+        manager.start()
+        let firstProc = launcher.lastProcess
+        XCTAssertNotNil(firstProc)
+
+        await manager.quitApplication()
+
+        XCTAssertGreaterThan(launcher.forceStopCount, 0)
+        XCTAssertTrue(launcher.isProcessRunning(firstProc!))
+        XCTAssertFalse(didTerminate)
+        if case .error(let message) = manager.state {
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("did not stop"))
+        } else {
+            XCTFail("Expected .error while orphan remains, got \(manager.state)")
+        }
+    }
 }
