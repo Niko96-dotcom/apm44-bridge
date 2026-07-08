@@ -81,3 +81,17 @@ Do **not** put the cloud shim ahead of PATH in that mode.
 - P3 / style nits are rejected by default
 - Commits and auto-revert are opt-in
 - Stop with `touch .deslop/stop`
+
+## Completing a fix after exit 42
+
+`deslop-fix.sh` snapshots the tree *before* the child agent runs. If the parent
+Cloud Agent edits the tree first and then re-invokes `run-stage.sh fix`, the
+harness treats the edit as pre-existing and blocks the finding.
+
+After applying the fix and writing `.deslop/cloud/response.json`, finish the
+awaiting run with:
+
+```sh
+scripts/deslop-cloud/complete-fix.sh DSL-000001
+```
+

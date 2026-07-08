@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import Darwin
 
 enum BridgeRunState: Equatable {
     case idle
@@ -30,9 +29,7 @@ final class BridgeProcessManager: ObservableObject {
     @Published private(set) var lastStopReason: StopReason?
     @Published var bannerMessage: String?
 
-    private var process: Process?
-    private var stdoutPipe: Pipe?
-    private var stderrPipe: Pipe?
+    private let lifecycle: BridgeLifecycleController
     private var stdoutBuffer = Data()
     private let stdoutCap = 64 * 1024
     private var lastXrunCount: UInt64 = 0
@@ -40,28 +37,22 @@ final class BridgeProcessManager: ObservableObject {
     private var staleTask: Task<Void, Never>?
     private var lastMetricsAt: Date?
     private var stderrLines: [String] = []
-    private var terminationContinuations: [CheckedContinuation<Void, Never>] = []
     private var restartTask: Task<Void, Never>?
     private var pendingRestartReason: StopReason?
     private var wasRunningBeforeDisconnect = false
     private var lastKnownDeviceName: String?
     private var lastKnownDeviceUid: String?
-    private var retryAttempt = 0
-    private let maxRetryAttempts = 4
-    private var retryTask: Task<Void, Never>?
 
-    private let processLauncher: ProcessLaunching
     private let binaryURLOverride: URL?
     private let applicationTerminator: @MainActor () -> Void
 
     let settings: BridgeSettings
 
     internal private(set) var hotplugRefreshGeneration = 0
-    internal private(set) var retryGeneration = 0
-    internal var testRetryDelays: [TimeInterval]?
-
-    private var retryDelays: [TimeInterval] {
-        testRetryDelays ?? [1.0, 2.0, 4.0, 4.0]
+    internal var retryGeneration: Int { lifecycle.retryGeneration }
+    internal var testRetryDelays: [TimeInterval]? {
+        get { lifecycle.testRetryDelays }
+        set { lifecycle.testRetryDelays = newValue }
     }
 
     init(
@@ -71,7 +62,9 @@ final class BridgeProcessManager: ObservableObject {
         applicationTerminator: @escaping @MainActor () -> Void = { NSApplication.shared.terminate(nil) }
     ) {
         self.settings = settings
-        self.processLauncher = processLauncher ?? LiveProcessLauncher()
+        self.lifecycle = BridgeLifecycleController(
+            processLauncher: processLauncher ?? LiveProcessLauncher()
+        )
         self.binaryURLOverride = binaryURLOverride
         self.applicationTerminator = applicationTerminator
     }
@@ -114,7 +107,7 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     internal func setRetryAttemptForTesting(_ value: Int) {
-        retryAttempt = value
+        lifecycle.setRetryAttemptForTesting(value)
     }
 
     internal var testLaunchArgumentsOverride: [String]?
@@ -185,8 +178,8 @@ final class BridgeProcessManager: ObservableObject {
         default: return
         }
         if resetRetryAttempt {
-            cancelRetryTask()
-            retryAttempt = 0
+            lifecycle.cancelRetryTask()
+            lifecycle.resetRetryAttempt()
         }
         guard let url = binaryURL else {
             state = .error("Bridge not found — build or install apm44-bridge")
@@ -203,15 +196,13 @@ final class BridgeProcessManager: ObservableObject {
         resetMetricsState()
         lastXrunCount = 0
 
-        let proc = processLauncher.makeProcess()
+        let proc = lifecycle.makeProcess()
         proc.executableURL = url
         proc.arguments = testLaunchArgumentsOverride ?? buildArguments(outputUid: uid)
 
         let outPipe = Pipe()
-        stdoutPipe = outPipe
-        proc.standardOutput = outPipe
         let errPipe = Pipe()
-        stderrPipe = errPipe
+        proc.standardOutput = outPipe
         proc.standardError = errPipe
         errPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -236,8 +227,8 @@ final class BridgeProcessManager: ObservableObject {
         }
 
         do {
-            try processLauncher.launch(proc)
-            process = proc
+            try lifecycle.launch(proc)
+            lifecycle.attachLaunchedProcess(proc, stdout: outPipe, stderr: errPipe)
             state = .running
             wasRunningBeforeDisconnect = false
             updateConnectionPhase()
@@ -250,31 +241,31 @@ final class BridgeProcessManager: ObservableObject {
 
     func stop() {
         wasRunningBeforeDisconnect = false
-        cancelRetryTask()
-        retryAttempt = 0
-        if process != nil {
+        lifecycle.cancelRetryTask()
+        lifecycle.resetRetryAttempt()
+        if lifecycle.isProcessActive {
             initiateStop(reason: .user)
             Task { await finishStopWithEscalation() }
         } else if case .reconnecting = state {
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
-            clearPipeHandlers()
+            lifecycle.clearPipeHandlers()
         }
     }
 
     func stopAsync() async {
         wasRunningBeforeDisconnect = false
-        cancelRetryTask()
-        retryAttempt = 0
-        if process != nil {
+        lifecycle.cancelRetryTask()
+        lifecycle.resetRetryAttempt()
+        if lifecycle.isProcessActive {
             initiateStop(reason: .user)
             await finishStopWithEscalation()
         } else if case .reconnecting = state {
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
-            clearPipeHandlers()
+            lifecycle.clearPipeHandlers()
         }
     }
 
@@ -285,12 +276,12 @@ final class BridgeProcessManager: ObservableObject {
 
     private func initiateStop(reason: StopReason) {
         lastStopReason = reason
-        guard let proc = process else {
+        guard let proc = lifecycle.process else {
             transitionToIdle()
             return
         }
         state = .stopping
-        if processLauncher.isProcessRunning(proc) {
+        if lifecycle.isLauncherRunning(proc) {
             if proc.isRunning {
                 proc.terminate()
             }
@@ -342,7 +333,7 @@ final class BridgeProcessManager: ObservableObject {
         }
 
         lastStopReason = reason
-        if process != nil {
+        if lifecycle.isProcessActive {
             let stopped = await terminateProcessWithEscalation(reason: reason)
             if !stopped {
                 state = .error("Bridge did not stop")
@@ -404,36 +395,6 @@ final class BridgeProcessManager: ObservableObject {
         }
 
         // Idle: refresh only; never auto-start.
-    }
-
-    private func waitForTermination(timeout: Duration = .seconds(5)) async throws {
-        if state == .idle, process == nil { return }
-
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { @MainActor in
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    if self.state == .idle, self.process == nil {
-                        continuation.resume()
-                        return
-                    }
-                    // PROC-03: support concurrent termination waiters. Each
-                    // caller appends its own continuation; the termination
-                    // handler drains the full list. A single optional slot
-                    // would let the second caller overwrite the first.
-                    self.terminationContinuations.append(continuation)
-                }
-            }
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                throw TerminationWaitError.timedOut
-            }
-            _ = try await group.next()
-            group.cancelAll()
-        }
-    }
-
-    private enum TerminationWaitError: Error {
-        case timedOut
     }
 
     private func buildArguments(outputUid: String) -> [String] {
@@ -574,13 +535,6 @@ final class BridgeProcessManager: ObservableObject {
         return defaultMessage
     }
 
-    private func clearPipeHandlers() {
-        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
-        stderrPipe?.fileHandleForReading.readabilityHandler = nil
-        stdoutPipe = nil
-        stderrPipe = nil
-    }
-
     private func resetMetricsState() {
         latestMetrics = nil
         lastMetricsAt = nil
@@ -589,29 +543,8 @@ final class BridgeProcessManager: ObservableObject {
 
     @discardableResult
     private func finishStopWithEscalation() async -> Bool {
-        guard process != nil else {
-            clearPipeHandlers()
-            return true
-        }
-        do {
-            try await waitForTermination(timeout: .seconds(5))
-            return true
-        } catch {
-            if let proc = process, processLauncher.isProcessRunning(proc), proc.isRunning {
-                kill(proc.processIdentifier, SIGKILL)
-            }
-            do {
-                try await waitForTermination(timeout: .seconds(5))
-                return true
-            } catch {
-                // PROC-01: ensure any in-flight termination waiter
-                // unblocks with a final result instead of hanging. Clear
-                // pipe handlers and resume every queued continuation so
-                // the caller gets a deterministic `false`.
-                clearPipeHandlers()
-                resumeTerminationWaiters()
-                return false
-            }
+        await lifecycle.finishStopWithEscalation { [weak self] in
+            self?.state == .idle
         }
     }
 
@@ -622,12 +555,12 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func transitionToIdle() {
-        clearPipeHandlers()
+        lifecycle.clearPipeHandlers()
         resetMetricsState()
         state = .idle
         connectionPhase = .stopped
         lastStopReason = nil
-        resumeTerminationWaiters()
+        lifecycle.resumeTerminationWaiters()
         drainPendingRestart()
     }
 
@@ -637,69 +570,34 @@ final class BridgeProcessManager: ObservableObject {
         Task { await restart(reason: pending) }
     }
 
-    private func resumeTerminationWaiters() {
-        // PROC-03: resume all queued termination continuations, not just
-        // one. Drain the list, then clear it so a new waiter that arrives
-        // after this point is not immediately resumed.
-        let pending = terminationContinuations
-        terminationContinuations = []
-        for continuation in pending {
-            continuation.resume()
-        }
-    }
-
-    private func cancelRetryTask() {
-        retryTask?.cancel()
-        retryTask = nil
-    }
-
     private func scheduleAutoRetry() {
-        cancelRetryTask()
-        retryGeneration += 1
-        retryAttempt += 1
-        if retryAttempt > maxRetryAttempts {
-            let message = "Bridge stopped after \(maxRetryAttempts) retries — click Start to try again"
-            state = .error(message)
-            bannerMessage = message
-            return
-        }
-
-        state = .reconnecting
-        bannerMessage = "Reconnecting… (attempt \(retryAttempt) of \(maxRetryAttempts))"
-
-        retryTask = Task { @MainActor in
-            while !Task.isCancelled {
-                let delayIndex = min(self.retryAttempt - 1, self.retryDelays.count - 1)
-                let delay = self.retryDelays[delayIndex]
-                try? await Task.sleep(for: .seconds(delay))
-                guard !Task.isCancelled else { return }
-                guard case .reconnecting = self.state else { return }
-
-                self.start(resetRetryAttempt: false)
-                if self.isRunning {
-                    self.retryAttempt = 0
-                    return
-                }
-
-                self.retryAttempt += 1
-                if self.retryAttempt > self.maxRetryAttempts {
-                    let message =
-                        "Bridge stopped after \(self.maxRetryAttempts) retries — click Start to try again"
-                    self.state = .error(message)
-                    self.bannerMessage = message
-                    return
-                }
-
+        lifecycle.scheduleAutoRetry(
+            setReconnectingBanner: { [weak self] attempt, maxAttempts in
+                guard let self else { return }
                 self.state = .reconnecting
-                self.bannerMessage =
-                    "Reconnecting… (attempt \(self.retryAttempt) of \(self.maxRetryAttempts))"
+                self.bannerMessage = "Reconnecting… (attempt \(attempt) of \(maxAttempts))"
+            },
+            setExhausted: { [weak self] message in
+                guard let self else { return }
+                self.state = .error(message)
+                self.bannerMessage = message
+            },
+            isStillReconnecting: { [weak self] in
+                guard let self else { return false }
+                if case .reconnecting = self.state { return true }
+                return false
+            },
+            attemptStart: { [weak self] in
+                guard let self else { return false }
+                self.start(resetRetryAttempt: false)
+                return self.isRunning
             }
-        }
+        )
     }
 
     private func handleTermination(_ proc: Process) {
-        clearPipeHandlers()
-        process = nil
+        lifecycle.clearPipeHandlers()
+        _ = lifecycle.takeProcess()
         staleTask?.cancel()
         if case .stopping = state {
             transitionToIdle()
@@ -720,7 +618,7 @@ final class BridgeProcessManager: ObservableObject {
                 bannerMessage = message
             }
             connectionPhase = .stopped
-            resumeTerminationWaiters()
+            lifecycle.resumeTerminationWaiters()
             return
         } else if case .running = state {
             transitionToIdle()
@@ -734,7 +632,7 @@ final class BridgeProcessManager: ObservableObject {
             }
         }
         connectionPhase = .stopped
-        resumeTerminationWaiters()
+        lifecycle.resumeTerminationWaiters()
     }
 
 }
