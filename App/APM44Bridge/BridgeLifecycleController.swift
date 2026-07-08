@@ -9,6 +9,8 @@ final class BridgeLifecycleController {
     private let maxRetryAttempts = 4
 
     private(set) var process: Process?
+    /// Retained after fail-closed escalation drops `process` while the OS process may still be alive.
+    private(set) var unresolvedProcess: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
     private var terminationContinuations: [CheckedContinuation<Void, Never>] = []
@@ -34,6 +36,11 @@ final class BridgeLifecycleController {
 
     var isProcessActive: Bool { process != nil }
 
+    var hasUnresolvedLiveProcess: Bool {
+        guard let unresolved = unresolvedProcess else { return false }
+        return processLauncher.isProcessRunning(unresolved)
+    }
+
     func setRetryAttemptForTesting(_ value: Int) {
         retryAttempt = value
     }
@@ -47,6 +54,7 @@ final class BridgeLifecycleController {
         stdout: Pipe,
         stderr: Pipe
     ) {
+        unresolvedProcess = nil
         process = proc
         stdoutPipe = stdout
         stderrPipe = stderr
@@ -56,6 +64,24 @@ final class BridgeLifecycleController {
         let current = process
         process = nil
         return current
+    }
+
+    func clearUnresolvedProcess() {
+        unresolvedProcess = nil
+    }
+
+    /// Best-effort kill of a previously dropped handle. Returns true when no live unresolved process remains.
+    @discardableResult
+    func forceStopUnresolvedProcess() -> Bool {
+        guard let unresolved = unresolvedProcess else { return true }
+        if processLauncher.isProcessRunning(unresolved) {
+            processLauncher.forceStop(unresolved)
+        }
+        if processLauncher.isProcessRunning(unresolved) {
+            return false
+        }
+        unresolvedProcess = nil
+        return true
     }
 
     func clearPipeHandlers() {
@@ -133,8 +159,10 @@ final class BridgeLifecycleController {
                 try await waitForTermination(isIdle: isIdle)
                 return true
             } catch {
-                // Fail closed: drop the orphaned handle so the manager can leave `.stopping`.
-                _ = takeProcess()
+                // Fail closed: retain the orphaned handle for later force-stop / block-start.
+                if let orphaned = takeProcess() {
+                    unresolvedProcess = orphaned
+                }
                 clearPipeHandlers()
                 resumeTerminationWaiters()
                 return false

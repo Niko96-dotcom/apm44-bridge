@@ -4,9 +4,12 @@ import XCTest
 final class MockProcessLauncher: ProcessLaunching {
     private(set) var makeCount = 0
     private(set) var lastProcess: Process?
+    private(set) var forceStopCount = 0
     var terminationDelayNanoseconds: UInt64 = 0
     var shouldFailLaunch = false
     var failLaunchesAfterFirstSuccess = false
+    /// When true, forceStop does not clear the running set (models an unkillable orphan).
+    var forceStopFails = false
     private var successfulLaunches = 0
     private var running = Set<ObjectIdentifier>()
 
@@ -30,6 +33,13 @@ final class MockProcessLauncher: ProcessLaunching {
 
     func isProcessRunning(_ process: Process) -> Bool {
         running.contains(ObjectIdentifier(process))
+    }
+
+    func forceStop(_ process: Process) {
+        forceStopCount += 1
+        if !forceStopFails {
+            running.remove(ObjectIdentifier(process))
+        }
     }
 
     func fireTermination(for proc: Process) async {
@@ -714,6 +724,54 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         // Start must be available again after fail-closed recovery.
         manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        XCTAssertGreaterThan(launcher.forceStopCount, 0)
+    }
+
+    // DSL-000003: hotplug disconnect must not enter .reconnecting when escalation fails.
+    func testHotplugDisconnectEscalationFailureFailsClosed() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testTerminationWaitTimeout = .milliseconds(20)
+        manager.testDeviceListOverride = []
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        await manager.handleHotplug()
+
+        if case .error(let message) = manager.state {
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("did not stop"))
+        } else {
+            XCTFail("Expected fail-closed .error after hotplug escalation failure, got \(manager.state)")
+        }
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    // DSL-000003: after fail-closed drop, restart must force-stop unresolved before start.
+    func testRestartAfterFailClosedForceStopsUnresolvedBeforeStart() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testTerminationWaitTimeout = .milliseconds(20)
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let firstProc = launcher.lastProcess
+        XCTAssertNotNil(firstProc)
+
+        await manager.stopAsync()
+        guard case .error = manager.state else {
+            XCTFail("Expected fail-closed error before restart, got \(manager.state)")
+            return
+        }
+        // Mock launcher still reports the orphan as running because Process.kill
+        // does not clear MockProcessLauncher's running set.
+        XCTAssertTrue(launcher.isProcessRunning(firstProc!))
+
+        manager.setStateForTesting(.reconnecting)
+        await manager.restart(reason: .hotplug)
+
+        XCTAssertFalse(launcher.isProcessRunning(firstProc!))
+        XCTAssertGreaterThan(launcher.forceStopCount, 0)
         XCTAssertEqual(manager.state, .running)
         XCTAssertEqual(launcher.makeCount, 2)
     }

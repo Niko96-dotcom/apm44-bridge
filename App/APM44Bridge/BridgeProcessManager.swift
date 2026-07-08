@@ -182,6 +182,13 @@ final class BridgeProcessManager: ObservableObject {
         case .idle, .error, .reconnecting: break
         default: return
         }
+        if lifecycle.hasUnresolvedLiveProcess {
+            if !lifecycle.forceStopUnresolvedProcess() {
+                state = .error("Bridge did not stop")
+                bannerMessage = "Bridge did not stop"
+                return
+            }
+        }
         if resetRetryAttempt {
             lifecycle.cancelRetryTask()
             lifecycle.resetRetryAttempt()
@@ -257,6 +264,10 @@ final class BridgeProcessManager: ObservableObject {
                 }
             }
         } else if case .reconnecting = state {
+            if !lifecycle.forceStopUnresolvedProcess() {
+                failClosedAfterFailedStop()
+                return
+            }
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
@@ -275,6 +286,10 @@ final class BridgeProcessManager: ObservableObject {
                 failClosedAfterFailedStop()
             }
         } else if case .reconnecting = state {
+            if !lifecycle.forceStopUnresolvedProcess() {
+                failClosedAfterFailedStop()
+                return
+            }
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
@@ -349,8 +364,12 @@ final class BridgeProcessManager: ObservableObject {
         if lifecycle.isProcessActive {
             let stopped = await terminateProcessWithEscalation(reason: reason)
             if !stopped {
-                state = .error("Bridge did not stop")
-                bannerMessage = "Bridge did not stop"
+                failClosedAfterFailedStop()
+                return
+            }
+        } else if lifecycle.hasUnresolvedLiveProcess {
+            if !lifecycle.forceStopUnresolvedProcess() {
+                failClosedAfterFailedStop()
                 return
             }
         }
@@ -375,7 +394,11 @@ final class BridgeProcessManager: ObservableObject {
             if isRunning {
                 wasRunningBeforeDisconnect = false
                 bannerMessage = "Output disconnected — select a device"
-                _ = await terminateProcessWithEscalation(reason: .hotplug)
+                let stopped = await terminateProcessWithEscalation(reason: .hotplug)
+                if !stopped {
+                    failClosedAfterFailedStop()
+                    return
+                }
                 state = .error("Output device disconnected")
             }
             return
@@ -389,7 +412,11 @@ final class BridgeProcessManager: ObservableObject {
                 await restart(reason: .hotplug)
             } else {
                 wasRunningBeforeDisconnect = true
-                _ = await terminateProcessWithEscalation(reason: .hotplug)
+                let stopped = await terminateProcessWithEscalation(reason: .hotplug)
+                if !stopped {
+                    failClosedAfterFailedStop()
+                    return
+                }
                 state = .reconnecting
                 bannerMessage = "Output disconnected — waiting for \(deviceDisplayName)…"
             }
@@ -567,13 +594,15 @@ final class BridgeProcessManager: ObservableObject {
         return await finishStopWithEscalation()
     }
 
-    /// User-stop / quit path must not remain wedged in `.stopping` when escalation fails.
+    /// User-stop / quit / hotplug path must not remain wedged or pretend stop succeeded.
     private func failClosedAfterFailedStop() {
         staleTask?.cancel()
+        wasRunningBeforeDisconnect = false
         resetMetricsState()
         state = .error("Bridge did not stop")
         bannerMessage = "Bridge did not stop"
         connectionPhase = .stopped
+        pendingRestartReason = nil
     }
 
     private func transitionToIdle() {
@@ -620,6 +649,7 @@ final class BridgeProcessManager: ObservableObject {
     private func handleTermination(_ proc: Process) {
         lifecycle.clearPipeHandlers()
         _ = lifecycle.takeProcess()
+        lifecycle.clearUnresolvedProcess()
         staleTask?.cancel()
         if case .stopping = state {
             transitionToIdle()
