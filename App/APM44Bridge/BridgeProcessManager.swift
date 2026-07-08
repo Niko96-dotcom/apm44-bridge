@@ -55,6 +55,11 @@ final class BridgeProcessManager: ObservableObject {
         set { lifecycle.testRetryDelays = newValue }
     }
 
+    internal var testTerminationWaitTimeout: Duration? {
+        get { lifecycle.testTerminationWaitTimeout }
+        set { lifecycle.testTerminationWaitTimeout = newValue }
+    }
+
     init(
         settings: BridgeSettings,
         processLauncher: ProcessLaunching? = nil,
@@ -245,7 +250,12 @@ final class BridgeProcessManager: ObservableObject {
         lifecycle.resetRetryAttempt()
         if lifecycle.isProcessActive {
             initiateStop(reason: .user)
-            Task { await finishStopWithEscalation() }
+            Task {
+                let stopped = await finishStopWithEscalation()
+                if !stopped {
+                    failClosedAfterFailedStop()
+                }
+            }
         } else if case .reconnecting = state {
             state = .idle
             bannerMessage = nil
@@ -260,7 +270,10 @@ final class BridgeProcessManager: ObservableObject {
         lifecycle.resetRetryAttempt()
         if lifecycle.isProcessActive {
             initiateStop(reason: .user)
-            await finishStopWithEscalation()
+            let stopped = await finishStopWithEscalation()
+            if !stopped {
+                failClosedAfterFailedStop()
+            }
         } else if case .reconnecting = state {
             state = .idle
             bannerMessage = nil
@@ -552,6 +565,15 @@ final class BridgeProcessManager: ObservableObject {
     private func terminateProcessWithEscalation(reason: StopReason) async -> Bool {
         initiateStop(reason: reason)
         return await finishStopWithEscalation()
+    }
+
+    /// User-stop / quit path must not remain wedged in `.stopping` when escalation fails.
+    private func failClosedAfterFailedStop() {
+        staleTask?.cancel()
+        resetMetricsState()
+        state = .error("Bridge did not stop")
+        bannerMessage = "Bridge did not stop"
+        connectionPhase = .stopped
     }
 
     private func transitionToIdle() {

@@ -228,7 +228,11 @@ struct MenuContentView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .disabled(manager.isTransitioning)
+            // Keep Quit available during `.stopping` so a wedged stop cannot trap the user.
+            .disabled({
+                if case .starting = manager.state { return true }
+                return false
+            }())
         }
         .controlSize(.large)
         .accessibilityHint("Controls bridge process lifecycle")

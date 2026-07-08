@@ -17,9 +17,15 @@ final class BridgeLifecycleController {
     private(set) var retryAttempt = 0
     private(set) var retryGeneration = 0
     var testRetryDelays: [TimeInterval]?
+    /// Test-only override for termination wait budgets (production uses 5s).
+    var testTerminationWaitTimeout: Duration?
 
     private var retryDelays: [TimeInterval] {
         testRetryDelays ?? [1.0, 2.0, 4.0, 4.0]
+    }
+
+    private var terminationWaitTimeout: Duration {
+        testTerminationWaitTimeout ?? .seconds(5)
     }
 
     init(processLauncher: ProcessLaunching) {
@@ -86,9 +92,10 @@ final class BridgeLifecycleController {
 
     func waitForTermination(
         isIdle: @escaping () -> Bool,
-        timeout: Duration = .seconds(5)
+        timeout: Duration? = nil
     ) async throws {
         if isIdle(), process == nil { return }
+        let waitTimeout = timeout ?? terminationWaitTimeout
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
@@ -101,7 +108,7 @@ final class BridgeLifecycleController {
                 }
             }
             group.addTask {
-                try await Task.sleep(for: timeout)
+                try await Task.sleep(for: waitTimeout)
                 throw TerminationWaitError.timedOut
             }
             _ = try await group.next()
@@ -116,16 +123,18 @@ final class BridgeLifecycleController {
             return true
         }
         do {
-            try await waitForTermination(isIdle: isIdle, timeout: .seconds(5))
+            try await waitForTermination(isIdle: isIdle)
             return true
         } catch {
             if let proc = process, processLauncher.isProcessRunning(proc), proc.isRunning {
                 kill(proc.processIdentifier, SIGKILL)
             }
             do {
-                try await waitForTermination(isIdle: isIdle, timeout: .seconds(5))
+                try await waitForTermination(isIdle: isIdle)
                 return true
             } catch {
+                // Fail closed: drop the orphaned handle so the manager can leave `.stopping`.
+                _ = takeProcess()
                 clearPipeHandlers()
                 resumeTerminationWaiters()
                 return false

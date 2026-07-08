@@ -690,4 +690,31 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .idle)
     }
+
+    // DSL-000002: if termination never arrives after SIGTERM/SIGKILL waits,
+    // user stop must fail closed to `.error` instead of remaining `.stopping`
+    // (which disables Start/Restart/Quit via isTransitioning).
+    func testUserStopEscalationFailureFailsClosedToError() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testTerminationWaitTimeout = .milliseconds(20)
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        await manager.stopAsync()
+
+        if case .error(let message) = manager.state {
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("did not stop"))
+        } else {
+            XCTFail("Expected .error after stop escalation failure, got \(manager.state)")
+        }
+        XCTAssertEqual(manager.bannerMessage, "Bridge did not stop")
+        XCTAssertFalse(manager.isTransitioning)
+
+        // Start must be available again after fail-closed recovery.
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+    }
 }
