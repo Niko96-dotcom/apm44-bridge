@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ultimate-de-slop fix output",
+  "type": "object",
+  "required": ["finding_id", "summary", "changed_files", "checks_run", "risks", "status"],
+  "properties": {
+    "finding_id": {"type": "string"},
+    "summary": {"type": "string"},
+    "changed_files": {"type": "array", "items": {"type": "string"}},
+    "checks_run": {"type": "array", "items": {"type": "string"}},
+    "risks": {"type": "array", "items": {"type": "string"}},
+    "status": {"type": "string", "enum": ["fixed", "blocked"]}
+  },
+  "additionalProperties": false
+}

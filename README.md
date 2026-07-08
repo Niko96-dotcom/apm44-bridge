@@ -79,6 +79,17 @@ bash scripts/verify-devices.sh
 bash scripts/verify-hal-driver.sh
 ```
 
+### Ultimate De-Slop (Cursor Cloud)
+
+This repo vendors Ultimate De-Slop plus a cloud bridge so Cloud Agents can run
+the bounded review → fix → verify loop without `CURSOR_API_KEY`. See
+[docs/ultimate-de-slop-cloud.md](docs/ultimate-de-slop-cloud.md).
+
+```bash
+scripts/deslop-cloud/run-stage.sh review
+# On exit 42: write schema JSON to .deslop/cloud/response.json, then re-run.
+```
+
 ## Release
 
 End users should install the signed, notarized DMG from GitHub Releases. Source

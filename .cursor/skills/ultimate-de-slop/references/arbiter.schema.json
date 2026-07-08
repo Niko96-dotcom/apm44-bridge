@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ultimate-de-slop arbiter output",
+  "type": "object",
+  "required": ["accepted", "rejected", "merged", "next", "stop_recommendation"],
+  "properties": {
+    "accepted": {"type": "array", "items": {"type": "string"}},
+    "rejected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "severity", "confidence", "reasons"],
+        "properties": {
+          "id": {"type": ["string", "null"]},
+          "title": {"type": ["string", "null"]},
+          "severity": {"type": ["string", "null"]},
+          "confidence": {"type": ["number", "null"]},
+          "reasons": {"type": "array", "items": {"type": "string"}}
+        },
+        "additionalProperties": false
+      }
+    },
+    "merged": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["into", "title", "reason"],
+        "properties": {
+          "into": {"type": ["string", "null"]},
+          "title": {"type": ["string", "null"]},
+          "reason": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "next": {"type": ["string", "null"]},
+    "stop_recommendation": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false
+}

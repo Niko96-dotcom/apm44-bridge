@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ultimate-de-slop verify output",
+  "type": "object",
+  "required": ["finding_id", "verdict", "confidence", "evidence", "concerns", "required_follow_up"],
+  "properties": {
+    "finding_id": {"type": "string"},
+    "verdict": {"enum": ["PASS", "FAIL", "NEEDS_HUMAN", "FALSE_POSITIVE"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "concerns": {"type": "array", "items": {"type": "string"}},
+    "required_follow_up": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

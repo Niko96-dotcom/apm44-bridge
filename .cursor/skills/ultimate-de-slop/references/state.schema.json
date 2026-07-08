@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ultimate-de-slop state",
+  "type": "object",
+  "required": ["version", "repo_root", "created_at", "updated_at", "config", "counters", "current_iteration", "stop", "last_run", "open_findings_summary"],
+  "properties": {
+    "version": {"type": "integer"},
+    "repo_root": {"type": "string"},
+    "created_at": {"type": "string"},
+    "updated_at": {"type": "string"},
+    "config": {"type": "object"},
+    "counters": {"type": "object"},
+    "current_iteration": {"type": "integer"},
+    "stop": {"type": "object"},
+    "last_run": {"type": ["object", "null"]},
+    "open_findings_summary": {"type": "object"},
+    "loop_outcome": {
+      "type": "object",
+      "description": "Optional summary of the most recent bounded loop exit.",
+      "properties": {
+        "at": {"type": "string"},
+        "stop_reason": {
+          "type": "string",
+          "enum": ["stop_file", "no_eligible_findings", "max_iterations_reached", "finalize_halt"]
+        },
+        "iterations_completed": {"type": "integer"},
+        "max_iterations": {"type": "integer"},
+        "priority": {"type": "string"},
+        "verified_ids": {"type": "array", "items": {"type": "string"}},
+        "halt_finding_id": {"type": ["string", "null"]},
+        "halt_status": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

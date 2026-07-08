@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# Cloud-agent shim for Ultimate De-Slop's DESLOP_HARNESS=cursor adapter.
+#
+# Cursor Cloud VMs can install the real `cursor-agent` CLI, but they usually
+# have no CURSOR_API_KEY / login. This shim lets the parent Cloud Agent play
+# the reviewer / fixer / verifier roles by writing JSON responses into
+# `.deslop/cloud/response.json`.
+#
+# Protocol:
+#   1. Harness invokes: cursor-agent --print ... "Read and follow the prompt file at <path>..."
+#   2. Shim records the request under `.deslop/cloud/request.json` and copies the prompt.
+#   3. If `.deslop/cloud/response.json` exists, print it (as JSON) and exit 0.
+#   4. Otherwise exit 42 with a short actionable message for the parent agent.
+set -euo pipefail
+
+ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${ROOT:-}" ]; then
+  ROOT="$PWD"
+fi
+
+CLOUD_DIR="$ROOT/.deslop/cloud"
+mkdir -p "$CLOUD_DIR"
+
+prompt_path=""
+mode=""
+workspace=""
+output_format="json"
+force=0
+print_mode=0
+trust=0
+model=""
+args=("$@")
+
+i=0
+while [ "$i" -lt "$#" ]; do
+  arg="${args[$i]}"
+  case "$arg" in
+    --print|-p) print_mode=1 ;;
+    --trust) trust=1 ;;
+    --force|--yolo) force=1 ;;
+    --mode)
+      i=$((i + 1))
+      mode="${args[$i]:-}"
+      ;;
+    --workspace)
+      i=$((i + 1))
+      workspace="${args[$i]:-}"
+      ;;
+    --output-format)
+      i=$((i + 1))
+      output_format="${args[$i]:-json}"
+      ;;
+    --model)
+      i=$((i + 1))
+      model="${args[$i]:-}"
+      ;;
+    --help|-h)
+      cat <<'EOF'
+cursor-agent cloud shim for Ultimate De-Slop
+
+This is not the official Cursor Agent CLI. It bridges DESLOP_HARNESS=cursor
+into Cursor Cloud by reading `.deslop/cloud/response.json`.
+
+Put schema-valid role JSON in that file, then re-run the harness stage.
+EOF
+      exit 0
+      ;;
+    *)
+      if [[ "$arg" == Read\ and\ follow\ the\ prompt\ file\ at\ * ]]; then
+        prompt_path="${arg#Read and follow the prompt file at }"
+        prompt_path="${prompt_path%. Return only the requested JSON.}"
+      fi
+      ;;
+  esac
+  i=$((i + 1))
+done
+
+# Prefer an explicit prompt path if the adapter wording changes.
+if [ -z "$prompt_path" ]; then
+  for arg in "$@"; do
+    if [ -f "$arg" ] && [[ "$arg" == *.txt || "$arg" == */prompt.txt ]]; then
+      prompt_path="$arg"
+      break
+    fi
+  done
+fi
+
+request_json="$CLOUD_DIR/request.json"
+prompt_copy="$CLOUD_DIR/prompt.txt"
+response_json="$CLOUD_DIR/response.json"
+status_file="$CLOUD_DIR/status.txt"
+
+python3 - "$request_json" "$prompt_path" "$mode" "$workspace" "$output_format" "$force" "$print_mode" "$trust" "$model" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+out, prompt_path, mode, workspace, output_format, force, print_mode, trust, model = sys.argv[1:]
+payload = {
+    "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    "force": force == "1",
+    "mode": mode or None,
+    "model": model or None,
+    "output_format": output_format or "json",
+    "print": print_mode == "1",
+    "prompt_path": prompt_path or None,
+    "trust": trust == "1",
+    "workspace": workspace or None,
+}
+Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+PY
+
+if [ -n "$prompt_path" ] && [ -f "$prompt_path" ]; then
+  cp "$prompt_path" "$prompt_copy"
+fi
+
+if [ -f "$response_json" ]; then
+  # Consume the response so the next stage cannot accidentally reuse it.
+  cat "$response_json"
+  mv "$response_json" "$CLOUD_DIR/response.last.json"
+  printf 'served-response\n' > "$status_file"
+  exit 0
+fi
+
+printf 'awaiting-response\n' > "$status_file"
+cat >&2 <<EOF
+deslop-cloud cursor-agent shim: no response ready.
+
+Wrote request metadata to: $request_json
+Copied prompt to:           $prompt_copy
+
+Parent Cloud Agent next steps:
+  1. Read $prompt_copy (and .deslop/index.md / inventory as needed)
+  2. Produce schema-valid JSON for this role
+  3. Write it to $response_json
+  4. Re-run the same harness command (deslop-review.sh / deslop-fix.sh / deslop-verify.sh)
+EOF
+exit 42
