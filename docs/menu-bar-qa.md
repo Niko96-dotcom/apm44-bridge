@@ -54,7 +54,8 @@ Map each step to requirements and record pass/fail in the release or QA notes.
 
 | Step | Pass? |
 |------|-------|
-| Running label shows `~N ms monitoring latency` with N > 0 | |
+| Running label identifies `~N ms bridge buffering` with N > 0 | |
+| Copy states device, DAW, and hardware latency are additional | |
 | No "zero latency" copy anywhere | |
 
 ## Automated gate

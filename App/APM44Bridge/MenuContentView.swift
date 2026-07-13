@@ -64,7 +64,7 @@ struct MenuContentView: View {
             .padding(.vertical, 3)
             .background(Capsule().fill(statusTint.opacity(0.18)))
             .foregroundStyle(statusTint)
-            .accessibilityLabel(metrics.latencyLabel)
+            .accessibilityLabel(metrics.bridgeBufferingLabel)
     }
 
     private var routingChain: some View {
@@ -153,8 +153,8 @@ struct MenuContentView: View {
 
     private var latencyControl: some View {
         VStack(alignment: .leading, spacing: 6) {
-            controlHeader("speedometer", "Latency")
-            Picker("Latency", selection: $settings.latencyPreset) {
+            controlHeader("speedometer", "Bridge buffering")
+            Picker("Bridge buffering", selection: $settings.latencyPreset) {
                 ForEach(LatencyPreset.allCases) { preset in
                     Text(preset.shortTitle).tag(preset)
                 }
@@ -305,7 +305,7 @@ struct MenuContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Monitoring adds latency")
+                        Text("Bridge buffering")
                             .font(.caption)
                             .fontWeight(.medium)
                         Text(settings.latencyPreset.stoppedLatencyHint(halMode: manager.routingMode == .halVirtualDevice))

@@ -110,9 +110,9 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         inputDroppedFrames &+ producerDroppedFrames &+ outputStarvationFrames
     }
 
-    var latencyLabel: String {
+    var bridgeBufferingLabel: String {
         let ms = max(0.1, estimatedRtMs.rounded())
-        return "~\(Int(ms)) ms monitoring latency"
+        return "~\(Int(ms)) ms bridge buffering"
     }
 
     var fillProgress: Double {

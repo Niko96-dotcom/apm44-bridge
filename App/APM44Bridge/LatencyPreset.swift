@@ -49,7 +49,7 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
         }
     }
 
-    /// One-line target description shown under the latency segmented control.
+    /// One-line target description shown under the buffering segmented control.
     func targetDescription(halMode: Bool) -> String {
         let ms = Int(effectiveTargetFillMs(halMode: halMode))
         if halMode, targetFillMs < Self.halMinimumTargetFillMs {
@@ -61,18 +61,8 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
     var targetDescription: String { targetDescription(halMode: false) }
 
     func stoppedLatencyHint(halMode: Bool) -> String {
-        switch self {
-        case .low:
-            return halMode
-                ? "About 20 ms buffer target in Low mode with the HAL driver (minimum)."
-                : "About 10–12 ms in Low mode when running."
-        case .balanced:
-            return halMode
-                ? "About 15–20 ms in Balanced mode with the HAL driver."
-                : "About 12–18 ms in Balanced mode when running."
-        case .safe:
-            return "About 25–40 ms in Safe mode when running."
-        }
+        let ms = Int(effectiveTargetFillMs(halMode: halMode))
+        return "~\(ms) ms bridge buffer target; device, DAW, and hardware latency are additional."
     }
 
     var stoppedLatencyHint: String { stoppedLatencyHint(halMode: false) }

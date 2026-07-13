@@ -13,11 +13,12 @@ final class MetricsParserTests: XCTestCase {
         XCTAssertNil(MetricsParser.parse(line: "not json"))
     }
 
-    func testLatencyLabelFormat() {
+    func testBridgeBufferingLabelFormat() {
         let snapshot = MetricsParser.parse(line: MetricsParser.fixtureLine)!
-        XCTAssertTrue(snapshot.latencyLabel.hasPrefix("~"))
-        XCTAssertTrue(snapshot.latencyLabel.contains("monitoring latency"))
-        XCTAssertFalse(snapshot.latencyLabel.contains("0 ms"))
+        XCTAssertTrue(snapshot.bridgeBufferingLabel.hasPrefix("~"))
+        XCTAssertTrue(snapshot.bridgeBufferingLabel.contains("bridge buffering"))
+        XCTAssertFalse(snapshot.bridgeBufferingLabel.contains("monitoring latency"))
+        XCTAssertFalse(snapshot.bridgeBufferingLabel.contains("0 ms"))
     }
 
     func testRecoveriesDecodeSeparatelyFromHardXruns() {
