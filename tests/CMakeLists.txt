@@ -61,6 +61,18 @@ target_sources(test_virtual_device_feed PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/VirtualDeviceFeed.cpp
 )
 
+target_sources(test_io_proc_callbacks PRIVATE
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/IoProcHandlers.cpp
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/BridgeEngine.cpp
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/LibSamplerateSrc.cpp
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/VirtualDeviceFeed.cpp
+)
+target_link_libraries(test_io_proc_callbacks PRIVATE
+  samplerate::samplerate
+  "-framework CoreAudio"
+  "-framework CoreFoundation"
+)
+
 apm44_add_test(test_hardening_audit test_hardening_audit.cpp)
 
 apm44_add_test(test_shm_stale_recovery test_shm_stale_recovery.cpp)

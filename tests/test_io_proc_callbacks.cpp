@@ -1,159 +1,127 @@
-// RT-03 / RT-04 / RT-05 regression tests for the oversized output callback
-// safety contract implemented in `BridgeDaemon/src/engine/IoProcHandlers.cpp`.
-//
-// The contract: when Core Audio requests more frames than the engine can
-// render in one call, the interleaved and non-interleaved output paths
-// must write or explicitly silence every frame in the destination
-// buffer. Stale tail samples are not acceptable.
-//
-// We exercise the contract by reproducing the same render-then-silence
-// control flow used inside `OutputIoProc` (without spinning up a real
-// `BridgeEngine`, which needs Core Audio device IDs). A future refactor
-// that drops the tail-silence loops from `OutputIoProc` should be paired
-// with a corresponding update here — this test is the executable
-// specification of the contract.
-//
-// Tests do not touch `/apm44_bridge_ring` (RT-05).
+#include "engine/BridgeEngine.h"
+#include "engine/IoProcHandlers.h"
+
+#include <apm44/AudioFormats.h>
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <algorithm>
-#include <cstring>
+#include <cmath>
+#include <cstddef>
+#include <limits>
 #include <vector>
 
 namespace {
 
-constexpr std::size_t kMaxCallbackFrames = 1024;
-constexpr std::size_t kChannels = 2;
+constexpr std::size_t kLargeCallbackFrames = 4096;
 
-// Mirrors the interleaved output callback in IoProcHandlers.cpp.
-void RenderInterleavedOutput(std::vector<float>& interleaved,
-                             std::size_t requestedFrames,
-                             std::size_t scratchCapacity) {
-  const std::size_t framesToRender = std::min(requestedFrames, scratchCapacity);
-  for (std::size_t i = 0; i < framesToRender; ++i) {
-    interleaved[i * 2 + 0] = static_cast<float>(i);
-    interleaved[i * 2 + 1] = -static_cast<float>(i);
-  }
-  for (std::size_t i = framesToRender; i < requestedFrames; ++i) {
-    interleaved[i * 2 + 0] = 0.0f;
-    interleaved[i * 2 + 1] = 0.0f;
-  }
+AudioStreamBasicDescription MakeInterleavedStereo(double sampleRate) {
+  AudioStreamBasicDescription asbd{};
+  asbd.mSampleRate = sampleRate;
+  asbd.mFormatID = kAudioFormatLinearPCM;
+  asbd.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+  asbd.mBytesPerPacket = sizeof(float) * 2;
+  asbd.mFramesPerPacket = 1;
+  asbd.mBytesPerFrame = sizeof(float) * 2;
+  asbd.mChannelsPerFrame = 2;
+  asbd.mBitsPerChannel = 32;
+  return asbd;
 }
 
-// Mirrors the non-interleaved output callback in IoProcHandlers.cpp.
-void RenderNonInterleavedOutput(std::vector<float>& b0,
-                                std::vector<float>& b1,
-                                std::size_t requestedFrames,
-                                std::size_t scratchCapacity) {
-  const std::size_t framesToRender = std::min(requestedFrames, scratchCapacity);
-  for (std::size_t i = 0; i < framesToRender; ++i) {
-    b0[i] = static_cast<float>(i);
-    b1[i] = -static_cast<float>(i);
-  }
-  for (std::size_t i = framesToRender; i < b0.size(); ++i) {
-    b0[i] = 0.0f;
-  }
-  for (std::size_t i = framesToRender; i < b1.size(); ++i) {
-    b1[i] = 0.0f;
-  }
+void PrepareEngine(apm44::BridgeEngine& engine, bool nonInterleaved) {
+  apm44::BridgeDevicePair devices;
+  devices.inputAsbd = nonInterleaved
+                          ? apm44::MakeFloat32StereoNonInterleaved(apm44::kInputSampleRate)
+                          : MakeInterleavedStereo(apm44::kInputSampleRate);
+  devices.outputAsbd = nonInterleaved
+                           ? apm44::MakeFloat32StereoNonInterleaved(apm44::kOutputSampleRate)
+                           : MakeInterleavedStereo(apm44::kOutputSampleRate);
+  REQUIRE(engine.prepare(devices));
 }
 
-// Mirrors the mismatched non-interleaved input buffer sizing in
-// IoProcHandlers.cpp. The input callback must never process more frames
-// than the shortest channel buffer actually contains.
-std::size_t MismatchedNonInterleavedInputFrames(std::size_t b0Bytes,
-                                                std::size_t b1Bytes,
-                                                std::size_t scratchCapacity) {
-  const std::size_t b0Frames = b0Bytes / sizeof(float);
-  const std::size_t b1Frames = b1Bytes / sizeof(float);
-  return std::min(std::min(b0Frames, b1Frames), scratchCapacity);
-}
+struct TwoBufferList {
+  UInt32 mNumberBuffers = 2;
+  AudioBuffer mBuffers[2]{};
+};
 
 }  // namespace
 
-TEST_CASE("OversizedInterleavedOutputSilencesTail", "[io_proc][rt][RT-03][RT-04][SEC-03]") {
-  // Core Audio asks for 4× the scratch capacity; the engine renders into
-  // the first `scratch` frames, the tail is explicitly zeroed.
-  constexpr std::size_t scratchCapacity = 64;
-  constexpr std::size_t requestedFrames = scratchCapacity * 4;
-  std::vector<float> interleaved(requestedFrames * kChannels, 0.5f);
+TEST_CASE("testOutputCallbackRendersAll4096RequestedFrames",
+          "[io_proc][rt][large_callback]") {
+  apm44::BridgeEngine engine;
+  PrepareEngine(engine, false);
+  const float sentinel = std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> output(kLargeCallbackFrames * 2, sentinel);
+  AudioBufferList buffers{};
+  buffers.mNumberBuffers = 1;
+  buffers.mBuffers[0].mNumberChannels = 2;
+  buffers.mBuffers[0].mDataByteSize =
+      static_cast<UInt32>(output.size() * sizeof(float));
+  buffers.mBuffers[0].mData = output.data();
 
-  RenderInterleavedOutput(interleaved, requestedFrames, scratchCapacity);
+  const uint64_t before = engine.outputFramesProcessed();
+  REQUIRE(apm44::OutputIoProc(0, nullptr, nullptr, nullptr, &buffers, nullptr, &engine) == noErr);
 
-  for (std::size_t i = 0; i < scratchCapacity; ++i) {
-    REQUIRE(interleaved[i * 2 + 0] == static_cast<float>(i));
-    REQUIRE(interleaved[i * 2 + 1] == -static_cast<float>(i));
-  }
-  for (std::size_t i = scratchCapacity; i < requestedFrames; ++i) {
-    REQUIRE(interleaved[i * 2 + 0] == 0.0f);
-    REQUIRE(interleaved[i * 2 + 1] == 0.0f);
-  }
-}
-
-TEST_CASE("OversizedNonInterleavedOutputSilencesTail", "[io_proc][rt][RT-03][RT-04][SEC-03]") {
-  constexpr std::size_t scratchCapacity = 64;
-  constexpr std::size_t requestedFrames = scratchCapacity * 4;
-  std::vector<float> b0(requestedFrames, 0.5f);
-  std::vector<float> b1(requestedFrames, 0.5f);
-
-  RenderNonInterleavedOutput(b0, b1, requestedFrames, scratchCapacity);
-
-  for (std::size_t i = 0; i < scratchCapacity; ++i) {
-    REQUIRE(b0[i] == static_cast<float>(i));
-    REQUIRE(b1[i] == -static_cast<float>(i));
-  }
-  for (std::size_t i = scratchCapacity; i < requestedFrames; ++i) {
-    REQUIRE(b0[i] == 0.0f);
-    REQUIRE(b1[i] == 0.0f);
+  REQUIRE(engine.outputFramesProcessed() - before == kLargeCallbackFrames);
+  for (float sample : output) {
+    REQUIRE(std::isfinite(sample));
   }
 }
 
-TEST_CASE("InterleavedOutputWithinScratchCapacity", "[io_proc][rt][RT-03]") {
-  // Sanity: when Core Audio asks for less than scratch, every frame is
-  // rendered and there is no tail to silence.
-  constexpr std::size_t scratchCapacity = kMaxCallbackFrames;
-  constexpr std::size_t requestedFrames = 256;
-  std::vector<float> interleaved(requestedFrames * kChannels, 0.5f);
+TEST_CASE("production planar output callback renders every large buffer frame",
+          "[io_proc][rt][large_callback]") {
+  apm44::BridgeEngine engine;
+  PrepareEngine(engine, true);
+  const float sentinel = std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> left(kLargeCallbackFrames, sentinel);
+  std::vector<float> right(kLargeCallbackFrames, sentinel);
+  TwoBufferList storage;
+  storage.mBuffers[0] = AudioBuffer{
+      1, static_cast<UInt32>(left.size() * sizeof(float)), left.data()};
+  storage.mBuffers[1] = AudioBuffer{
+      1, static_cast<UInt32>(right.size() * sizeof(float)), right.data()};
 
-  RenderInterleavedOutput(interleaved, requestedFrames, scratchCapacity);
+  const uint64_t before = engine.outputFramesProcessed();
+  auto* buffers = reinterpret_cast<AudioBufferList*>(&storage);
+  REQUIRE(apm44::OutputIoProc(0, nullptr, nullptr, nullptr, buffers, nullptr, &engine) == noErr);
 
-  for (std::size_t i = 0; i < requestedFrames; ++i) {
-    REQUIRE(interleaved[i * 2 + 0] == static_cast<float>(i));
-    REQUIRE(interleaved[i * 2 + 1] == -static_cast<float>(i));
+  REQUIRE(engine.outputFramesProcessed() - before == kLargeCallbackFrames);
+  for (std::size_t i = 0; i < kLargeCallbackFrames; ++i) {
+    REQUIRE(std::isfinite(left[i]));
+    REQUIRE(std::isfinite(right[i]));
   }
 }
 
-TEST_CASE("InterleavedOutputAtScratchCapacityBoundary", "[io_proc][rt][RT-03][RT-04][SEC-03]") {
-  // Edge case: requested == scratch → no tail to silence, but the loop
-  // must not off-by-one.
-  constexpr std::size_t scratchCapacity = 64;
-  constexpr std::size_t requestedFrames = 64;
-  std::vector<float> interleaved(requestedFrames * kChannels, 0.5f);
+TEST_CASE("production interleaved input callback accounts for all 4096 frames",
+          "[io_proc][rt][large_callback]") {
+  apm44::BridgeEngine engine;
+  PrepareEngine(engine, false);
+  std::vector<float> input(kLargeCallbackFrames * 2, 0.25f);
+  AudioBufferList buffers{};
+  buffers.mNumberBuffers = 1;
+  buffers.mBuffers[0].mNumberChannels = 2;
+  buffers.mBuffers[0].mDataByteSize =
+      static_cast<UInt32>(input.size() * sizeof(float));
+  buffers.mBuffers[0].mData = input.data();
 
-  RenderInterleavedOutput(interleaved, requestedFrames, scratchCapacity);
-
-  for (std::size_t i = 0; i < requestedFrames; ++i) {
-    REQUIRE(interleaved[i * 2 + 0] == static_cast<float>(i));
-    REQUIRE(interleaved[i * 2 + 1] == -static_cast<float>(i));
-  }
+  const uint64_t before = engine.inputFramesProcessed();
+  REQUIRE(apm44::InputIoProc(0, nullptr, &buffers, nullptr, nullptr, nullptr, &engine) == noErr);
+  REQUIRE(engine.inputFramesProcessed() - before == kLargeCallbackFrames);
 }
 
-TEST_CASE("mismatched non-interleaved input buffer sizes use shortest channel",
-          "[io_proc][rt][AUD-02][AUD-03][CORE-02]") {
-  const std::size_t b0Bytes = 512 * sizeof(float);
-  const std::size_t b1Bytes = 128 * sizeof(float);
+TEST_CASE("production planar input uses the shortest channel without truncating it",
+          "[io_proc][rt][large_callback]") {
+  apm44::BridgeEngine engine;
+  PrepareEngine(engine, true);
+  std::vector<float> left(2048, 0.25f);
+  std::vector<float> right(4096, -0.25f);
+  TwoBufferList storage;
+  storage.mBuffers[0] = AudioBuffer{
+      1, static_cast<UInt32>(left.size() * sizeof(float)), left.data()};
+  storage.mBuffers[1] = AudioBuffer{
+      1, static_cast<UInt32>(right.size() * sizeof(float)), right.data()};
 
-  REQUIRE(MismatchedNonInterleavedInputFrames(b0Bytes, b1Bytes, kMaxCallbackFrames) == 128);
-}
-
-TEST_CASE("non-interleaved input buffer sizes clamp to scratch capacity",
-          "[io_proc][rt][CORE-02]") {
-  // Even when both channel buffers are larger than the scratch capacity, the
-  // input callback must not pass more than kMaxCallbackFrames to the engine.
-  const std::size_t b0Bytes = 2048 * sizeof(float);
-  const std::size_t b1Bytes = 2048 * sizeof(float);
-
-  REQUIRE(MismatchedNonInterleavedInputFrames(b0Bytes, b1Bytes, kMaxCallbackFrames) ==
-          kMaxCallbackFrames);
+  const uint64_t before = engine.inputFramesProcessed();
+  const auto* buffers = reinterpret_cast<const AudioBufferList*>(&storage);
+  REQUIRE(apm44::InputIoProc(0, nullptr, buffers, nullptr, nullptr, nullptr, &engine) == noErr);
+  REQUIRE(engine.inputFramesProcessed() - before == left.size());
 }

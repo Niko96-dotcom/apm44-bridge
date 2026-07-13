@@ -10,14 +10,6 @@
 
 namespace apm44 {
 
-namespace {
-
-std::size_t ClampCallbackFrames(std::size_t frames) {
-  return std::min(frames, kMaxCallbackFrames);
-}
-
-}  // namespace
-
 OSStatus InputIoProc(AudioDeviceID,
                      const AudioTimeStamp*,
                      const AudioBufferList* inputData,
@@ -35,16 +27,18 @@ OSStatus InputIoProc(AudioDeviceID,
     if (interleaved == nullptr) {
       return noErr;
     }
-    std::size_t frames =
+    const std::size_t frames =
         inputData->mBuffers[0].mDataByteSize / (sizeof(float) * asbd.mChannelsPerFrame);
-    frames = ClampCallbackFrames(frames);
     float* scratch[2] = {engine->inputScratch0(), engine->inputScratch1()};
-    for (std::size_t i = 0; i < frames; ++i) {
-      scratch[0][i] = interleaved[i * 2 + 0];
-      scratch[1][i] = interleaved[i * 2 + 1];
+    for (std::size_t offset = 0; offset < frames; offset += kMaxCallbackFrames) {
+      const std::size_t chunk = std::min(kMaxCallbackFrames, frames - offset);
+      for (std::size_t i = 0; i < chunk; ++i) {
+        scratch[0][i] = interleaved[(offset + i) * 2 + 0];
+        scratch[1][i] = interleaved[(offset + i) * 2 + 1];
+      }
+      const float* channels[2] = {scratch[0], scratch[1]};
+      engine->onInput(channels, chunk);
     }
-    const float* channels[2] = {scratch[0], scratch[1]};
-    engine->onInput(channels, frames);
     return noErr;
   }
   if (inputData->mNumberBuffers < 2) {
@@ -57,9 +51,12 @@ OSStatus InputIoProc(AudioDeviceID,
   }
   const std::size_t b0Frames = inputData->mBuffers[0].mDataByteSize / sizeof(float);
   const std::size_t b1Frames = inputData->mBuffers[1].mDataByteSize / sizeof(float);
-  std::size_t frames = ClampCallbackFrames(std::min(b0Frames, b1Frames));
-  const float* channels[2] = {b0, b1};
-  engine->onInput(channels, frames);
+  const std::size_t frames = std::min(b0Frames, b1Frames);
+  for (std::size_t offset = 0; offset < frames; offset += kMaxCallbackFrames) {
+    const std::size_t chunk = std::min(kMaxCallbackFrames, frames - offset);
+    const float* channels[2] = {b0 + offset, b1 + offset};
+    engine->onInput(channels, chunk);
+  }
   return noErr;
 }
 
@@ -76,29 +73,22 @@ OSStatus OutputIoProc(AudioDeviceID,
   }
   const auto& asbd = engine->devices().outputAsbd;
   if (!AsbdIsNonInterleaved(asbd)) {
-    // RT-03 / RT-04: Core Audio owns mDataByteSize; we must write or
-    // explicitly silence every frame it asked for. The internal scratch
-    // (`kMaxCallbackFrames`) is smaller than the Core Audio request on
-    // some devices — `ClampCallbackFrames` caps what the engine renders.
-    // Silence the interleaved tail that the engine did not fill so the
-    // audio thread never leaves stale samples for Core Audio to play.
+    // Core Audio owns mDataByteSize; render every requested frame in
+    // bounded, allocation-free chunks through the preallocated scratch.
     float* interleaved = static_cast<float*>(outputData->mBuffers[0].mData);
     if (interleaved == nullptr) {
       return noErr;
     }
     const std::size_t requestedFrames =
         outputData->mBuffers[0].mDataByteSize / (sizeof(float) * asbd.mChannelsPerFrame);
-    const std::size_t framesToRender = ClampCallbackFrames(requestedFrames);
     float* scratch[2] = {engine->outputScratch0(), engine->outputScratch1()};
-    engine->onOutput(scratch, framesToRender);
-    for (std::size_t i = 0; i < framesToRender; ++i) {
-      interleaved[i * 2 + 0] = scratch[0][i];
-      interleaved[i * 2 + 1] = scratch[1][i];
-    }
-    // Silence the interleaved tail [framesToRender, requestedFrames).
-    for (std::size_t i = framesToRender; i < requestedFrames; ++i) {
-      interleaved[i * 2 + 0] = 0.0f;
-      interleaved[i * 2 + 1] = 0.0f;
+    for (std::size_t offset = 0; offset < requestedFrames; offset += kMaxCallbackFrames) {
+      const std::size_t chunk = std::min(kMaxCallbackFrames, requestedFrames - offset);
+      engine->onOutput(scratch, chunk);
+      for (std::size_t i = 0; i < chunk; ++i) {
+        interleaved[(offset + i) * 2 + 0] = scratch[0][i];
+        interleaved[(offset + i) * 2 + 1] = scratch[1][i];
+      }
     }
     return noErr;
   }
@@ -110,19 +100,18 @@ OSStatus OutputIoProc(AudioDeviceID,
   if (b0 == nullptr || b1 == nullptr) {
     return noErr;
   }
-  // RT-03 / RT-04: mirror the interleaved path. The engine renders up
-  // to `kMaxCallbackFrames` into the supplied Core Audio buffers; the
-  // tail beyond that is explicitly zeroed so no stale frames leak.
   const std::size_t b0Frames = outputData->mBuffers[0].mDataByteSize / sizeof(float);
   const std::size_t b1Frames = outputData->mBuffers[1].mDataByteSize / sizeof(float);
   const std::size_t requestedFrames = std::min(b0Frames, b1Frames);
-  const std::size_t framesToRender = ClampCallbackFrames(requestedFrames);
-  float* channels[2] = {b0, b1};
-  engine->onOutput(channels, framesToRender);
-  for (std::size_t i = framesToRender; i < b0Frames; ++i) {
+  for (std::size_t offset = 0; offset < requestedFrames; offset += kMaxCallbackFrames) {
+    const std::size_t chunk = std::min(kMaxCallbackFrames, requestedFrames - offset);
+    float* channels[2] = {b0 + offset, b1 + offset};
+    engine->onOutput(channels, chunk);
+  }
+  for (std::size_t i = requestedFrames; i < b0Frames; ++i) {
     b0[i] = 0.0f;
   }
-  for (std::size_t i = framesToRender; i < b1Frames; ++i) {
+  for (std::size_t i = requestedFrames; i < b1Frames; ++i) {
     b1[i] = 0.0f;
   }
   return noErr;

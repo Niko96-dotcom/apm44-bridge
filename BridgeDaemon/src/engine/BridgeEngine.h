@@ -47,6 +47,12 @@ class BridgeEngine {
   std::size_t ringCapacity() const { return ring_.capacityFrames(); }
   double converterRatio() const;
   uint64_t xrunCount() const { return readMetricsSnapshot().xruns; }
+  uint64_t inputFramesProcessed() const {
+    return inputFramesProcessed_.load(std::memory_order_relaxed);
+  }
+  uint64_t outputFramesProcessed() const {
+    return outputFramesProcessed_.load(std::memory_order_relaxed);
+  }
 
   double lastFillMs() const { return readMetricsSnapshot().fillMs; }
   double lastSmoothedRatio() const { return readMetricsSnapshot().smoothedRatio; }
@@ -85,6 +91,8 @@ class BridgeEngine {
 
   std::atomic<uint64_t> xruns_{0};
   std::atomic<uint64_t> inputOverruns_{0};
+  std::atomic<uint64_t> inputFramesProcessed_{0};
+  std::atomic<uint64_t> outputFramesProcessed_{0};
   bool running_ = false;
 
   // Seqlock state, extracted into MetricsPublisher so the contract

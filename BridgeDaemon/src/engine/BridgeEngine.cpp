@@ -124,6 +124,8 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   drift_.setTargetFillFrames(targetFillFrames_);
   drift_.setMaxPpm(virtualDevice_ ? kVirtualDeviceMaxPpm : DriftController::kMaxPpm);
   inputOverruns_.store(0, std::memory_order_relaxed);
+  inputFramesProcessed_.store(0, std::memory_order_relaxed);
+  outputFramesProcessed_.store(0, std::memory_order_relaxed);
   inputDemand_.reset();
   virtualPrebuffer_.reset(targetFillFrames_);
 
@@ -163,6 +165,7 @@ double BridgeEngine::converterRatio() const {
 }
 
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
+  inputFramesProcessed_.fetch_add(frames, std::memory_order_relaxed);
   if (PushDroppingNewInput(ring_, channels, frames)) {
     inputOverruns_.fetch_add(1, std::memory_order_relaxed);
   }
@@ -184,6 +187,7 @@ MetricsSnapshot BridgeEngine::readMetricsSnapshot() const {
 }
 
 void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
+  outputFramesProcessed_.fetch_add(frames, std::memory_order_relaxed);
   struct PublishGuard {
     BridgeEngine& engine;
     ~PublishGuard() { engine.publishMetricsSnapshot(); }
