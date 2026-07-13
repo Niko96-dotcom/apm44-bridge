@@ -112,7 +112,7 @@ SoakMetrics RunSoakHarness(const SoakOptions& options) {
       return metrics;
     }
 
-    const double ratio = drift.update(fill);
+    const double ratio = drift.update(fill, kOutputBlockFrames, kOutputRate);
     src.setRatio(ratio);
 
     const std::size_t neededIn = consumerDemand.consume(kOutputBlockFrames, ratio);

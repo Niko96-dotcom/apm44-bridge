@@ -16,7 +16,8 @@ class DriftController {
   void setTargetFillFrames(std::size_t frames);
   void setMaxPpm(double ppm);
 
-  double update(std::size_t currentFillFrames);
+  double update(std::size_t currentFillFrames, std::size_t outputFrames,
+                double outputSampleRate = 48000.0);
   double currentPpm() const { return currentPpm_; }
   double smoothedRatio() const { return smoothedRatio_; }
 
@@ -26,6 +27,7 @@ class DriftController {
   uint64_t overrunCount() const { return overrunCount_; }
 
  private:
+  void resetControlState();
   std::size_t targetFillFrames_ = 0;
   double integral_ = 0.0;
   double currentPpm_ = 0.0;

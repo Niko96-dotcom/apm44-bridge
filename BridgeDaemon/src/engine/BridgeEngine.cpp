@@ -250,7 +250,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   }
 
   float* popCh[2] = {outputScratch0_.data(), outputScratch1_.data()};
-  const double ratio = drift_.update(fill);
+  const double ratio = drift_.update(fill, frames, kOutputSampleRate);
   src_.setRatio(ratio);
   const std::size_t inputFramesNeeded = inputDemand_.consume(frames, ratio);
   const std::size_t maxPop = std::min(inputFramesNeeded, outputScratch0_.size());
