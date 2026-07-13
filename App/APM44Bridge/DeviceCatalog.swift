@@ -6,6 +6,38 @@ struct AudioDeviceRow: Identifiable, Equatable {
     let nominalRate: Double
     let hasInput: Bool
     let hasOutput: Bool
+    let isAlive: Bool
+    let outputChannels: Int
+    let bufferFrameSize: Int
+    let transportType: UInt32
+    let outputFormatId: UInt32
+    let outputFormatBits: Int
+
+    init(
+        uid: String,
+        name: String,
+        nominalRate: Double,
+        hasInput: Bool,
+        hasOutput: Bool,
+        isAlive: Bool = true,
+        outputChannels: Int = 2,
+        bufferFrameSize: Int = 0,
+        transportType: UInt32 = 0,
+        outputFormatId: UInt32 = 0,
+        outputFormatBits: Int = 0
+    ) {
+        self.uid = uid
+        self.name = name
+        self.nominalRate = nominalRate
+        self.hasInput = hasInput
+        self.hasOutput = hasOutput
+        self.isAlive = isAlive
+        self.outputChannels = outputChannels
+        self.bufferFrameSize = bufferFrameSize
+        self.transportType = transportType
+        self.outputFormatId = outputFormatId
+        self.outputFormatBits = outputFormatBits
+    }
 
     var id: String { uid }
 
@@ -31,13 +63,25 @@ enum DeviceCatalog {
             let hasOutput = io.contains("O")
             guard hasOutput else { continue }
             let rate = Double(parts[2]) ?? 0
+            let isAlive = parts.count > 4 ? parts[4] != "0" : true
+            let outputChannels = parts.count > 5 ? Int(parts[5]) ?? 0 : 2
+            let bufferFrameSize = parts.count > 6 ? Int(parts[6]) ?? 0 : 0
+            let transportType = parts.count > 7 ? UInt32(parts[7]) ?? 0 : 0
+            let outputFormatId = parts.count > 8 ? UInt32(parts[8]) ?? 0 : 0
+            let outputFormatBits = parts.count > 9 ? Int(parts[9]) ?? 0 : 0
             rows.append(
                 AudioDeviceRow(
                     uid: String(parts[0]),
                     name: String(parts[1]),
                     nominalRate: rate,
                     hasInput: hasInput,
-                    hasOutput: hasOutput
+                    hasOutput: hasOutput,
+                    isAlive: isAlive,
+                    outputChannels: outputChannels,
+                    bufferFrameSize: bufferFrameSize,
+                    transportType: transportType,
+                    outputFormatId: outputFormatId,
+                    outputFormatBits: outputFormatBits
                 )
             )
         }

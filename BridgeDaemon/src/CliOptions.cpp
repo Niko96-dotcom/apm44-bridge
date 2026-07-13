@@ -56,7 +56,7 @@ void PrintUsage(const char* programName) {
             << "Options:\n"
             << "  --help              Show this help\n"
             << "  --version           Show version\n"
-            << "  --list-devices      List Core Audio devices (UID, name, rate, I/O)\n"
+            << "  --list-devices      List Core Audio devices and endpoint properties\n"
             << "  --preflight         Validate devices/rates without starting audio\n"
             << "  --print-config      Print resolved device/config (no audio)\n"
             << "  --shm-status        Check APM44Bridge.driver shared-memory ring once\n"

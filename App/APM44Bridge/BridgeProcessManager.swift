@@ -53,6 +53,7 @@ final class BridgeProcessManager: ObservableObject {
     private var wasRunningBeforeDisconnect = false
     private var lastKnownDeviceName: String?
     private var lastKnownDeviceUid: String?
+    private var runningOutputFingerprint: AudioDeviceRow?
     private var retryAttempt = 0
     private let maxUnhealthyLaunches = 4
     private var retryTask: Task<Void, Never>?
@@ -140,23 +141,33 @@ final class BridgeProcessManager: ObservableObject {
     internal var testTerminationStatus: Int32?
     internal var testDeviceListOverride: [AudioDeviceRow]?
 
-    func refreshDevices() async {
+    @discardableResult
+    func refreshDevices() async -> Bool {
+        hotplugRefreshGeneration += 1
+        let refreshGeneration = hotplugRefreshGeneration
         refreshRoutingMode()
         if let override = testDeviceListOverride {
             applyRefreshedDeviceList(override)
-            return
+            return true
         }
         guard let url = binaryURL else {
             bannerMessage = "Bridge not found — build or install apm44-bridge"
-            return
+            return false
         }
         do {
             let list = try await Task.detached {
                 try DeviceCatalog.refresh(binaryURL: url)
             }.value
+            guard refreshGeneration == hotplugRefreshGeneration else {
+                return false
+            }
             applyRefreshedDeviceList(list)
+            return true
         } catch {
-            bannerMessage = "Could not list audio devices"
+            if refreshGeneration == hotplugRefreshGeneration {
+                bannerMessage = "Could not list audio devices"
+            }
+            return false
         }
     }
 
@@ -218,6 +229,11 @@ final class BridgeProcessManager: ObservableObject {
             state = .error("Select an output device")
             return
         }
+        guard let selectedOutput = devices.first(where: { $0.uid == uid }) else {
+            state = .error("Selected output is no longer available")
+            bannerMessage = "Selected output is no longer available — choose another device"
+            return
+        }
 
         state = .starting
         processHealth = .spawning
@@ -264,6 +280,7 @@ final class BridgeProcessManager: ObservableObject {
         process = proc
         do {
             try processLauncher.launch(proc)
+            runningOutputFingerprint = selectedOutput
             state = .running
             wasRunningBeforeDisconnect = false
             updateConnectionPhase()
@@ -404,8 +421,7 @@ final class BridgeProcessManager: ObservableObject {
 
     func handleHotplug() async {
         refreshRoutingMode()
-        await refreshDevices()
-        hotplugRefreshGeneration += 1
+        guard await refreshDevices() else { return }
 
         guard let uid = settings.outputDeviceUid else {
             if isRunning {
@@ -417,10 +433,16 @@ final class BridgeProcessManager: ObservableObject {
             return
         }
 
-        let devicePresent = devices.contains(where: { $0.uid == uid })
+        let selectedOutput = devices.first(where: { $0.uid == uid && $0.isAlive })
+        let devicePresent = selectedOutput != nil
 
         if isRunning {
-            if devicePresent {
+            if let selectedOutput {
+                guard runningOutputFingerprint != selectedOutput else {
+                    // The global device-list notification concerned another
+                    // endpoint; the selected output is unchanged.
+                    return
+                }
                 bannerMessage = "Reconnecting to \(deviceDisplayName)…"
                 await restart(reason: .hotplug)
             } else {
@@ -681,6 +703,7 @@ final class BridgeProcessManager: ObservableObject {
     private func transitionToIdle() {
         cancelStabilityTask()
         processHealth = .stopped
+        runningOutputFingerprint = nil
         clearPipeHandlers()
         resetMetricsState()
         state = .idle

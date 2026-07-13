@@ -22,6 +22,23 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertEqual(DeviceCatalog.preferredDefault(from: rows)?.uid, "AP-UID")
     }
 
+    func testParsesSelectedEndpointFingerprintFields() {
+        let text = """
+        UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS
+        USB-UID\tUSB Headphones\t48000\tO\t1\t2\t512\t1970496032\t1819304813\t32
+        """
+
+        let row = DeviceCatalog.parseListDevicesOutput(text).first
+
+        XCTAssertEqual(row?.uid, "USB-UID")
+        XCTAssertEqual(row?.outputChannels, 2)
+        XCTAssertEqual(row?.bufferFrameSize, 512)
+        XCTAssertEqual(row?.transportType, 1_970_496_032)
+        XCTAssertEqual(row?.outputFormatId, 1_819_304_813)
+        XCTAssertEqual(row?.outputFormatBits, 32)
+        XCTAssertEqual(row?.isAlive, true)
+    }
+
     func testFilterExcludesBlackHole() {
         let row = AudioDeviceRow(
             uid: "BH-UID",

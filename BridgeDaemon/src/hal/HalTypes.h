@@ -15,6 +15,12 @@ struct AudioDeviceInfo {
   double nominalRate = 0.0;
   bool hasInput = false;
   bool hasOutput = false;
+  bool isAlive = true;
+  uint32_t outputChannels = 0;
+  uint32_t bufferFrameSize = 0;
+  uint32_t transportType = 0;
+  uint32_t outputFormatId = 0;
+  uint32_t outputFormatBits = 0;
 };
 
 struct BridgeDevicePair {

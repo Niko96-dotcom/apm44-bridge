@@ -68,24 +68,47 @@ double GetNominalRate(AudioDeviceID deviceId) {
   return rate;
 }
 
-bool HasScope(AudioDeviceID deviceId, AudioObjectPropertyScope scope) {
+UInt32 ChannelCount(AudioDeviceID deviceId, AudioObjectPropertyScope scope) {
   AudioObjectPropertyAddress address{kAudioDevicePropertyStreamConfiguration, scope,
                                      kAudioObjectPropertyElementMain};
   UInt32 dataSize = 0;
   if (AudioObjectGetPropertyDataSize(deviceId, &address, 0, nullptr, &dataSize) != noErr) {
-    return false;
+    return 0;
   }
   std::vector<char> buffer(dataSize);
   if (AudioObjectGetPropertyData(deviceId, &address, 0, nullptr, &dataSize, buffer.data()) !=
       noErr) {
-    return false;
+    return 0;
   }
   const auto* list = reinterpret_cast<const AudioBufferList*>(buffer.data());
   UInt32 channels = 0;
   for (UInt32 i = 0; i < list->mNumberBuffers; ++i) {
     channels += list->mBuffers[i].mNumberChannels;
   }
-  return channels > 0;
+  return channels;
+}
+
+UInt32 GetUInt32Property(AudioDeviceID deviceId, AudioObjectPropertySelector selector) {
+  AudioObjectPropertyAddress address{selector, kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+  UInt32 value = 0;
+  UInt32 size = sizeof(value);
+  if (AudioObjectGetPropertyData(deviceId, &address, 0, nullptr, &size, &value) != noErr) {
+    return 0;
+  }
+  return value;
+}
+
+AudioStreamBasicDescription GetOutputStreamFormat(AudioDeviceID deviceId) {
+  AudioObjectPropertyAddress address{kAudioDevicePropertyStreamFormat,
+                                     kAudioDevicePropertyScopeOutput,
+                                     kAudioObjectPropertyElementMain};
+  AudioStreamBasicDescription format{};
+  UInt32 size = sizeof(format);
+  if (AudioObjectGetPropertyData(deviceId, &address, 0, nullptr, &size, &format) != noErr) {
+    return {};
+  }
+  return format;
 }
 
 }  // namespace
@@ -149,8 +172,17 @@ std::vector<AudioDeviceInfo> DeviceEnumerator::listAll() {
       info.name = info.uid;
     }
     info.nominalRate = GetNominalRate(deviceId);
-    info.hasInput = HasScope(deviceId, kAudioDevicePropertyScopeInput);
-    info.hasOutput = HasScope(deviceId, kAudioDevicePropertyScopeOutput);
+    info.hasInput = ChannelCount(deviceId, kAudioDevicePropertyScopeInput) > 0;
+    info.outputChannels = ChannelCount(deviceId, kAudioDevicePropertyScopeOutput);
+    info.hasOutput = info.outputChannels > 0;
+    info.isAlive = GetUInt32Property(deviceId, kAudioDevicePropertyDeviceIsAlive) != 0;
+    info.bufferFrameSize =
+        GetUInt32Property(deviceId, kAudioDevicePropertyBufferFrameSize);
+    info.transportType =
+        GetUInt32Property(deviceId, kAudioDevicePropertyTransportType);
+    const auto format = GetOutputStreamFormat(deviceId);
+    info.outputFormatId = format.mFormatID;
+    info.outputFormatBits = format.mBitsPerChannel;
     result.push_back(std::move(info));
   }
   return result;

@@ -353,12 +353,21 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 0)
     }
 
-    func testHotplugWhileRunningStillRestarts() async {
+    func testSelectedAudioDeviceChangeRestartsRunningBridge() async {
         let (manager, _, launcher) = makeManager()
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
         let makeCountBefore = launcher.makeCount
+        manager.testDeviceListOverride = [
+            AudioDeviceRow(
+                uid: testDevice.uid,
+                name: testDevice.name,
+                nominalRate: 44_100,
+                hasInput: false,
+                hasOutput: true
+            )
+        ]
 
         await awaitHotplugCompletingTermination(manager: manager, launcher: launcher)
 
@@ -368,6 +377,41 @@ final class BridgeProcessManagerTests: XCTestCase {
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
+    }
+
+    func testUnrelatedAudioDeviceChangeDoesNotRestartRunningBridge() async {
+        let (manager, _, launcher) = makeManager()
+        let unrelatedDevice = AudioDeviceRow(
+            uid: "unrelated-output-uid",
+            name: "Studio Display Speakers",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let makeCountBefore = launcher.makeCount
+        manager.testDeviceListOverride = [testDevice, unrelatedDevice]
+
+        await manager.handleHotplug()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, makeCountBefore)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testStartRejectsSelectedUidMissingFromCurrentDeviceList() {
+        let (manager, settings, launcher) = makeManager()
+        settings.outputDeviceUid = "missing-output"
+
+        manager.start()
+
+        XCTAssertEqual(manager.state, .error("Selected output is no longer available"))
+        XCTAssertEqual(launcher.makeCount, 0)
     }
 
     func testDisconnectWhileRunningEntersReconnecting() async {

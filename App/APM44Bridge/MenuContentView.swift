@@ -396,7 +396,10 @@ struct MenuContentView: View {
     }
 
     private var canStart: Bool {
-        manager.binaryURL != nil && settings.outputDeviceUid != nil && !manager.devices.isEmpty
+        guard manager.binaryURL != nil, let selectedUid = settings.outputDeviceUid else {
+            return false
+        }
+        return manager.devices.contains(where: { $0.uid == selectedUid })
     }
 
     private var outputSelection: Binding<String?> {
