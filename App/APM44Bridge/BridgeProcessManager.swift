@@ -18,6 +18,13 @@ enum StopReason: Equatable {
     case `internal`
 }
 
+enum BridgeProcessHealth: Equatable {
+    case stopped
+    case spawning
+    case handshaking
+    case stable
+}
+
 @MainActor
 final class BridgeProcessManager: ObservableObject {
     @Published private(set) var state: BridgeRunState = .idle
@@ -47,8 +54,12 @@ final class BridgeProcessManager: ObservableObject {
     private var lastKnownDeviceName: String?
     private var lastKnownDeviceUid: String?
     private var retryAttempt = 0
-    private let maxRetryAttempts = 4
+    private let maxUnhealthyLaunches = 4
     private var retryTask: Task<Void, Never>?
+    private var stabilityTask: Task<Void, Never>?
+    private var processHealth: BridgeProcessHealth = .stopped
+    private var lastUnexpectedExitStatus: Int32?
+    private var lastUnexpectedStderr: String?
 
     private let processLauncher: ProcessLaunching
     private let binaryURLOverride: URL?
@@ -59,9 +70,14 @@ final class BridgeProcessManager: ObservableObject {
     internal private(set) var hotplugRefreshGeneration = 0
     internal private(set) var retryGeneration = 0
     internal var testRetryDelays: [TimeInterval]?
+    internal var testStabilityWindow: TimeInterval?
 
     private var retryDelays: [TimeInterval] {
         testRetryDelays ?? [1.0, 2.0, 4.0, 4.0]
+    }
+
+    private var stabilityWindow: TimeInterval {
+        testStabilityWindow ?? 15.0
     }
 
     init(
@@ -116,6 +132,9 @@ final class BridgeProcessManager: ObservableObject {
     internal func setRetryAttemptForTesting(_ value: Int) {
         retryAttempt = value
     }
+
+    internal var retryAttemptForTesting: Int { retryAttempt }
+    internal var processHealthForTesting: BridgeProcessHealth { processHealth }
 
     internal var testLaunchArgumentsOverride: [String]?
     internal var testTerminationStatus: Int32?
@@ -186,7 +205,10 @@ final class BridgeProcessManager: ObservableObject {
         }
         if resetRetryAttempt {
             cancelRetryTask()
+            cancelStabilityTask()
             retryAttempt = 0
+            lastUnexpectedExitStatus = nil
+            lastUnexpectedStderr = nil
         }
         guard let url = binaryURL else {
             state = .error("Bridge not found — build or install apm44-bridge")
@@ -198,8 +220,10 @@ final class BridgeProcessManager: ObservableObject {
         }
 
         state = .starting
+        processHealth = .spawning
         connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
         stderrLines.removeAll()
+        stdoutBuffer.removeAll(keepingCapacity: true)
         resetMetricsState()
         lastXrunCount = 0
 
@@ -235,22 +259,37 @@ final class BridgeProcessManager: ObservableObject {
             }
         }
 
+        // Install identity before launch so an immediately exiting child cannot
+        // race its termination callback against assignment of the live process.
+        process = proc
         do {
             try processLauncher.launch(proc)
-            process = proc
             state = .running
             wasRunningBeforeDisconnect = false
             updateConnectionPhase()
             scheduleStaleWatch()
             drainPendingRestart()
         } catch {
-            state = .error("Bridge could not start.")
+            proc.terminationHandler = nil
+            if process === proc {
+                process = nil
+            }
+            processHealth = .stopped
+            clearPipeHandlers()
+            let detail = sanitizedDiagnostic(error.localizedDescription)
+            if !resetRetryAttempt {
+                lastUnexpectedStderr = detail
+                scheduleAutoRetry()
+            } else {
+                state = .error("Bridge could not start: \(detail)")
+            }
         }
     }
 
     func stop() {
         wasRunningBeforeDisconnect = false
         cancelRetryTask()
+        cancelStabilityTask()
         retryAttempt = 0
         if process != nil {
             initiateStop(reason: .user)
@@ -266,6 +305,7 @@ final class BridgeProcessManager: ObservableObject {
     func stopAsync() async {
         wasRunningBeforeDisconnect = false
         cancelRetryTask()
+        cancelStabilityTask()
         retryAttempt = 0
         if process != nil {
             initiateStop(reason: .user)
@@ -478,6 +518,10 @@ final class BridgeProcessManager: ObservableObject {
         latestMetrics = snapshot
         lastMetricsAt = Date()
         metricsStale = false
+        if processHealth == .spawning {
+            processHealth = .handshaking
+            scheduleStabilityReset()
+        }
         updateConnectionPhase()
     }
 
@@ -581,6 +625,19 @@ final class BridgeProcessManager: ObservableObject {
         stderrPipe = nil
     }
 
+    private func sanitizedDiagnostic(_ value: String) -> String {
+        let normalized = value
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+        let printableScalars = normalized.unicodeScalars.filter {
+            $0.value >= 0x20 && $0.value != 0x7f
+        }
+        let singleLine = String(String.UnicodeScalarView(printableScalars))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if singleLine.isEmpty { return "no diagnostic available" }
+        return String(singleLine.prefix(240))
+    }
+
     private func resetMetricsState() {
         latestMetrics = nil
         lastMetricsAt = nil
@@ -622,6 +679,8 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func transitionToIdle() {
+        cancelStabilityTask()
+        processHealth = .stopped
         clearPipeHandlers()
         resetMetricsState()
         state = .idle
@@ -653,51 +712,75 @@ final class BridgeProcessManager: ObservableObject {
         retryTask = nil
     }
 
+    private func cancelStabilityTask() {
+        stabilityTask?.cancel()
+        stabilityTask = nil
+    }
+
+    private func scheduleStabilityReset() {
+        cancelStabilityTask()
+        guard let launchedProcess = process else { return }
+        stabilityTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(self.stabilityWindow))
+            guard !Task.isCancelled,
+                  self.process === launchedProcess,
+                  self.processHealth == .handshaking,
+                  self.isRunning else { return }
+            self.processHealth = .stable
+            self.retryAttempt = 0
+            self.lastUnexpectedExitStatus = nil
+            self.lastUnexpectedStderr = nil
+        }
+    }
+
+    private func exhaustedRetryMessage() -> String {
+        var detail = ""
+        if let status = lastUnexpectedExitStatus {
+            detail = " (last exit \(status))"
+        }
+        if let stderr = lastUnexpectedStderr, !stderr.isEmpty {
+            detail += ": \(stderr)"
+        }
+        return "Bridge stopped after \(maxUnhealthyLaunches) unstable launches\(detail) — click Start to try again"
+    }
+
     private func scheduleAutoRetry() {
         cancelRetryTask()
+        cancelStabilityTask()
         retryGeneration += 1
         retryAttempt += 1
-        if retryAttempt > maxRetryAttempts {
-            let message = "Bridge stopped after \(maxRetryAttempts) retries — click Start to try again"
+        if retryAttempt >= maxUnhealthyLaunches {
+            let message = exhaustedRetryMessage()
             state = .error(message)
             bannerMessage = message
             return
         }
 
         state = .reconnecting
-        bannerMessage = "Reconnecting… (attempt \(retryAttempt) of \(maxRetryAttempts))"
+        bannerMessage =
+            "Reconnecting… (attempt \(retryAttempt) of \(maxUnhealthyLaunches); launch not yet stable)"
+
+        // Capture the attempt before creating the task. Stop/reset can set the
+        // live counter back to zero before a cancelled task begins executing.
+        let scheduledAttempt = retryAttempt
+        let delayIndex = min(scheduledAttempt - 1, retryDelays.count - 1)
+        let delay = retryDelays[delayIndex]
 
         retryTask = Task { @MainActor in
-            while !Task.isCancelled {
-                let delayIndex = min(self.retryAttempt - 1, self.retryDelays.count - 1)
-                let delay = self.retryDelays[delayIndex]
-                try? await Task.sleep(for: .seconds(delay))
-                guard !Task.isCancelled else { return }
-                guard case .reconnecting = self.state else { return }
-
-                self.start(resetRetryAttempt: false)
-                if self.isRunning {
-                    self.retryAttempt = 0
-                    return
-                }
-
-                self.retryAttempt += 1
-                if self.retryAttempt > self.maxRetryAttempts {
-                    let message =
-                        "Bridge stopped after \(self.maxRetryAttempts) retries — click Start to try again"
-                    self.state = .error(message)
-                    self.bannerMessage = message
-                    return
-                }
-
-                self.state = .reconnecting
-                self.bannerMessage =
-                    "Reconnecting… (attempt \(self.retryAttempt) of \(self.maxRetryAttempts))"
-            }
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            guard case .reconnecting = self.state else { return }
+            self.retryTask = nil
+            self.start(resetRetryAttempt: false)
         }
     }
 
     private func handleTermination(_ proc: Process) {
+        // A late callback from an old child must never clear state belonging
+        // to a replacement process.
+        guard process === proc else { return }
+        cancelStabilityTask()
+        processHealth = .stopped
         clearPipeHandlers()
         process = nil
         staleTask?.cancel()
@@ -709,6 +792,11 @@ final class BridgeProcessManager: ObservableObject {
         testTerminationStatus = nil
         let stderr = stderrLines.joined(separator: "\n")
         let recoverableStale = isRecoverableStaleRingExit(status: exitStatus, stderr: stderr)
+
+        if exitStatus != 0 {
+            lastUnexpectedExitStatus = exitStatus
+            lastUnexpectedStderr = sanitizedDiagnostic(stderr)
+        }
 
         if exitStatus != 0, case .running = state {
             if lastStopReason != .user {

@@ -523,7 +523,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         if case .error(let message) = manager.state {
-            XCTAssertTrue(message.localizedCaseInsensitiveContains("retries"))
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("unstable launches"))
         } else {
             XCTFail("Expected final error after retries, got \(manager.state)")
         }
@@ -549,9 +549,65 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         if case .error(let message) = manager.state {
-            XCTAssertTrue(message.localizedCaseInsensitiveContains("retries"))
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("unstable launches"))
         } else {
             XCTFail("Expected final error after retries from zero, got \(manager.state)")
+        }
+    }
+
+    func testCrashLoopExhaustsAfterFourShortLivedSuccessfulLaunches() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [0]
+
+        manager.start()
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        for unhealthyLaunch in 1...4 {
+            guard let proc = launcher.lastProcess else {
+                XCTFail("Missing process for unhealthy launch \(unhealthyLaunch)")
+                return
+            }
+            manager.testTerminationStatus = 17
+            await launcher.fireTermination(for: proc)
+
+            if unhealthyLaunch < 4 {
+                for _ in 0..<100 where launcher.makeCount == unhealthyLaunch {
+                    try? await Task.sleep(nanoseconds: 2_000_000)
+                }
+                XCTAssertEqual(launcher.makeCount, unhealthyLaunch + 1)
+            }
+        }
+
+        if case .error(let message) = manager.state {
+            XCTAssertTrue(message.contains("4 unstable launches"))
+            XCTAssertTrue(message.contains("last exit 17"))
+        } else {
+            XCTFail("Expected bounded crash-loop error, got \(manager.state)")
+        }
+        XCTAssertEqual(launcher.makeCount, 4, "A fifth unhealthy launch must never occur")
+        XCTAssertEqual(manager.retryAttemptForTesting, 4)
+    }
+
+    func testRetryBudgetResetsOnlyAfterMetricsAndStabilityWindow() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testStabilityWindow = 0
+        manager.setRetryAttemptForTesting(2)
+
+        manager.start(resetRetryAttempt: false)
+        XCTAssertEqual(manager.processHealthForTesting, .spawning)
+        XCTAssertEqual(manager.retryAttemptForTesting, 2)
+
+        manager.applyMetricsForTesting(sampleMetrics())
+        for _ in 0..<100 where manager.processHealthForTesting != .stable {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+
+        XCTAssertEqual(manager.processHealthForTesting, .stable)
+        XCTAssertEqual(manager.retryAttemptForTesting, 0)
+
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
         }
     }
 
