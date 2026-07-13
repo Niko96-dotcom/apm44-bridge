@@ -125,3 +125,50 @@ TEST_CASE("production planar input uses the shortest channel without truncating 
   REQUIRE(apm44::InputIoProc(0, nullptr, buffers, nullptr, nullptr, nullptr, &engine) == noErr);
   REQUIRE(engine.inputFramesProcessed() - before == left.size());
 }
+
+TEST_CASE("testUnderrunDoesNotReplayStaleSrcHistory",
+          "[io_proc][underrun][F-06]") {
+  apm44::BridgeEngine engine;
+  apm44::BridgeDevicePair devices;
+  devices.inputAsbd = apm44::MakeFloat32StereoNonInterleaved(apm44::kInputSampleRate);
+  devices.outputAsbd = apm44::MakeFloat32StereoNonInterleaved(apm44::kOutputSampleRate);
+  apm44::BridgeEngineOptions options;
+  options.targetFillMs = 0.0;
+  REQUIRE(engine.prepare(devices, options));
+
+  constexpr std::size_t kFrames = 512;
+  std::vector<float> old0(kFrames, 0.8f);
+  std::vector<float> old1(kFrames, 0.8f);
+  const float* oldChannels[2] = {old0.data(), old1.data()};
+  engine.onInput(oldChannels, kFrames);
+
+  std::vector<float> output0(kFrames);
+  std::vector<float> output1(kFrames);
+  float* outputChannels[2] = {output0.data(), output1.data()};
+  engine.onOutput(outputChannels, kFrames);
+  engine.onOutput(outputChannels, kFrames);
+  engine.onOutput(outputChannels, kFrames);
+  REQUIRE(output0.back() == 0.0f);
+  REQUIRE(output1.back() == 0.0f);
+
+  std::vector<float> fresh0(kFrames, -0.8f);
+  std::vector<float> fresh1(kFrames, -0.8f);
+  const float* freshChannels[2] = {fresh0.data(), fresh1.data()};
+  engine.onInput(freshChannels, kFrames);
+  engine.onOutput(outputChannels, kFrames);
+
+  bool observedFreshSignal = false;
+  for (std::size_t i = 0; i < kFrames; ++i) {
+    REQUIRE(std::isfinite(output0[i]));
+    REQUIRE(std::isfinite(output1[i]));
+    REQUIRE(output0[i] < 0.05f);
+    REQUIRE(output1[i] < 0.05f);
+    if (i > 0) {
+      REQUIRE(std::abs(output0[i] - output0[i - 1]) < 0.2f);
+      REQUIRE(std::abs(output1[i] - output1[i - 1]) < 0.2f);
+    }
+    observedFreshSignal = observedFreshSignal || output0[i] < -0.1f;
+  }
+  REQUIRE(observedFreshSignal);
+  REQUIRE(engine.metricsSnapshot().outputStarvationFrames > 0);
+}

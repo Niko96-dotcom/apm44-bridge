@@ -74,6 +74,7 @@ class BridgeEngine {
  private:
   void cleanupIOProcs(bool inputStarted, bool outputStarted);
   bool resetVirtualStreamEpoch();
+  void resetConverterAfterStarvation();
   void publishMetricsSnapshot();
   MetricsSnapshot readMetricsSnapshot() const;
 
@@ -96,6 +97,8 @@ class BridgeEngine {
   std::atomic<uint64_t> outputStarvationFrames_{0};
   std::atomic<uint64_t> inputFramesProcessed_{0};
   std::atomic<uint64_t> outputFramesProcessed_{0};
+  float lastOutputSample0_ = 0.0f;
+  float lastOutputSample1_ = 0.0f;
   bool running_ = false;
 
   // Seqlock state, extracted into MetricsPublisher so the contract
