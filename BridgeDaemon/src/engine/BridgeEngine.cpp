@@ -20,6 +20,7 @@ namespace {
 
 volatile std::sig_atomic_t gStopRequested = 0;
 constexpr double kVirtualDeviceMaxPpm = 3000.0;
+constexpr UInt32 kRequestedBufferFrameSize = 512;
 
 void SignalHandler(int) { gStopRequested = 1; }
 
@@ -305,12 +306,30 @@ bool BridgeEngine::start() {
     return true;
   }
 
+  inputBufferLease_.reset();
+  outputBufferLease_.reset();
   if (!virtualDevice_) {
-    if (!TrySetBufferFrameSize(devices_.input.deviceId, 512)) {
+    const UInt32 originalInput = ReadBufferFrameSize(devices_.input.deviceId);
+    inputBufferLease_.begin(originalInput, kRequestedBufferFrameSize);
+    if (originalInput > 0 && originalInput != kRequestedBufferFrameSize) {
+      if (TrySetBufferFrameSize(devices_.input.deviceId, kRequestedBufferFrameSize)) {
+        inputBufferLease_.markChanged();
+      } else {
+        std::cerr << "note: could not set 512-frame input buffer; using device default\n";
+      }
+    } else if (originalInput == 0) {
       std::cerr << "note: could not set 512-frame input buffer; using device default\n";
     }
   }
-  if (!TrySetBufferFrameSize(devices_.output.deviceId, 512)) {
+  const UInt32 originalOutput = ReadBufferFrameSize(devices_.output.deviceId);
+  outputBufferLease_.begin(originalOutput, kRequestedBufferFrameSize);
+  if (originalOutput > 0 && originalOutput != kRequestedBufferFrameSize) {
+    if (TrySetBufferFrameSize(devices_.output.deviceId, kRequestedBufferFrameSize)) {
+      outputBufferLease_.markChanged();
+    } else {
+      std::cerr << "note: could not set 512-frame output buffer; using device default\n";
+    }
+  } else if (originalOutput == 0) {
     std::cerr << "note: could not set 512-frame output buffer; using device default\n";
   }
 
@@ -336,6 +355,7 @@ bool BridgeEngine::start() {
   if (!virtualDevice_) {
     status = AudioDeviceCreateIOProcID(devices_.input.deviceId, InputIoProc, this, &inputProc_);
     if (status != noErr) {
+      restoreDeviceBufferSizes();
       return false;
     }
   }
@@ -345,6 +365,7 @@ bool BridgeEngine::start() {
       AudioDeviceDestroyIOProcID(devices_.input.deviceId, inputProc_);
       inputProc_ = nullptr;
     }
+    restoreDeviceBufferSizes();
     return false;
   }
 
@@ -352,6 +373,7 @@ bool BridgeEngine::start() {
     status = AudioDeviceStart(devices_.input.deviceId, inputProc_);
     if (status != noErr) {
       cleanupIOProcs(false, false);
+      restoreDeviceBufferSizes();
       return false;
     }
     inputStarted = true;
@@ -359,6 +381,7 @@ bool BridgeEngine::start() {
   status = AudioDeviceStart(devices_.output.deviceId, outputProc_);
   if (status != noErr) {
     cleanupIOProcs(inputStarted, false);
+    restoreDeviceBufferSizes();
     return false;
   }
 
@@ -383,8 +406,29 @@ void BridgeEngine::cleanupIOProcs(bool inputStarted, bool outputStarted) {
   }
 }
 
+void BridgeEngine::restoreDeviceBufferSizes() {
+  auto restore = [](AudioDeviceID deviceId, DeviceBufferLease& lease,
+                    const char* endpoint) {
+    const UInt32 current = ReadBufferFrameSize(deviceId);
+    if (lease.shouldRestore(current) &&
+        !TrySetBufferFrameSize(deviceId, static_cast<UInt32>(lease.originalFrames))) {
+      std::cerr << "note: could not restore " << endpoint << " buffer size to "
+                << lease.originalFrames << " frames\n";
+    }
+    lease.reset();
+  };
+
+  if (!virtualDevice_ && inputBufferLease_.originalFrames > 0) {
+    restore(devices_.input.deviceId, inputBufferLease_, "input");
+  }
+  if (outputBufferLease_.originalFrames > 0) {
+    restore(devices_.output.deviceId, outputBufferLease_, "output");
+  }
+}
+
 void BridgeEngine::stop() {
   cleanupIOProcs(inputProc_ != nullptr, outputProc_ != nullptr);
+  restoreDeviceBufferSizes();
   if (virtualDevice_) {
     virtualFeed_.close();
   }

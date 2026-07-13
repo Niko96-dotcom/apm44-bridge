@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "apm44/AudioFormats.h"
+#include "apm44/DeviceBufferLease.h"
 
 namespace {
 
@@ -18,6 +19,21 @@ AudioStreamBasicDescription MakeInterleavedStereo48k() {
 }
 
 }  // namespace
+
+TEST_CASE("Device buffer lease restores only the bridge-owned value",
+          "[device_buffer][restore]") {
+  apm44::DeviceBufferLease lease;
+  lease.begin(256, 512);
+  REQUIRE_FALSE(lease.shouldRestore(512));
+
+  lease.markChanged();
+  REQUIRE(lease.shouldRestore(512));
+  REQUIRE_FALSE(lease.shouldRestore(1024));
+  REQUIRE_FALSE(lease.shouldRestore(256));
+
+  lease.reset();
+  REQUIRE_FALSE(lease.shouldRestore(512));
+}
 
 TEST_CASE("MakeFloat32StereoNonInterleaved 44100", "[audio_formats]") {
   const auto asbd = apm44::MakeFloat32StereoNonInterleaved(44100.0);

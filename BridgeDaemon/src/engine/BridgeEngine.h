@@ -9,6 +9,7 @@
 #include <apm44/MetricsSnapshot.h>
 
 #include <apm44/DriftController.h>
+#include <apm44/DeviceBufferLease.h>
 #include <apm44/InputFrameDemand.h>
 #include <apm44/PlanarRingBuffer.h>
 
@@ -73,6 +74,7 @@ class BridgeEngine {
 
  private:
   void cleanupIOProcs(bool inputStarted, bool outputStarted);
+  void restoreDeviceBufferSizes();
   bool resetVirtualStreamEpoch();
   void resetConverterAfterStarvation();
   void publishMetricsSnapshot();
@@ -108,6 +110,8 @@ class BridgeEngine {
 
   AudioDeviceIOProcID inputProc_ = nullptr;
   AudioDeviceIOProcID outputProc_ = nullptr;
+  DeviceBufferLease inputBufferLease_;
+  DeviceBufferLease outputBufferLease_;
 
   VirtualDeviceFeed virtualFeed_;
   bool virtualDevice_ = false;
