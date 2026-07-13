@@ -160,13 +160,15 @@ const char* ShmErrorCodeName(apm44::ShmRingErrorCode code) {
       return "header_truncated";
     case apm44::ShmRingErrorCode::CapacityExceedsObject:
       return "capacity_exceeds_object";
+    case apm44::ShmRingErrorCode::ConsumerBusy:
+      return "consumer_busy";
   }
   return "unknown";
 }
 
 int RunShmStatus() {
   apm44::MmapShmRing ring;
-  if (!ring.open(apm44::ShmRingRole::Consumer)) {
+  if (!ring.open(apm44::ShmRingRole::Observer)) {
     const auto code = ring.lastErrorCode();
     std::cerr << "shm_status=failed\n";
     std::cerr << "shm_name=" << apm44::kShmRingName << "\n";
@@ -192,6 +194,14 @@ int RunShmStatus() {
   std::cout << "channels=" << header->channels << "\n";
   std::cout << "driver_generation="
             << header->driver_generation.load(std::memory_order_relaxed) << "\n";
+  std::cout << "producer_epoch="
+            << header->producer_epoch.load(std::memory_order_relaxed) << "\n";
+  std::cout << "consumer_epoch="
+            << header->consumer_epoch.load(std::memory_order_relaxed) << "\n";
+  std::cout << "consumer_pid="
+            << header->consumer_pid.load(std::memory_order_relaxed) << "\n";
+  std::cout << "consumer_token="
+            << header->consumer_token.load(std::memory_order_relaxed) << "\n";
   std::cout << "daemon_ready=" << header->daemon_ready.load(std::memory_order_relaxed) << "\n";
   if (hasIdentity && identity.valid) {
     std::cout << "shm_dev=" << identity.st_dev << "\n";

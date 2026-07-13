@@ -66,6 +66,7 @@ class BridgeEngine {
 
  private:
   void cleanupIOProcs(bool inputStarted, bool outputStarted);
+  bool resetVirtualStreamEpoch();
   void publishMetricsSnapshot();
   MetricsSnapshot readMetricsSnapshot() const;
 
@@ -96,6 +97,7 @@ class BridgeEngine {
 
   VirtualDeviceFeed virtualFeed_;
   bool virtualDevice_ = false;
+  std::size_t targetFillFrames_ = 0;
 };
 
 }  // namespace apm44

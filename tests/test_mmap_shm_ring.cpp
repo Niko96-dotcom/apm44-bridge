@@ -110,3 +110,64 @@ TEST_CASE("MmapShmRing clamps impossible shared-memory fill counts", "[mmap_shm_
   producer.close();
   shm_unlink(ringName.c_str());
 }
+
+TEST_CASE("Consumer attach discards prior session audio", "[mmap_shm_ring][session]") {
+  const std::string ringName = TestRingName('s');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(16));
+
+  std::vector<float> signalA(8 * 2, 0.25f);
+  REQUIRE(producer.pushInterleaved(signalA.data(), 8) == 8);
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(consumer.consumerEpoch() == 1);
+  std::vector<float> out(8 * 2);
+  REQUIRE(consumer.popInterleaved(out.data(), 8) == 0);
+
+  consumer.setDaemonReady();
+  std::vector<float> signalB(4 * 2, -0.75f);
+  REQUIRE(producer.pushInterleaved(signalB.data(), 4) == 4);
+  REQUIRE(consumer.popInterleaved(out.data(), 4) == 4);
+  for (std::size_t i = 0; i < 4 * 2; ++i) {
+    REQUIRE(out[i] == Catch::Approx(signalB[i]));
+  }
+
+  consumer.close();
+  REQUIRE_FALSE(producer.daemonReady());
+  REQUIRE(producer.header()->consumer_pid.load(std::memory_order_acquire) == 0);
+
+  REQUIRE(producer.pushInterleaved(signalA.data(), 8) == 8);
+  apm44::MmapShmRing reconnected(ringName);
+  REQUIRE(reconnected.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(reconnected.consumerEpoch() == 2);
+  REQUIRE(reconnected.popInterleaved(out.data(), 8) == 0);
+  reconnected.setDaemonReady();
+  REQUIRE(producer.pushInterleaved(signalB.data(), 4) == 4);
+  REQUIRE(reconnected.popInterleaved(out.data(), 4) == 4);
+  for (std::size_t i = 0; i < 4 * 2; ++i) {
+    REQUIRE(out[i] == Catch::Approx(signalB[i]));
+  }
+
+  reconnected.close();
+  producer.close();
+  shm_unlink(ringName.c_str());
+}
+
+TEST_CASE("Only one live shm consumer can claim the ring", "[mmap_shm_ring][session]") {
+  const std::string ringName = TestRingName('o');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(16));
+
+  apm44::MmapShmRing first(ringName);
+  apm44::MmapShmRing second(ringName);
+  REQUIRE(first.open(apm44::ShmRingRole::Consumer));
+  REQUIRE_FALSE(second.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(second.lastErrorCode() == apm44::ShmRingErrorCode::ConsumerBusy);
+
+  first.close();
+  REQUIRE(second.open(apm44::ShmRingRole::Consumer));
+  second.close();
+  producer.close();
+  shm_unlink(ringName.c_str());
+}

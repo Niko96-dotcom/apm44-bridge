@@ -154,3 +154,28 @@ TEST_CASE("LibSamplerateSrc flush drains state after a full output block",
   REQUIRE(src.flush(tailCh, tail0.size(), tailWritten));
   REQUIRE(tailWritten > 0);
 }
+
+TEST_CASE("LibSamplerateSrc reset starts a clean stream epoch", "[lib_samplerate_src][session]") {
+  apm44::LibSamplerateSrc src;
+  REQUIRE(src.prepare(apm44::LibSamplerateSrc::Quality::Medium));
+
+  std::vector<float> stale0(520, 1.0f);
+  std::vector<float> stale1(520, -1.0f);
+  std::vector<float> output0(512);
+  std::vector<float> output1(512);
+  const float* staleChannels[2] = {stale0.data(), stale1.data()};
+  float* outputChannels[2] = {output0.data(), output1.data()};
+  std::size_t written = 0;
+  REQUIRE(src.process(staleChannels, stale0.size(), outputChannels, output0.size(), written));
+  REQUIRE(src.reset());
+
+  std::vector<float> fresh0(147, 0.25f);
+  std::vector<float> fresh1(147, -0.25f);
+  const float* freshChannels[2] = {fresh0.data(), fresh1.data()};
+  REQUIRE(src.process(freshChannels, fresh0.size(), outputChannels, output0.size(), written));
+  REQUIRE(written > 0);
+  for (std::size_t i = 0; i < written; ++i) {
+    REQUIRE(output0[i] < 0.5f);
+    REQUIRE(output1[i] > -0.5f);
+  }
+}

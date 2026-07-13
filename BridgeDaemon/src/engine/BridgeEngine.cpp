@@ -61,7 +61,8 @@ void HoldLastSample(float* ch0, float* ch1, std::size_t converted, std::size_t f
 }
 
 bool IsFatalShmOpenFailure(ShmRingErrorCode code, int err) {
-  if (code == ShmRingErrorCode::InvalidHeader || code == ShmRingErrorCode::PermissionFailed) {
+  if (code == ShmRingErrorCode::InvalidHeader || code == ShmRingErrorCode::PermissionFailed ||
+      code == ShmRingErrorCode::ConsumerBusy) {
     return true;
   }
   if ((code == ShmRingErrorCode::OpenFailed || code == ShmRingErrorCode::MapFailed) &&
@@ -115,22 +116,22 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
 
   const double targetFillMs =
       virtualDevice_ ? std::max(options_.targetFillMs, 20.0) : options_.targetFillMs;
-  const std::size_t targetFillFrames =
+  targetFillFrames_ =
       PlanarRingBuffer::framesForMilliseconds(targetFillMs, kInputSampleRate);
-  const std::size_t ringRequest = std::max(targetFillFrames * 2 + 512, std::size_t{1024});
+  const std::size_t ringRequest = std::max(targetFillFrames_ * 2 + 512, std::size_t{1024});
   ring_.prepare(ringRequest);
   drift_.reset();
-  drift_.setTargetFillFrames(targetFillFrames);
+  drift_.setTargetFillFrames(targetFillFrames_);
   drift_.setMaxPpm(virtualDevice_ ? kVirtualDeviceMaxPpm : DriftController::kMaxPpm);
   inputOverruns_.store(0, std::memory_order_relaxed);
   inputDemand_.reset();
-  virtualPrebuffer_.reset(targetFillFrames);
+  virtualPrebuffer_.reset(targetFillFrames_);
 
   if (!virtualDevice_) {
-    std::vector<float> prefill0(targetFillFrames, 0.0f);
-    std::vector<float> prefill1(targetFillFrames, 0.0f);
+    std::vector<float> prefill0(targetFillFrames_, 0.0f);
+    std::vector<float> prefill1(targetFillFrames_, 0.0f);
     const float* preCh[2] = {prefill0.data(), prefill1.data()};
-    ring_.push(preCh, targetFillFrames);
+    ring_.push(preCh, targetFillFrames_);
   }
 
   if (!src_.prepare(options_.srcQuality)) {
@@ -141,7 +142,20 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   outputScratch1_.resize(kMaxCallbackFrames);
   inputScratch0_.resize(kMaxCallbackFrames);
   inputScratch1_.resize(kMaxCallbackFrames);
+  if (virtualDevice_) {
+    virtualFeed_.markReady();
+  }
   return true;
+}
+
+bool BridgeEngine::resetVirtualStreamEpoch() {
+  ring_.reset();
+  drift_.reset();
+  drift_.setTargetFillFrames(targetFillFrames_);
+  drift_.setMaxPpm(kVirtualDeviceMaxPpm);
+  inputDemand_.reset();
+  virtualPrebuffer_.reset(targetFillFrames_);
+  return src_.reset();
 }
 
 double BridgeEngine::converterRatio() const {
@@ -347,7 +361,13 @@ BridgeEngine::VirtualFeedStaleAction BridgeEngine::pollVirtualFeedStaleRing() {
       action = VirtualFeedStaleAction::None;
       break;
     case StaleRingPollResult::Remapped:
-      action = VirtualFeedStaleAction::StopForRemap;
+      if (!resetVirtualStreamEpoch()) {
+        std::cerr << "error: could not reset SRC for remapped shm stream epoch\n";
+        action = VirtualFeedStaleAction::StopForExit;
+      } else {
+        virtualFeed_.markReady();
+        action = VirtualFeedStaleAction::StopForRemap;
+      }
       break;
     case StaleRingPollResult::MustExit:
       action = VirtualFeedStaleAction::StopForExit;

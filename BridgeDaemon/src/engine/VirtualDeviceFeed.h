@@ -14,6 +14,7 @@ class VirtualDeviceFeed {
  public:
   explicit VirtualDeviceFeed(std::string ringName = kShmRingName);
   bool open();
+  void markReady();
   void close();
   bool isOpen() const { return ring_.isMapped(); }
   ShmRingErrorCode lastOpenErrorCode() const { return lastOpenErrorCode_; }
@@ -23,6 +24,7 @@ class VirtualDeviceFeed {
   std::size_t drainTo(PlanarRingBuffer& ring, std::size_t maxFrames);
   bool isRingStale() const;
   StaleRingPollResult pollStaleRing();
+  uint64_t consumerEpoch() const { return ring_.consumerEpoch(); }
 
  private:
   MmapShmRing ring_;

@@ -22,9 +22,10 @@ bool VirtualDeviceFeed::open() {
   interleavedScratch_.resize(PlanarRingBuffer::kChannels * kMaxDrain);
   planarScratch0_.resize(kMaxDrain);
   planarScratch1_.resize(kMaxDrain);
-  ring_.setDaemonReady();
   return true;
 }
+
+void VirtualDeviceFeed::markReady() { ring_.setDaemonReady(); }
 
 void VirtualDeviceFeed::close() { ring_.close(); }
 

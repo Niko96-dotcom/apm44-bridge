@@ -182,4 +182,16 @@ bool LibSamplerateSrc::flush(float* const outputChannels[2], std::size_t outputC
   return outputFramesWritten > 0;
 }
 
+bool LibSamplerateSrc::reset() {
+  if (state_ == nullptr) {
+    return false;
+  }
+  if (src_reset(state_) != 0) {
+    return false;
+  }
+  pendingInputFrames_ = 0;
+  lastRatio_ = 48000.0 / 44100.0;
+  return src_set_ratio(state_, lastRatio_) == 0;
+}
+
 }  // namespace apm44

@@ -25,6 +25,7 @@ class LibSamplerateSrc {
   // Drains SRC filter delay after the final chunk of a stream (tests only).
   bool flush(float* const outputChannels[2], std::size_t outputCapacity,
              std::size_t& outputFramesWritten);
+  bool reset();
   double nominalRatio() const { return lastRatio_; }
 
  private:

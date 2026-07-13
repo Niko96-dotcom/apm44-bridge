@@ -9,7 +9,7 @@
 
 namespace apm44 {
 
-enum class ShmRingRole { Producer, Consumer };
+enum class ShmRingRole { Producer, Consumer, Observer };
 
 enum class ShmRingErrorCode {
   None,
@@ -26,6 +26,7 @@ enum class ShmRingErrorCode {
   // SHM-02: header declares a capacity that would exceed the mapped
   // object size.
   CapacityExceedsObject,
+  ConsumerBusy,
 };
 
 // Cross-process SPSC ring: interleaved float stereo in the mmap segment.
@@ -56,6 +57,8 @@ class MmapShmRing {
   std::size_t popToPlanar(float* const channelData[2], std::size_t frameCount);
 
   void setDaemonReady();
+  bool daemonReady() const;
+  uint64_t consumerEpoch() const;
 
   const ShmObjectIdentity& mappedObjectIdentity() const { return mappedIdentity_; }
   uint32_t mappedDriverGeneration() const { return mappedDriverGeneration_; }
@@ -68,6 +71,8 @@ class MmapShmRing {
   void clearError();
   void recordError(ShmRingErrorCode code, std::string message, int err = 0);
   void recordErrno(ShmRingErrorCode code, const char* operation, int err);
+  bool claimConsumer();
+  void releaseConsumer();
 
   void* base_ = nullptr;
   std::size_t mappedSize_ = 0;
@@ -81,6 +86,9 @@ class MmapShmRing {
   std::string lastError_;
   ShmObjectIdentity mappedIdentity_{};
   uint32_t mappedDriverGeneration_ = 0;
+  bool ownsConsumer_ = false;
+  uint32_t ownedConsumerPid_ = 0;
+  uint64_t ownedConsumerToken_ = 0;
 };
 
 }  // namespace apm44

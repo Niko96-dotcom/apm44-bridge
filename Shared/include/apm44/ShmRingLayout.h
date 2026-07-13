@@ -10,7 +10,7 @@ namespace apm44 {
 
 inline constexpr const char* kShmRingName = "/apm44_bridge_ring";
 inline constexpr uint32_t kShmMagic = 0x344D5041u;  // 'APM4' little-endian
-inline constexpr uint32_t kShmVersion = 2u;
+inline constexpr uint32_t kShmVersion = 3u;
 inline constexpr uint32_t kShmSampleRate = 44100u;
 inline constexpr uint32_t kShmChannels = 2u;
 inline constexpr uint32_t kDefaultShmCapacityFrames = 4096u;
@@ -41,6 +41,11 @@ struct ShmRingHeader {
   std::atomic<uint64_t> read_index{0};
   std::atomic<uint32_t> daemon_ready{0};
   std::atomic<uint32_t> driver_generation{0};
+  std::atomic<uint64_t> producer_epoch{0};
+  std::atomic<uint64_t> consumer_epoch{0};
+  std::atomic<uint32_t> consumer_pid{0};
+  std::atomic<uint32_t> reserved1{0};
+  std::atomic<uint64_t> consumer_token{0};
 };
 
 inline std::size_t ShmSamplesOffset() {

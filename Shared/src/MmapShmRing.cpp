@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <sstream>
+#include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <utility>
@@ -18,8 +19,19 @@ namespace {
 constexpr int kMapProt = PROT_READ | PROT_WRITE;
 
 std::atomic<uint32_t> gNextShmDriverGeneration{0};
+std::atomic<uint64_t> gNextConsumerToken{0};
 
 bool IsPermissionErrno(int err) { return err == EACCES || err == EPERM; }
+
+bool ProcessIsAlive(uint32_t pid) {
+  if (pid == 0) {
+    return false;
+  }
+  if (::kill(static_cast<pid_t>(pid), 0) == 0) {
+    return true;
+  }
+  return errno == EPERM;
+}
 
 void CaptureMappedIdentity(int fd, ShmObjectIdentity& identity, uint32_t& generation,
                            const ShmRingHeader* header) {
@@ -127,6 +139,7 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
   const uint32_t generation =
       gNextShmDriverGeneration.fetch_add(1, std::memory_order_relaxed) + 1;
   header_->driver_generation.store(generation, std::memory_order_relaxed);
+  header_->producer_epoch.store(generation, std::memory_order_relaxed);
   CaptureMappedIdentity(fd_, mappedIdentity_, mappedDriverGeneration_, header_);
   return true;
 }
@@ -205,10 +218,18 @@ bool MmapShmRing::open(ShmRingRole role) {
   }
   capacityFrames_ = header_->capacity_frames;
   CaptureMappedIdentity(fd_, mappedIdentity_, mappedDriverGeneration_, header_);
+  if (role_ == ShmRingRole::Consumer && !claimConsumer()) {
+    const uint32_t ownerPid = header_->consumer_pid.load(std::memory_order_acquire);
+    close();
+    recordError(ShmRingErrorCode::ConsumerBusy,
+                "shm ring already has a live consumer pid=" + std::to_string(ownerPid));
+    return false;
+  }
   return true;
 }
 
 void MmapShmRing::close() {
+  releaseConsumer();
   if (base_ != nullptr && base_ != MAP_FAILED) {
     ::munmap(base_, mappedSize_);
   }
@@ -218,6 +239,9 @@ void MmapShmRing::close() {
   header_ = nullptr;
   mappedIdentity_ = {};
   mappedDriverGeneration_ = 0;
+  ownsConsumer_ = false;
+  ownedConsumerPid_ = 0;
+  ownedConsumerToken_ = 0;
   if (fd_ >= 0) {
     ::close(fd_);
     fd_ = -1;
@@ -257,10 +281,72 @@ void MmapShmRing::recordErrno(ShmRingErrorCode code, const char* operation, int 
 }
 
 void MmapShmRing::setDaemonReady() {
-  if (!isMapped()) {
+  if (!isMapped() || role_ != ShmRingRole::Consumer || !ownsConsumer_) {
     return;
   }
   header_->daemon_ready.store(1, std::memory_order_release);
+}
+
+bool MmapShmRing::daemonReady() const {
+  return isMapped() && header_->daemon_ready.load(std::memory_order_acquire) != 0;
+}
+
+uint64_t MmapShmRing::consumerEpoch() const {
+  if (!isMapped()) {
+    return 0;
+  }
+  return header_->consumer_epoch.load(std::memory_order_acquire);
+}
+
+bool MmapShmRing::claimConsumer() {
+  if (!isMapped() || header_ == nullptr || role_ != ShmRingRole::Consumer) {
+    return false;
+  }
+
+  const uint32_t pid = static_cast<uint32_t>(::getpid());
+  for (;;) {
+    uint32_t expected = 0;
+    if (header_->consumer_pid.compare_exchange_strong(
+            expected, pid, std::memory_order_acq_rel, std::memory_order_acquire)) {
+      break;
+    }
+    if (ProcessIsAlive(expected)) {
+      return false;
+    }
+    uint32_t stalePid = expected;
+    header_->consumer_pid.compare_exchange_strong(
+        stalePid, 0, std::memory_order_acq_rel, std::memory_order_acquire);
+  }
+
+  ownedConsumerPid_ = pid;
+  ownedConsumerToken_ =
+      (static_cast<uint64_t>(pid) << 32) |
+      (gNextConsumerToken.fetch_add(1, std::memory_order_relaxed) + 1);
+  ownsConsumer_ = true;
+  header_->consumer_token.store(ownedConsumerToken_, std::memory_order_release);
+  header_->daemon_ready.store(0, std::memory_order_release);
+
+  // A new consumer is a new stream session. Discard everything produced
+  // before this claim so reconnect cannot replay the old daemon's backlog.
+  const uint64_t write = header_->write_index.load(std::memory_order_acquire);
+  header_->read_index.store(write, std::memory_order_release);
+  header_->consumer_epoch.fetch_add(1, std::memory_order_acq_rel);
+  return true;
+}
+
+void MmapShmRing::releaseConsumer() {
+  if (!ownsConsumer_ || header_ == nullptr || role_ != ShmRingRole::Consumer) {
+    return;
+  }
+  header_->daemon_ready.store(0, std::memory_order_release);
+  const uint64_t token = header_->consumer_token.load(std::memory_order_acquire);
+  if (token == ownedConsumerToken_) {
+    header_->consumer_token.store(0, std::memory_order_release);
+    uint32_t expectedPid = ownedConsumerPid_;
+    header_->consumer_pid.compare_exchange_strong(
+        expectedPid, 0, std::memory_order_acq_rel, std::memory_order_acquire);
+  }
+  ownsConsumer_ = false;
 }
 
 float* MmapShmRing::samples() const {
