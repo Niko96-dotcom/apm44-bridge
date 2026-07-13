@@ -12,6 +12,7 @@ struct AudioDeviceRow: Identifiable, Equatable {
     let transportType: UInt32
     let outputFormatId: UInt32
     let outputFormatBits: Int
+    let supports48000: Bool
 
     init(
         uid: String,
@@ -24,7 +25,8 @@ struct AudioDeviceRow: Identifiable, Equatable {
         bufferFrameSize: Int = 0,
         transportType: UInt32 = 0,
         outputFormatId: UInt32 = 0,
-        outputFormatBits: Int = 0
+        outputFormatBits: Int = 0,
+        supports48000: Bool = true
     ) {
         self.uid = uid
         self.name = name
@@ -37,15 +39,73 @@ struct AudioDeviceRow: Identifiable, Equatable {
         self.transportType = transportType
         self.outputFormatId = outputFormatId
         self.outputFormatBits = outputFormatBits
+        self.supports48000 = supports48000
     }
 
     var id: String { uid }
 
     var sortRank: Int {
+        if !isMonitoringCompatible { return 100 }
         let lower = name.lowercased()
-        if lower.contains("airpods") { return 0 }
-        if lower.contains("usb") { return 1 }
-        return 2
+        if lower.contains("airpods") && isUSB { return 0 }
+        if lower.contains("airpods") { return 1 }
+        if isUSB { return 2 }
+        if lower.contains("usb") { return 3 }
+        return 4
+    }
+
+    var isUSB: Bool { transportType == 1_970_496_032 } // 'usb '
+
+    var transportLabel: String {
+        switch transportType {
+        case 1_970_496_032: return "USB"       // 'usb '
+        case 1_651_275_109: return "Bluetooth" // 'blue'
+        case 1_651_271_009: return "Bluetooth LE" // 'blea'
+        case 1_651_274_862: return "Built-in"  // 'bltn'
+        case 1_751_412_073: return "HDMI"      // 'hdmi'
+        case 1_685_090_932: return "DisplayPort" // 'dprt'
+        case 1_986_622_068: return "Virtual"   // 'virt'
+        case 0: return "Unknown transport"
+        default: return fourCCTransport
+        }
+    }
+
+    var compatibilityIssue: String? {
+        if !isAlive { return "Disconnected" }
+        if !hasOutput || outputChannels < 2 { return "Stereo output unavailable" }
+        if !supports48000 { return "48 kHz is not supported" }
+        if abs(nominalRate - 48_000) > 1 { return "Set the current rate to 48 kHz" }
+        if outputFormatId != 0 && outputFormatId != 1_819_304_813 { // 'lpcm'
+            return "Linear PCM output is required"
+        }
+        if outputFormatBits != 0 && outputFormatBits != 32 {
+            return "32-bit float output is required"
+        }
+        return nil
+    }
+
+    var isMonitoringCompatible: Bool { compatibilityIssue == nil }
+
+    var pickerLabel: String {
+        if let issue = compatibilityIssue {
+            return "\(name) — Unsupported: \(issue)"
+        }
+        return "\(name) — \(transportLabel)"
+    }
+
+    var detailLabel: String {
+        let supportedRate = supports48000 ? "48 kHz supported" : "48 kHz unsupported"
+        let buffer = bufferFrameSize > 0 ? "\(bufferFrameSize)-frame buffer" : "buffer unknown"
+        return "\(transportLabel) • \(Int(nominalRate)) Hz current • \(supportedRate) • \(outputChannels) ch • \(buffer)"
+    }
+
+    private var fourCCTransport: String {
+        let scalars = [24, 16, 8, 0].compactMap { shift -> UnicodeScalar? in
+            let value = UInt8((transportType >> UInt32(shift)) & 0xff)
+            guard value >= 0x20, value <= 0x7e else { return nil }
+            return UnicodeScalar(value)
+        }
+        return scalars.count == 4 ? String(String.UnicodeScalarView(scalars)) : "Other"
     }
 }
 
@@ -69,6 +129,7 @@ enum DeviceCatalog {
             let transportType = parts.count > 7 ? UInt32(parts[7]) ?? 0 : 0
             let outputFormatId = parts.count > 8 ? UInt32(parts[8]) ?? 0 : 0
             let outputFormatBits = parts.count > 9 ? Int(parts[9]) ?? 0 : 0
+            let supports48000 = parts.count > 10 ? parts[10] != "0" : true
             rows.append(
                 AudioDeviceRow(
                     uid: String(parts[0]),
@@ -81,7 +142,8 @@ enum DeviceCatalog {
                     bufferFrameSize: bufferFrameSize,
                     transportType: transportType,
                     outputFormatId: outputFormatId,
-                    outputFormatBits: outputFormatBits
+                    outputFormatBits: outputFormatBits,
+                    supports48000: supports48000
                 )
             )
         }
@@ -108,12 +170,15 @@ enum DeviceCatalog {
     }
 
     static func preferredDefault(from devices: [AudioDeviceRow]) -> AudioDeviceRow? {
-        if let airpods = devices.first(where: {
+        let compatible = devices.filter(\.isMonitoringCompatible)
+        if let usbAirPods = compatible.first(where: {
+            $0.isUSB && $0.name.localizedCaseInsensitiveContains("AirPods")
+        }) { return usbAirPods }
+        if let airPods = compatible.first(where: {
             $0.name.localizedCaseInsensitiveContains("AirPods")
-        }) {
-            return airpods
-        }
-        return devices.first
+        }) { return airPods }
+        if let usb = compatible.first(where: \.isUSB) { return usb }
+        return compatible.first
     }
 
     static func refresh(binaryURL: URL) throws -> [AudioDeviceRow] {

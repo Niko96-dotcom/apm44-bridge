@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -111,6 +112,32 @@ AudioStreamBasicDescription GetOutputStreamFormat(AudioDeviceID deviceId) {
   return format;
 }
 
+bool SupportsNominalRate(AudioDeviceID deviceId, double wantedRate) {
+  AudioObjectPropertyAddress address{kAudioDevicePropertyAvailableNominalSampleRates,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+  UInt32 dataSize = 0;
+  if (AudioObjectGetPropertyDataSize(deviceId, &address, 0, nullptr, &dataSize) != noErr ||
+      dataSize < sizeof(AudioValueRange)) {
+    return false;
+  }
+  std::vector<AudioValueRange> ranges(dataSize / sizeof(AudioValueRange));
+  if (AudioObjectGetPropertyData(deviceId, &address, 0, nullptr, &dataSize, ranges.data()) !=
+      noErr) {
+    return false;
+  }
+  return std::any_of(ranges.begin(), ranges.end(), [wantedRate](const auto& range) {
+    return wantedRate >= range.mMinimum && wantedRate <= range.mMaximum;
+  });
+}
+
+bool IsCompatibleMonitoringOutput(const AudioDeviceInfo& device) {
+  return device.hasOutput && device.isAlive && device.outputChannels >= 2 &&
+         device.supports48000 && std::abs(device.nominalRate - kOutputSampleRate) <= 1.0 &&
+         (device.outputFormatId == 0 || device.outputFormatId == kAudioFormatLinearPCM) &&
+         (device.outputFormatBits == 0 || device.outputFormatBits == 32);
+}
+
 }  // namespace
 
 std::optional<AudioDeviceInfo> MatchBlackHoleDefault(const std::vector<AudioDeviceInfo>& devices) {
@@ -127,22 +154,35 @@ std::optional<AudioDeviceInfo> MatchBlackHoleDefault(const std::vector<AudioDevi
 }
 
 std::optional<AudioDeviceInfo> MatchAirPodsDefault(const std::vector<AudioDeviceInfo>& devices) {
-  std::optional<AudioDeviceInfo> airPodsMax;
-  std::optional<AudioDeviceInfo> airPodsGeneric;
+  std::optional<AudioDeviceInfo> usbAirPodsMax;
+  std::optional<AudioDeviceInfo> usbAirPods;
+  std::optional<AudioDeviceInfo> compatibleAirPodsMax;
+  std::optional<AudioDeviceInfo> compatibleAirPods;
   for (const auto& device : devices) {
-    if (!device.hasOutput) {
+    if (!IsCompatibleMonitoringOutput(device)) {
       continue;
     }
-    if (ContainsIgnoreCase(device.name, "AirPods Max")) {
-      airPodsMax = device;
-    } else if (ContainsIgnoreCase(device.name, "AirPods")) {
-      airPodsGeneric = device;
+    const bool isMax = ContainsIgnoreCase(device.name, "AirPods Max");
+    const bool isAirPods = isMax || ContainsIgnoreCase(device.name, "AirPods");
+    if (!isAirPods) {
+      continue;
+    }
+    if (device.transportType == kAudioDeviceTransportTypeUSB) {
+      if (isMax) {
+        usbAirPodsMax = device;
+      } else {
+        usbAirPods = device;
+      }
+    } else if (isMax) {
+      compatibleAirPodsMax = device;
+    } else {
+      compatibleAirPods = device;
     }
   }
-  if (airPodsMax) {
-    return airPodsMax;
-  }
-  return airPodsGeneric;
+  if (usbAirPodsMax) return usbAirPodsMax;
+  if (usbAirPods) return usbAirPods;
+  if (compatibleAirPodsMax) return compatibleAirPodsMax;
+  return compatibleAirPods;
 }
 
 std::vector<AudioDeviceInfo> DeviceEnumerator::listAll() {
@@ -183,6 +223,7 @@ std::vector<AudioDeviceInfo> DeviceEnumerator::listAll() {
     const auto format = GetOutputStreamFormat(deviceId);
     info.outputFormatId = format.mFormatID;
     info.outputFormatBits = format.mBitsPerChannel;
+    info.supports48000 = SupportsNominalRate(deviceId, kOutputSampleRate);
     result.push_back(std::move(info));
   }
   return result;

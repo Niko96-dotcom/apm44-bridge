@@ -122,7 +122,7 @@ int RunPrintConfig(const apm44::CliOptions& options) {
 
 int RunListDevices() {
   apm44::DeviceEnumerator enumerator;
-  std::cout << "UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\n";
+  std::cout << "UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\tSUPPORTS_48000\n";
   for (const auto& device : enumerator.listAll()) {
     std::string io;
     if (device.hasInput) {
@@ -134,7 +134,8 @@ int RunListDevices() {
     std::cout << device.uid << '\t' << device.name << '\t' << device.nominalRate << '\t' << io
               << '\t' << (device.isAlive ? 1 : 0) << '\t' << device.outputChannels << '\t'
               << device.bufferFrameSize << '\t' << device.transportType << '\t'
-              << device.outputFormatId << '\t' << device.outputFormatBits << '\n';
+              << device.outputFormatId << '\t' << device.outputFormatBits << '\t'
+              << (device.supports48000 ? 1 : 0) << '\n';
   }
   return 0;
 }

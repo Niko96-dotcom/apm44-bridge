@@ -24,8 +24,8 @@ final class DeviceCatalogTests: XCTestCase {
 
     func testParsesSelectedEndpointFingerprintFields() {
         let text = """
-        UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS
-        USB-UID\tUSB Headphones\t48000\tO\t1\t2\t512\t1970496032\t1819304813\t32
+        UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\tSUPPORTS_48000
+        USB-UID\tUSB Headphones\t48000\tO\t1\t2\t512\t1970496032\t1819304813\t32\t1
         """
 
         let row = DeviceCatalog.parseListDevicesOutput(text).first
@@ -37,6 +37,47 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertEqual(row?.outputFormatId, 1_819_304_813)
         XCTAssertEqual(row?.outputFormatBits, 32)
         XCTAssertEqual(row?.isAlive, true)
+        XCTAssertEqual(row?.supports48000, true)
+        XCTAssertEqual(row?.transportLabel, "USB")
+        XCTAssertEqual(row?.isMonitoringCompatible, true)
+    }
+
+    func testPreferredDefaultPicksCompatibleUSBAirPodsOverBluetooth() {
+        let bluetooth = AudioDeviceRow(
+            uid: "BT",
+            name: "AirPods Max",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true,
+            transportType: 1_651_275_109
+        )
+        let usb = AudioDeviceRow(
+            uid: "USB",
+            name: "AirPods Max",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true,
+            transportType: 1_970_496_032
+        )
+
+        XCTAssertEqual(DeviceCatalog.preferredDefault(from: [bluetooth, usb])?.uid, "USB")
+    }
+
+    func testIncompatibleOutputRemainsVisibleButCannotBeStarted() {
+        let unsupported = AudioDeviceRow(
+            uid: "MONO",
+            name: "Mono Output",
+            nominalRate: 44_100,
+            hasInput: false,
+            hasOutput: true,
+            outputChannels: 1,
+            supports48000: false
+        )
+
+        XCTAssertEqual(DeviceCatalog.filterMonitoringOutputs([unsupported]), [unsupported])
+        XCTAssertFalse(unsupported.isMonitoringCompatible)
+        XCTAssertTrue(unsupported.pickerLabel.contains("Unsupported"))
+        XCTAssertNil(DeviceCatalog.preferredDefault(from: [unsupported]))
     }
 
     func testFilterExcludesBlackHole() {

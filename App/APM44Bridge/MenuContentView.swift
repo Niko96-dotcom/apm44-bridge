@@ -141,12 +141,20 @@ struct MenuContentView: View {
                         Text("Choose output…").tag(String?.none)
                     }
                     ForEach(manager.devices) { device in
-                        Text("\(device.name) (\(Int(device.nominalRate)) Hz)")
+                        Text(device.pickerLabel)
                             .tag(Optional(device.uid))
+                            .disabled(!device.isMonitoringCompatible)
                     }
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
+                if let selectedUid = settings.outputDeviceUid,
+                   let selected = manager.devices.first(where: { $0.uid == selectedUid }) {
+                    Text(selected.detailLabel)
+                        .font(.caption2)
+                        .foregroundStyle(selected.isMonitoringCompatible ? Color.secondary : Color.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -405,7 +413,9 @@ struct MenuContentView: View {
         guard manager.binaryURL != nil, let selectedUid = settings.outputDeviceUid else {
             return false
         }
-        return manager.devices.contains(where: { $0.uid == selectedUid })
+        return manager.devices.contains(where: {
+            $0.uid == selectedUid && $0.isMonitoringCompatible
+        })
     }
 
     private var outputSelection: Binding<String?> {

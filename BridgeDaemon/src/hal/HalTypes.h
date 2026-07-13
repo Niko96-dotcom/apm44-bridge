@@ -21,6 +21,7 @@ struct AudioDeviceInfo {
   uint32_t transportType = 0;
   uint32_t outputFormatId = 0;
   uint32_t outputFormatBits = 0;
+  bool supports48000 = false;
 };
 
 struct BridgeDevicePair {

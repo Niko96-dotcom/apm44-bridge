@@ -384,9 +384,10 @@ final class BridgeProcessManagerTests: XCTestCase {
             AudioDeviceRow(
                 uid: testDevice.uid,
                 name: testDevice.name,
-                nominalRate: 44_100,
+                nominalRate: 48_000,
                 hasInput: false,
-                hasOutput: true
+                hasOutput: true,
+                bufferFrameSize: 256
             )
         ]
 
@@ -433,6 +434,29 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .error("Selected output is no longer available"))
         XCTAssertEqual(launcher.makeCount, 0)
+    }
+
+    func testStartRejectsIncompatibleSelectedOutputBeforeLaunch() {
+        let (manager, settings, launcher) = makeManager()
+        let incompatible = AudioDeviceRow(
+            uid: "mono-output",
+            name: "Mono Output",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true,
+            outputChannels: 1
+        )
+        settings.outputDeviceUid = incompatible.uid
+        manager.setDevicesForTesting([incompatible])
+
+        manager.start()
+
+        XCTAssertEqual(launcher.makeCount, 0)
+        if case .error(let message) = manager.state {
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("stereo"))
+        } else {
+            XCTFail("Expected compatibility error, got \(manager.state)")
+        }
     }
 
     func testDisconnectWhileRunningEntersReconnecting() async {

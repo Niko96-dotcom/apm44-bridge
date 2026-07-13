@@ -235,6 +235,12 @@ final class BridgeProcessManager: ObservableObject {
             bannerMessage = "Selected output is no longer available — choose another device"
             return
         }
+        guard selectedOutput.isMonitoringCompatible else {
+            let issue = selectedOutput.compatibilityIssue ?? "Unsupported output format"
+            state = .error("Selected output is not compatible: \(issue)")
+            bannerMessage = "\(selectedOutput.name): \(issue)"
+            return
+        }
 
         state = .starting
         processHealth = .spawning
