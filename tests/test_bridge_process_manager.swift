@@ -125,6 +125,27 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .idle)
     }
 
+    func testProductionLaunchUsesParentDeathPipe() async throws {
+        let launcher = MockProcessLauncher()
+        let settings = BridgeSettings()
+        settings.outputDeviceUid = testDevice.uid
+        let manager = BridgeProcessManager(
+            settings: settings,
+            processLauncher: launcher,
+            binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge")
+        )
+        manager.setDevicesForTesting([testDevice])
+
+        manager.start()
+
+        let process = try XCTUnwrap(launcher.lastProcess)
+        XCTAssertTrue(process.arguments?.contains("--parent-watch-stdin") == true)
+        XCTAssertTrue(process.standardInput is Pipe)
+
+        manager.stop()
+        await launcher.fireTermination(for: process)
+    }
+
     func testIdleToRunning() async {
         let (manager, _, launcher) = makeManager()
 

@@ -66,6 +66,7 @@ void PrintUsage(const char* programName) {
             << "  --src-quality Q     SRC quality: medium|high|best (default medium)\n"
             << "  --metrics-json      Emit JSON metrics on stdout every 500 ms while running\n"
             << "  --virtual-device    Read input from APM44Bridge.driver shm (no BlackHole)\n\n"
+            << "  --parent-watch-stdin Stop if the launching app's stdin pipe closes\n\n"
             << "Prerequisite: BlackHole 2ch v0.6.1+ (user-installed, GPL-3.0).\n"
             << "  https://github.com/ExistentialAudio/BlackHole/releases\n"
             << "  Do not bundle or vendor BlackHole in this project.\n";
@@ -91,6 +92,8 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
       options.metricsJson = true;
     } else if (arg == "--virtual-device") {
       options.virtualDevice = true;
+    } else if (arg == "--parent-watch-stdin") {
+      options.parentWatchStdin = true;
     } else if (arg == "--input-device") {
       options.inputDeviceUid = ValueAfter(argc, argv, i);
       if (!options.inputDeviceUid) {

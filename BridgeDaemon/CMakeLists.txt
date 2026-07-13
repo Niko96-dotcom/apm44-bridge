@@ -1,6 +1,8 @@
 add_executable(apm44-bridge
   src/main.cpp
   src/CliOptions.cpp
+  src/ParentDeathWatch.cpp
+  src/ProcessSingletonLock.cpp
   src/hal/DeviceEnumerator.cpp
   src/hal/FormatNegotiator.cpp
   src/engine/LibSamplerateSrc.cpp

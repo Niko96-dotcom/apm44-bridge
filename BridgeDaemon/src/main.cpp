@@ -1,4 +1,6 @@
 #include "CliOptions.h"
+#include "ParentDeathWatch.h"
+#include "ProcessSingletonLock.h"
 #include "engine/BridgeEngine.h"
 #include "engine/BridgeMetrics.h"
 #include "hal/DeviceEnumerator.h"
@@ -12,6 +14,7 @@
 #include <cerrno>
 #include <iostream>
 #include <optional>
+#include <unistd.h>
 
 namespace {
 
@@ -245,6 +248,17 @@ int main(int argc, char* argv[]) {
   }
   if (options.printConfig) {
     return RunPrintConfig(options);
+  }
+
+  apm44::ProcessSingletonLock singleton;
+  if (!singleton.acquire()) {
+    std::cerr << "error: " << singleton.lastError() << "\n";
+    return 43;
+  }
+  if (options.parentWatchStdin) {
+    apm44::StartParentDeathWatch(STDIN_FILENO, [] {
+      apm44::BridgeEngine::requestStop();
+    });
   }
 
   auto pair = ResolveDevices(options, true);

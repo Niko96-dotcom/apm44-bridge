@@ -40,6 +40,7 @@ final class BridgeProcessManager: ObservableObject {
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
+    private var parentWatchPipe: Pipe?
     private var stdoutBuffer = Data()
     private let stdoutCap = 64 * 1024
     private var lastKnownFrameLoss: UInt64 = 0
@@ -247,6 +248,10 @@ final class BridgeProcessManager: ObservableObject {
         proc.executableURL = url
         proc.arguments = testLaunchArgumentsOverride ?? buildArguments(outputUid: uid)
 
+        let parentPipe = Pipe()
+        parentWatchPipe = parentPipe
+        proc.standardInput = parentPipe
+
         let outPipe = Pipe()
         stdoutPipe = outPipe
         proc.standardOutput = outPipe
@@ -280,6 +285,10 @@ final class BridgeProcessManager: ObservableObject {
         process = proc
         do {
             try processLauncher.launch(proc)
+            // The child owns its inherited read descriptor. Keeping a duplicate
+            // read end in the app is unnecessary; the write end is the liveness
+            // token and closes automatically if the app crashes.
+            parentPipe.fileHandleForReading.closeFile()
             runningOutputFingerprint = selectedOutput
             state = .running
             wasRunningBeforeDisconnect = false
@@ -506,6 +515,7 @@ final class BridgeProcessManager: ObservableObject {
             "--target-fill-ms", String(format: "%.0f", ms),
             "--src-quality", quality,
             "--metrics-json",
+            "--parent-watch-stdin",
         ]
         if routingMode == .halVirtualDevice {
             args.insert("--virtual-device", at: 0)
@@ -645,6 +655,9 @@ final class BridgeProcessManager: ObservableObject {
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
         stdoutPipe = nil
         stderrPipe = nil
+        parentWatchPipe?.fileHandleForWriting.closeFile()
+        parentWatchPipe?.fileHandleForReading.closeFile()
+        parentWatchPipe = nil
     }
 
     private func sanitizedDiagnostic(_ value: String) -> String {

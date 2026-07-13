@@ -22,6 +22,7 @@ struct CliOptions {
   LibSamplerateSrc::Quality srcQuality = LibSamplerateSrc::Quality::Medium;
   bool metricsJson = false;
   bool virtualDevice = false;
+  bool parentWatchStdin = false;
 };
 
 CliOptions ParseCliOptions(int argc, char* argv[]);
