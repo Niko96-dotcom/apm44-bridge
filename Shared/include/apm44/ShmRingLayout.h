@@ -10,7 +10,7 @@ namespace apm44 {
 
 inline constexpr const char* kShmRingName = "/apm44_bridge_ring";
 inline constexpr uint32_t kShmMagic = 0x344D5041u;  // 'APM4' little-endian
-inline constexpr uint32_t kShmVersion = 3u;
+inline constexpr uint32_t kShmVersion = 4u;
 inline constexpr uint32_t kShmSampleRate = 44100u;
 inline constexpr uint32_t kShmChannels = 2u;
 inline constexpr uint32_t kDefaultShmCapacityFrames = 4096u;
@@ -46,6 +46,23 @@ struct ShmRingHeader {
   std::atomic<uint32_t> consumer_pid{0};
   std::atomic<uint32_t> reserved1{0};
   std::atomic<uint64_t> consumer_token{0};
+  std::atomic<uint64_t> producer_overrun_events{0};
+  std::atomic<uint64_t> producer_dropped_frames{0};
+  std::atomic<uint64_t> producer_not_ready_dropped_frames{0};
+  std::atomic<uint64_t> lane_queue_drops{0};
+  std::atomic<uint64_t> lane_timestamp_mismatches{0};
+  std::atomic<uint64_t> lane_frame_mismatch_dropped_frames{0};
+  std::atomic<uint64_t> consumer_resets{0};
+};
+
+struct ShmProducerDiagnostics {
+  uint64_t overrunEvents = 0;
+  uint64_t droppedFrames = 0;
+  uint64_t notReadyDroppedFrames = 0;
+  uint64_t laneQueueDrops = 0;
+  uint64_t laneTimestampMismatches = 0;
+  uint64_t laneFrameMismatchDroppedFrames = 0;
+  uint64_t consumerResets = 0;
 };
 
 inline std::size_t ShmSamplesOffset() {

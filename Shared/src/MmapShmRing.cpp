@@ -298,6 +298,28 @@ uint64_t MmapShmRing::consumerEpoch() const {
   return header_->consumer_epoch.load(std::memory_order_acquire);
 }
 
+ShmProducerDiagnostics MmapShmRing::producerDiagnostics() const {
+  ShmProducerDiagnostics diagnostics;
+  if (!isMapped()) {
+    return diagnostics;
+  }
+  diagnostics.overrunEvents =
+      header_->producer_overrun_events.load(std::memory_order_acquire);
+  diagnostics.droppedFrames =
+      header_->producer_dropped_frames.load(std::memory_order_acquire);
+  diagnostics.notReadyDroppedFrames =
+      header_->producer_not_ready_dropped_frames.load(std::memory_order_acquire);
+  diagnostics.laneQueueDrops =
+      header_->lane_queue_drops.load(std::memory_order_acquire);
+  diagnostics.laneTimestampMismatches =
+      header_->lane_timestamp_mismatches.load(std::memory_order_acquire);
+  diagnostics.laneFrameMismatchDroppedFrames =
+      header_->lane_frame_mismatch_dropped_frames.load(std::memory_order_acquire);
+  diagnostics.consumerResets =
+      header_->consumer_resets.load(std::memory_order_acquire);
+  return diagnostics;
+}
+
 bool MmapShmRing::claimConsumer() {
   if (!isMapped() || header_ == nullptr || role_ != ShmRingRole::Consumer) {
     return false;
@@ -331,6 +353,7 @@ bool MmapShmRing::claimConsumer() {
   const uint64_t write = header_->write_index.load(std::memory_order_acquire);
   header_->read_index.store(write, std::memory_order_release);
   header_->consumer_epoch.fetch_add(1, std::memory_order_acq_rel);
+  header_->consumer_resets.fetch_add(1, std::memory_order_relaxed);
   return true;
 }
 

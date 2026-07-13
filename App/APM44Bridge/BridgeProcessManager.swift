@@ -42,7 +42,7 @@ final class BridgeProcessManager: ObservableObject {
     private var stderrPipe: Pipe?
     private var stdoutBuffer = Data()
     private let stdoutCap = 64 * 1024
-    private var lastXrunCount: UInt64 = 0
+    private var lastKnownFrameLoss: UInt64 = 0
     private var glitchTask: Task<Void, Never>?
     private var staleTask: Task<Void, Never>?
     private var lastMetricsAt: Date?
@@ -241,7 +241,7 @@ final class BridgeProcessManager: ObservableObject {
         stderrLines.removeAll()
         stdoutBuffer.removeAll(keepingCapacity: true)
         resetMetricsState()
-        lastXrunCount = 0
+        lastKnownFrameLoss = 0
 
         let proc = processLauncher.makeProcess()
         proc.executableURL = url
@@ -533,10 +533,10 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func applyMetrics(_ snapshot: BridgeMetricsSnapshot) {
-        if snapshot.xruns > lastXrunCount {
+        if snapshot.knownFrameLoss > lastKnownFrameLoss {
             triggerGlitchFlash()
         }
-        lastXrunCount = snapshot.xruns
+        lastKnownFrameLoss = snapshot.knownFrameLoss
         latestMetrics = snapshot
         lastMetricsAt = Date()
         metricsStale = false

@@ -59,6 +59,7 @@ class MmapShmRing {
   void setDaemonReady();
   bool daemonReady() const;
   uint64_t consumerEpoch() const;
+  ShmProducerDiagnostics producerDiagnostics() const;
 
   const ShmObjectIdentity& mappedObjectIdentity() const { return mappedIdentity_; }
   uint32_t mappedDriverGeneration() const { return mappedDriverGeneration_; }

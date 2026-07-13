@@ -90,13 +90,34 @@ void ShmIoHandler::OnProcessMixedOutput(const std::shared_ptr<aspl::Stream>& str
   }
   if (channelCount == 1) {
     pushMonoLane(stream, frames, frameCount, zeroTimestamp, timestamp);
+    return;
   }
+  recordProducerDrop(frameCount, false);
 }
 
 void ShmIoHandler::pushInterleaved(const Float32* frames, UInt32 frameCount) {
+  if (!ring_.daemonReady()) {
+    if (auto* header = ring_.header()) {
+      header->producer_not_ready_dropped_frames.fetch_add(
+          frameCount, std::memory_order_relaxed);
+    }
+    recordProducerDrop(frameCount, false);
+    return;
+  }
   const std::size_t pushed = ring_.pushInterleaved(frames, frameCount);
   if (pushed < frameCount) {
-    // Drop policy: bounded ring; write available capacity and drop incoming tail frames.
+    recordProducerDrop(frameCount - pushed, true);
+  }
+}
+
+void ShmIoHandler::recordProducerDrop(std::size_t frames, bool ringOverrun) {
+  auto* header = ring_.header();
+  if (header == nullptr || frames == 0) {
+    return;
+  }
+  header->producer_dropped_frames.fetch_add(frames, std::memory_order_relaxed);
+  if (ringOverrun) {
+    header->producer_overrun_events.fetch_add(1, std::memory_order_relaxed);
   }
 }
 
@@ -106,11 +127,13 @@ void ShmIoHandler::pushMonoLane(const std::shared_ptr<aspl::Stream>& stream,
                                 Float64 zeroTimestamp,
                                 Float64 timestamp) {
   if (!stream || frameCount > kDefaultShmCapacityFrames) {
+    recordProducerDrop(frameCount, frameCount > kDefaultShmCapacityFrames);
     return;
   }
 
   const UInt32 startingChannel = stream->GetStartingChannel();
   if (startingChannel == 0 || startingChannel > kShmChannels) {
+    recordProducerDrop(frameCount, false);
     return;
   }
 
@@ -125,7 +148,7 @@ void ShmIoHandler::enqueueLane(UInt32 channelIndex,
                                Float64 zeroTimestamp,
                                Float64 timestamp) {
   if (pendingCount_[channelIndex] == kPendingLaneQueueDepth) {
-    dropLane(channelIndex);
+    recordLaneDrop(channelIndex, LaneDropReason::QueueOverflow);
   }
 
   PendingLaneBlock& block = pendingLanes_[channelIndex][pendingWrite_[channelIndex]];
@@ -154,6 +177,22 @@ void ShmIoHandler::dropLane(UInt32 channelIndex) {
   --pendingCount_[channelIndex];
 }
 
+void ShmIoHandler::recordLaneDrop(UInt32 channelIndex, LaneDropReason reason) {
+  if (pendingCount_[channelIndex] == 0) {
+    return;
+  }
+  const std::size_t droppedFrames = laneAt(channelIndex, 0).frameCount;
+  if (auto* header = ring_.header()) {
+    if (reason == LaneDropReason::QueueOverflow) {
+      header->lane_queue_drops.fetch_add(1, std::memory_order_relaxed);
+    } else {
+      header->lane_timestamp_mismatches.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+  recordProducerDrop(droppedFrames, false);
+  dropLane(channelIndex);
+}
+
 int ShmIoHandler::findLaneMatchingBlock(UInt32 channelIndex,
                                         const PendingLaneBlock& block) const {
   for (std::size_t offset = 0; offset < pendingCount_[channelIndex]; ++offset) {
@@ -180,21 +219,21 @@ void ShmIoHandler::flushPendingLanes() {
       const int leftMatchForRight = findLaneMatchingBlock(0, right);
       if (leftMatchForRight > 0) {
         for (int i = 0; i < leftMatchForRight; ++i) {
-          dropLane(0);
+          recordLaneDrop(0, LaneDropReason::TimestampMismatch);
         }
         continue;
       }
       const int rightMatchForLeft = findLaneMatchingBlock(1, left);
       if (rightMatchForLeft > 0) {
         for (int i = 0; i < rightMatchForLeft; ++i) {
-          dropLane(1);
+          recordLaneDrop(1, LaneDropReason::TimestampMismatch);
         }
         continue;
       }
       if (left.logicalSampleTime <= right.logicalSampleTime) {
-        dropLane(0);
+        recordLaneDrop(0, LaneDropReason::TimestampMismatch);
       } else {
-        dropLane(1);
+        recordLaneDrop(1, LaneDropReason::TimestampMismatch);
       }
       continue;
     }
@@ -208,6 +247,15 @@ void ShmIoHandler::flushPendingLanes() {
 void ShmIoHandler::pushLanePair(const PendingLaneBlock& left,
                                 const PendingLaneBlock& right) {
   const UInt32 frameCount = std::min(left.frameCount, right.frameCount);
+  const UInt32 mismatchFrames =
+      std::max(left.frameCount, right.frameCount) - frameCount;
+  if (mismatchFrames > 0) {
+    if (auto* header = ring_.header()) {
+      header->lane_frame_mismatch_dropped_frames.fetch_add(
+          mismatchFrames, std::memory_order_relaxed);
+    }
+    recordProducerDrop(mismatchFrames, false);
+  }
   for (UInt32 frame = 0; frame < frameCount; ++frame) {
     pendingInterleaved_[frame * kShmChannels + 0] = left.frames[frame];
     pendingInterleaved_[frame * kShmChannels + 1] = right.frames[frame];

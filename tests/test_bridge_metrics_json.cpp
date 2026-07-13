@@ -44,8 +44,44 @@ TEST_CASE("BridgeMetrics JSON contains required fields") {
   REQUIRE(Contains(line, "\"estimated_rt_ms\""));
   REQUIRE(Contains(line, "\"target_fill_ms\""));
   REQUIRE(Contains(line, "\"src_quality\""));
+  REQUIRE(Contains(line, "\"input_dropped_frames\""));
+  REQUIRE(Contains(line, "\"producer_overrun_events\""));
+  REQUIRE(Contains(line, "\"producer_dropped_frames\""));
+  REQUIRE(Contains(line, "\"producer_not_ready_dropped_frames\""));
+  REQUIRE(Contains(line, "\"lane_queue_drops\""));
+  REQUIRE(Contains(line, "\"lane_timestamp_mismatches\""));
+  REQUIRE(Contains(line, "\"lane_frame_mismatch_dropped_frames\""));
+  REQUIRE(Contains(line, "\"consumer_resets\""));
+  REQUIRE(Contains(line, "\"output_starvation_frames\""));
   REQUIRE(Contains(line, "15.200"));
   REQUIRE(line.find('\n') == std::string::npos);
+}
+
+TEST_CASE("BridgeMetrics exposes every known frame-loss counter", "[metrics][F-05]") {
+  apm44::MetricsSnapshot snapshot;
+  snapshot.fillMs = 15.2;
+  snapshot.smoothedRatio = 1.088435;
+  snapshot.inputDroppedFrames = 11;
+  snapshot.producerOverrunEvents = 2;
+  snapshot.producerDroppedFrames = 13;
+  snapshot.producerNotReadyDroppedFrames = 3;
+  snapshot.laneQueueDrops = 5;
+  snapshot.laneTimestampMismatches = 7;
+  snapshot.laneFrameMismatchDroppedFrames = 17;
+  snapshot.consumerResets = 19;
+  snapshot.outputStarvationFrames = 23;
+
+  const auto metrics = apm44::MakeBridgeMetrics(snapshot, 15.0, "medium");
+  const std::string line = apm44::ToJsonLine(metrics);
+  REQUIRE(Contains(line, "\"input_dropped_frames\":11"));
+  REQUIRE(Contains(line, "\"producer_overrun_events\":2"));
+  REQUIRE(Contains(line, "\"producer_dropped_frames\":13"));
+  REQUIRE(Contains(line, "\"producer_not_ready_dropped_frames\":3"));
+  REQUIRE(Contains(line, "\"lane_queue_drops\":5"));
+  REQUIRE(Contains(line, "\"lane_timestamp_mismatches\":7"));
+  REQUIRE(Contains(line, "\"lane_frame_mismatch_dropped_frames\":17"));
+  REQUIRE(Contains(line, "\"consumer_resets\":19"));
+  REQUIRE(Contains(line, "\"output_starvation_frames\":23"));
 }
 
 TEST_CASE("BridgeMetrics JSON truncation fails closed without overreading buffer",

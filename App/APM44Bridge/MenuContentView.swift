@@ -277,9 +277,15 @@ struct MenuContentView: View {
                     }
 
                     HStack(alignment: .top) {
-                        metricStat("Hard xruns", "\(metrics.xruns)", flashing: manager.glitchFlash)
+                        metricStat("Known lost frames", "\(metrics.knownFrameLoss)", flashing: manager.glitchFlash)
                         Spacer()
                         metricStat("Recoveries", "\(metrics.underruns)", alignment: .trailing)
+                    }
+
+                    HStack(alignment: .top) {
+                        metricStat("HAL drops", "\(metrics.producerDroppedFrames)")
+                        Spacer()
+                        metricStat("Output starved", "\(metrics.outputStarvationFrames)", alignment: .trailing)
                     }
 
                     HStack(alignment: .top) {

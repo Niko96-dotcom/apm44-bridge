@@ -203,6 +203,15 @@ int RunShmStatus() {
   std::cout << "consumer_token="
             << header->consumer_token.load(std::memory_order_relaxed) << "\n";
   std::cout << "daemon_ready=" << header->daemon_ready.load(std::memory_order_relaxed) << "\n";
+  const apm44::ShmProducerDiagnostics diagnostics = ring.producerDiagnostics();
+  std::cout << "producer_overrun_events=" << diagnostics.overrunEvents << "\n";
+  std::cout << "producer_dropped_frames=" << diagnostics.droppedFrames << "\n";
+  std::cout << "producer_not_ready_dropped_frames=" << diagnostics.notReadyDroppedFrames << "\n";
+  std::cout << "lane_queue_drops=" << diagnostics.laneQueueDrops << "\n";
+  std::cout << "lane_timestamp_mismatches=" << diagnostics.laneTimestampMismatches << "\n";
+  std::cout << "lane_frame_mismatch_dropped_frames="
+            << diagnostics.laneFrameMismatchDroppedFrames << "\n";
+  std::cout << "consumer_resets=" << diagnostics.consumerResets << "\n";
   if (hasIdentity && identity.valid) {
     std::cout << "shm_dev=" << identity.st_dev << "\n";
     std::cout << "shm_ino=" << identity.st_ino << "\n";
@@ -284,18 +293,16 @@ int main(int argc, char* argv[]) {
       }
       if (options.metricsJson) {
         const auto metrics = apm44::MakeBridgeMetrics(
-            snapshot.lastFillMs(), snapshot.lastSmoothedRatio(), snapshot.lastPpm(),
-            snapshot.underrunCount(), snapshot.overrunCount(), snapshot.xrunCount(),
-            options.targetFillMs, apm44::SrcQualityCliString(options.srcQuality));
+            snapshot.metricsSnapshot(), options.targetFillMs,
+            apm44::SrcQualityCliString(options.srcQuality));
         std::cout << apm44::ToJsonLine(metrics) << '\n' << std::flush;
       }
     });
   } else if (options.metricsJson) {
     engine.runUntilSignal([&options](const apm44::BridgeEngine& snapshot) {
       const auto metrics = apm44::MakeBridgeMetrics(
-          snapshot.lastFillMs(), snapshot.lastSmoothedRatio(), snapshot.lastPpm(),
-          snapshot.underrunCount(), snapshot.overrunCount(), snapshot.xrunCount(),
-          options.targetFillMs, apm44::SrcQualityCliString(options.srcQuality));
+          snapshot.metricsSnapshot(), options.targetFillMs,
+          apm44::SrcQualityCliString(options.srcQuality));
       std::cout << apm44::ToJsonLine(metrics) << '\n' << std::flush;
     });
   } else {

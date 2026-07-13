@@ -31,6 +31,7 @@ TEST_CASE("ShmIoHandler pushes canonical Float32 stereo mix without scaling",
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   std::vector<float> frames{
       -1.0f, 1.0f,
@@ -52,6 +53,42 @@ TEST_CASE("ShmIoHandler pushes canonical Float32 stereo mix without scaling",
   shm_unlink(ringName.c_str());
 }
 
+TEST_CASE("HAL producer drops are visible in shared diagnostics",
+          "[shm_io_handler][telemetry][F-05]") {
+  const std::string ringName = TestRingName('v');
+  apm44::ShmIoHandler handler(ringName);
+  REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
+
+  constexpr std::size_t kAttemptedFrames = 5000;
+  constexpr std::size_t kUsableRingFrames = apm44::kDefaultShmCapacityFrames - 1;
+  std::vector<float> frames(kAttemptedFrames * apm44::kShmChannels, 0.25f);
+  handler.OnProcessMixedOutput(nullptr, 0.0, 0.0, frames.data(), kAttemptedFrames,
+                               apm44::kShmChannels);
+
+  auto diagnostics = consumer.producerDiagnostics();
+  REQUIRE(diagnostics.overrunEvents == 1);
+  REQUIRE(diagnostics.droppedFrames == kAttemptedFrames - kUsableRingFrames);
+  REQUIRE(diagnostics.notReadyDroppedFrames == 0);
+
+  consumer.close();
+  handler.OnProcessMixedOutput(nullptr, 0.0, 0.0, frames.data(), 100,
+                               apm44::kShmChannels);
+
+  apm44::MmapShmRing observer(ringName);
+  REQUIRE(observer.open(apm44::ShmRingRole::Observer));
+  diagnostics = observer.producerDiagnostics();
+  REQUIRE(diagnostics.notReadyDroppedFrames == 100);
+  REQUIRE(diagnostics.droppedFrames == kAttemptedFrames - kUsableRingFrames + 100);
+
+  handler.OnStopIO();
+  observer.close();
+  shm_unlink(ringName.c_str());
+}
+
 TEST_CASE("ShmIoHandler combines Float32 mono lanes into stereo shm frames",
           "[shm_io_handler]") {
   const std::string ringName = TestRingName('m');
@@ -60,6 +97,7 @@ TEST_CASE("ShmIoHandler combines Float32 mono lanes into stereo shm frames",
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   auto context = std::make_shared<aspl::Context>();
   aspl::DeviceParameters deviceParams;
@@ -98,6 +136,7 @@ TEST_CASE("ShmIoHandler serialized left-right mono-lane callbacks form stereo fr
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   auto context = std::make_shared<aspl::Context>();
   aspl::DeviceParameters deviceParams;
@@ -141,6 +180,7 @@ TEST_CASE("ShmIoHandler pairs mono lanes across HAL timestamp period rollover",
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   auto context = std::make_shared<aspl::Context>();
   aspl::DeviceParameters deviceParams;
@@ -176,6 +216,7 @@ TEST_CASE("ShmIoHandler rejects unrelated mono lane timestamp mismatches",
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   auto context = std::make_shared<aspl::Context>();
   aspl::DeviceParameters deviceParams;
@@ -193,6 +234,9 @@ TEST_CASE("ShmIoHandler rejects unrelated mono lane timestamp mismatches",
 
   std::vector<float> out(6);
   REQUIRE(consumer.popInterleaved(out.data(), 3) == 0);
+  const auto diagnostics = consumer.producerDiagnostics();
+  REQUIRE(diagnostics.laneTimestampMismatches == 1);
+  REQUIRE(diagnostics.droppedFrames == 3);
 
   handler.OnStopIO();
   consumer.close();
@@ -207,6 +251,7 @@ TEST_CASE("ShmIoHandler rearms on mixed output after transient IO stop",
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   handler.OnStopIO();
 
@@ -235,6 +280,7 @@ TEST_CASE("ShmIoHandler clears stale mono lane when transient IO stop rearms",
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   auto context = std::make_shared<aspl::Context>();
   aspl::DeviceParameters deviceParams;
@@ -276,6 +322,7 @@ TEST_CASE("ShmIoHandler clears pending mono lanes across restart", "[shm_io_hand
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   auto context = std::make_shared<aspl::Context>();
   aspl::DeviceParameters deviceParams;
@@ -309,6 +356,7 @@ TEST_CASE("ShmIoHandler drops incomplete mono lane when same channel repeats",
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   auto context = std::make_shared<aspl::Context>();
   aspl::DeviceParameters deviceParams;
@@ -346,6 +394,7 @@ TEST_CASE("ShmIoHandler queues repeated mono lanes until matching channel arrive
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   auto context = std::make_shared<aspl::Context>();
   aspl::DeviceParameters deviceParams;
@@ -389,6 +438,7 @@ TEST_CASE("ShmIoHandler ignores mono buffers without a stream lane", "[shm_io_ha
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
 
   std::vector<float> mono{0.25f, 0.5f, 0.75f};
   handler.OnProcessMixedOutput(nullptr, 0.0, 0.0, mono.data(), 3, 1);

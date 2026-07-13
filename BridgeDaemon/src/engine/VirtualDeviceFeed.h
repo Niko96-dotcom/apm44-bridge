@@ -25,6 +25,9 @@ class VirtualDeviceFeed {
   bool isRingStale() const;
   StaleRingPollResult pollStaleRing();
   uint64_t consumerEpoch() const { return ring_.consumerEpoch(); }
+  ShmProducerDiagnostics producerDiagnostics() const {
+    return ring_.producerDiagnostics();
+  }
 
  private:
   MmapShmRing ring_;

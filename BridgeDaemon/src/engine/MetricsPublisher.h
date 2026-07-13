@@ -29,6 +29,15 @@ struct MetricsPublisherState {
   std::atomic<uint64_t> underruns{0};
   std::atomic<uint64_t> overruns{0};
   std::atomic<uint64_t> xruns{0};
+  std::atomic<uint64_t> inputDroppedFrames{0};
+  std::atomic<uint64_t> producerOverrunEvents{0};
+  std::atomic<uint64_t> producerDroppedFrames{0};
+  std::atomic<uint64_t> producerNotReadyDroppedFrames{0};
+  std::atomic<uint64_t> laneQueueDrops{0};
+  std::atomic<uint64_t> laneTimestampMismatches{0};
+  std::atomic<uint64_t> laneFrameMismatchDroppedFrames{0};
+  std::atomic<uint64_t> consumerResets{0};
+  std::atomic<uint64_t> outputStarvationFrames{0};
 };
 
 static_assert(std::atomic<uint64_t>::is_always_lock_free,
@@ -53,6 +62,18 @@ inline void PublishMetrics(MetricsPublisherState& state,
   state.underruns.store(next.underruns, std::memory_order_relaxed);
   state.overruns.store(next.overruns, std::memory_order_relaxed);
   state.xruns.store(next.xruns, std::memory_order_relaxed);
+  state.inputDroppedFrames.store(next.inputDroppedFrames, std::memory_order_relaxed);
+  state.producerOverrunEvents.store(next.producerOverrunEvents, std::memory_order_relaxed);
+  state.producerDroppedFrames.store(next.producerDroppedFrames, std::memory_order_relaxed);
+  state.producerNotReadyDroppedFrames.store(next.producerNotReadyDroppedFrames,
+                                            std::memory_order_relaxed);
+  state.laneQueueDrops.store(next.laneQueueDrops, std::memory_order_relaxed);
+  state.laneTimestampMismatches.store(next.laneTimestampMismatches,
+                                      std::memory_order_relaxed);
+  state.laneFrameMismatchDroppedFrames.store(next.laneFrameMismatchDroppedFrames,
+                                              std::memory_order_relaxed);
+  state.consumerResets.store(next.consumerResets, std::memory_order_relaxed);
+  state.outputStarvationFrames.store(next.outputStarvationFrames, std::memory_order_relaxed);
   state.sequence.store(sequence + 2U, std::memory_order_release);
 }
 
@@ -75,6 +96,19 @@ inline MetricsSnapshot ReadMetrics(const MetricsPublisherState& state) {
     copy.underruns = state.underruns.load(std::memory_order_relaxed);
     copy.overruns = state.overruns.load(std::memory_order_relaxed);
     copy.xruns = state.xruns.load(std::memory_order_relaxed);
+    copy.inputDroppedFrames = state.inputDroppedFrames.load(std::memory_order_relaxed);
+    copy.producerOverrunEvents = state.producerOverrunEvents.load(std::memory_order_relaxed);
+    copy.producerDroppedFrames = state.producerDroppedFrames.load(std::memory_order_relaxed);
+    copy.producerNotReadyDroppedFrames =
+        state.producerNotReadyDroppedFrames.load(std::memory_order_relaxed);
+    copy.laneQueueDrops = state.laneQueueDrops.load(std::memory_order_relaxed);
+    copy.laneTimestampMismatches =
+        state.laneTimestampMismatches.load(std::memory_order_relaxed);
+    copy.laneFrameMismatchDroppedFrames =
+        state.laneFrameMismatchDroppedFrames.load(std::memory_order_relaxed);
+    copy.consumerResets = state.consumerResets.load(std::memory_order_relaxed);
+    copy.outputStarvationFrames =
+        state.outputStarvationFrames.load(std::memory_order_relaxed);
     const uint64_t sequenceAfter =
         state.sequence.load(std::memory_order_acquire);
     if (sequenceBefore == sequenceAfter) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <apm44/MetricsSnapshot.h>
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -20,6 +22,15 @@ struct BridgeMetrics {
   uint64_t underruns = 0;
   uint64_t overruns = 0;
   uint64_t xruns = 0;
+  uint64_t inputDroppedFrames = 0;
+  uint64_t producerOverrunEvents = 0;
+  uint64_t producerDroppedFrames = 0;
+  uint64_t producerNotReadyDroppedFrames = 0;
+  uint64_t laneQueueDrops = 0;
+  uint64_t laneTimestampMismatches = 0;
+  uint64_t laneFrameMismatchDroppedFrames = 0;
+  uint64_t consumerResets = 0;
+  uint64_t outputStarvationFrames = 0;
   double estimatedRtMs = 0.0;
   double targetFillMs = 15.0;
   std::string srcQuality = "medium";
@@ -27,6 +38,8 @@ struct BridgeMetrics {
 
 BridgeMetrics MakeBridgeMetrics(double fillMs, double ratio, double ppm, uint64_t underruns,
                                 uint64_t overruns, uint64_t xruns, double targetFillMs,
+                                std::string_view srcQuality);
+BridgeMetrics MakeBridgeMetrics(const MetricsSnapshot& snapshot, double targetFillMs,
                                 std::string_view srcQuality);
 
 std::string ToJsonLine(const BridgeMetrics& metrics);

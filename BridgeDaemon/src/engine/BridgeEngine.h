@@ -59,6 +59,7 @@ class BridgeEngine {
   double lastPpm() const { return readMetricsSnapshot().ppm; }
   uint64_t underrunCount() const { return readMetricsSnapshot().underruns; }
   uint64_t overrunCount() const { return readMetricsSnapshot().overruns; }
+  MetricsSnapshot metricsSnapshot() const { return readMetricsSnapshot(); }
 
   // Called from IOProcs (RT-safe).
   void onInput(const float* const channels[2], std::size_t frames);
@@ -91,6 +92,8 @@ class BridgeEngine {
 
   std::atomic<uint64_t> xruns_{0};
   std::atomic<uint64_t> inputOverruns_{0};
+  std::atomic<uint64_t> inputDroppedFrames_{0};
+  std::atomic<uint64_t> outputStarvationFrames_{0};
   std::atomic<uint64_t> inputFramesProcessed_{0};
   std::atomic<uint64_t> outputFramesProcessed_{0};
   bool running_ = false;

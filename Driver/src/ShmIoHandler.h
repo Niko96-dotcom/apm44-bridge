@@ -43,6 +43,8 @@ class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestH
     UInt32 frameCount = 0;
   };
 
+  enum class LaneDropReason { QueueOverflow, TimestampMismatch };
+
   bool ensureRingReady();
   void armFromRealtimeCallbackIfNeeded();
   static bool laneTimesMatch(const PendingLaneBlock& lhs, const PendingLaneBlock& rhs);
@@ -56,6 +58,8 @@ class ShmIoHandler : public aspl::ControlRequestHandler, public aspl::IORequestH
                    Float64 zeroTimestamp, Float64 timestamp);
   PendingLaneBlock& laneAt(UInt32 channelIndex, std::size_t offset);
   void dropLane(UInt32 channelIndex);
+  void recordLaneDrop(UInt32 channelIndex, LaneDropReason reason);
+  void recordProducerDrop(std::size_t frames, bool ringOverrun);
   int findLaneMatchingBlock(UInt32 channelIndex, const PendingLaneBlock& block) const;
   void resetPendingLanes() noexcept;
   void flushPendingLanes();

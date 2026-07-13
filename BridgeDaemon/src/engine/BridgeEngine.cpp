@@ -124,6 +124,8 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   drift_.setTargetFillFrames(targetFillFrames_);
   drift_.setMaxPpm(virtualDevice_ ? kVirtualDeviceMaxPpm : DriftController::kMaxPpm);
   inputOverruns_.store(0, std::memory_order_relaxed);
+  inputDroppedFrames_.store(0, std::memory_order_relaxed);
+  outputStarvationFrames_.store(0, std::memory_order_relaxed);
   inputFramesProcessed_.store(0, std::memory_order_relaxed);
   outputFramesProcessed_.store(0, std::memory_order_relaxed);
   inputDemand_.reset();
@@ -166,8 +168,11 @@ double BridgeEngine::converterRatio() const {
 
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
   inputFramesProcessed_.fetch_add(frames, std::memory_order_relaxed);
+  const std::size_t available = ring_.availableToWrite();
   if (PushDroppingNewInput(ring_, channels, frames)) {
     inputOverruns_.fetch_add(1, std::memory_order_relaxed);
+    inputDroppedFrames_.fetch_add(frames - std::min(frames, available),
+                                  std::memory_order_relaxed);
   }
 }
 
@@ -179,6 +184,18 @@ void BridgeEngine::publishMetricsSnapshot() {
   next.underruns = drift_.underrunCount();
   next.overruns = inputOverruns_.load(std::memory_order_relaxed);
   next.xruns = xruns_.load(std::memory_order_relaxed);
+  next.inputDroppedFrames = inputDroppedFrames_.load(std::memory_order_relaxed);
+  if (virtualDevice_) {
+    const ShmProducerDiagnostics producer = virtualFeed_.producerDiagnostics();
+    next.producerOverrunEvents = producer.overrunEvents;
+    next.producerDroppedFrames = producer.droppedFrames;
+    next.producerNotReadyDroppedFrames = producer.notReadyDroppedFrames;
+    next.laneQueueDrops = producer.laneQueueDrops;
+    next.laneTimestampMismatches = producer.laneTimestampMismatches;
+    next.laneFrameMismatchDroppedFrames = producer.laneFrameMismatchDroppedFrames;
+    next.consumerResets = producer.consumerResets;
+  }
+  next.outputStarvationFrames = outputStarvationFrames_.load(std::memory_order_relaxed);
   PublishMetrics(publisher_, next);
 }
 
@@ -213,6 +230,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   const std::size_t maxPop = std::min(inputFramesNeeded, outputScratch0_.size());
   const std::size_t popped = ring_.pop(popCh, maxPop);
   if (popped == 0) {
+    outputStarvationFrames_.fetch_add(frames, std::memory_order_relaxed);
     drift_.notifyUnderrun();
     if (virtualDevice_) {
       virtualPrebuffer_.forceRebuffer();
@@ -225,6 +243,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   std::size_t converted = 0;
   const float* inCh[2] = {popCh[0], popCh[1]};
   if (!src_.process(inCh, popped, channels, frames, converted) || converted == 0) {
+    outputStarvationFrames_.fetch_add(frames, std::memory_order_relaxed);
     std::memset(channels[0], 0, frames * sizeof(float));
     std::memset(channels[1], 0, frames * sizeof(float));
     drift_.notifyUnderrun();
@@ -237,6 +256,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   }
 
   if (converted < frames) {
+    outputStarvationFrames_.fetch_add(frames - converted, std::memory_order_relaxed);
     HoldLastSample(channels[0], channels[1], converted, frames);
   }
   if (popped < maxPop) {
