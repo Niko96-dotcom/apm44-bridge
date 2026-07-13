@@ -126,6 +126,45 @@ TEST_CASE("production planar input uses the shortest channel without truncating 
   REQUIRE(engine.inputFramesProcessed() - before == left.size());
 }
 
+TEST_CASE("production callbacks account for variable schedules from 32 through 4096 frames",
+          "[io_proc][rt][variable_callback]") {
+  apm44::BridgeEngine engine;
+  PrepareEngine(engine, false);
+  const std::vector<std::size_t> schedule = {32, 64, 128, 256, 512, 1024, 2048, 4096};
+  uint64_t expectedInputFrames = 0;
+  uint64_t expectedOutputFrames = 0;
+
+  for (const std::size_t frames : schedule) {
+    INFO("callback frames=" << frames);
+    std::vector<float> input(frames * 2, 0.125f);
+    AudioBufferList inputBuffers{};
+    inputBuffers.mNumberBuffers = 1;
+    inputBuffers.mBuffers[0].mNumberChannels = 2;
+    inputBuffers.mBuffers[0].mDataByteSize =
+        static_cast<UInt32>(input.size() * sizeof(float));
+    inputBuffers.mBuffers[0].mData = input.data();
+    REQUIRE(apm44::InputIoProc(
+                0, nullptr, &inputBuffers, nullptr, nullptr, nullptr, &engine) == noErr);
+    expectedInputFrames += frames;
+    REQUIRE(engine.inputFramesProcessed() == expectedInputFrames);
+
+    std::vector<float> output(frames * 2, std::numeric_limits<float>::quiet_NaN());
+    AudioBufferList outputBuffers{};
+    outputBuffers.mNumberBuffers = 1;
+    outputBuffers.mBuffers[0].mNumberChannels = 2;
+    outputBuffers.mBuffers[0].mDataByteSize =
+        static_cast<UInt32>(output.size() * sizeof(float));
+    outputBuffers.mBuffers[0].mData = output.data();
+    REQUIRE(apm44::OutputIoProc(
+                0, nullptr, nullptr, nullptr, &outputBuffers, nullptr, &engine) == noErr);
+    expectedOutputFrames += frames;
+    REQUIRE(engine.outputFramesProcessed() == expectedOutputFrames);
+    for (const float sample : output) {
+      REQUIRE(std::isfinite(sample));
+    }
+  }
+}
+
 TEST_CASE("testUnderrunDoesNotReplayStaleSrcHistory",
           "[io_proc][underrun][F-06]") {
   apm44::BridgeEngine engine;

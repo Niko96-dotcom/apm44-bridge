@@ -31,7 +31,7 @@ Or run the CI script:
 bash scripts/ci-soak.sh
 ```
 
-**Pass criteria (offline):** exit code 0; `passed=1` in stdout; underruns below threshold; fill does not exceed 2× target for more than 1 s.
+**Pass criteria (offline):** exit code 0; `passed=1` in stdout; zero steady-state underruns; zero producer overruns; fill does not exceed 2× target for more than 1 s.
 
 ## Human 30+ minute soak (full QA-01)
 

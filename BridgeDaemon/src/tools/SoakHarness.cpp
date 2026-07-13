@@ -142,11 +142,10 @@ SoakMetrics RunSoakHarness(const SoakOptions& options) {
   metrics.overruns = drift.overrunCount();
   metrics.finalPpm = drift.currentPpm();
 
-  const double underrunBudget =
-      options.durationSec <= 10.0 ? 10.0 : 10.0 * (options.durationSec / 60.0);
   const bool fillOk = metrics.maxFillMs <= maxFillMsLimit + 1.0;
-  metrics.passed =
-      static_cast<double>(metrics.underruns) <= underrunBudget && fillOk;
+  // The harness begins prebuffered, so every measured block is steady state.
+  // Any starvation or producer overrun is a hard failure, regardless of run length.
+  metrics.passed = metrics.underruns == 0 && metrics.overruns == 0 && fillOk;
   return metrics;
 }
 

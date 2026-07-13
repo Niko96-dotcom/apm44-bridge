@@ -95,7 +95,8 @@ TEST_CASE("MmapShmRing popToPlanar feeds planar buffer", "[mmap_shm_ring]") {
   shm_unlink(ringName.c_str());
 }
 
-TEST_CASE("MmapShmRing clamps impossible shared-memory fill counts", "[mmap_shm_ring]") {
+TEST_CASE("MmapShmRing fails closed on impossible shared-memory fill counts",
+          "[mmap_shm_ring][integrity]") {
   const std::string ringName = TestRingName('c');
   apm44::MmapShmRing producer(ringName);
   REQUIRE(producer.create(8));
@@ -105,8 +106,57 @@ TEST_CASE("MmapShmRing clamps impossible shared-memory fill counts", "[mmap_shm_
 
   float interleaved[16] = {};
   REQUIRE(producer.pushInterleaved(interleaved, 1) == 0);
-  REQUIRE(producer.popInterleaved(interleaved, 16) == 7);
+  REQUIRE(producer.popInterleaved(interleaved, 16) == 0);
 
+  producer.close();
+  shm_unlink(ringName.c_str());
+}
+
+TEST_CASE("Consumer repairs corrupt indices by discarding questionable audio",
+          "[mmap_shm_ring][integrity]") {
+  const std::string ringName = TestRingName('x');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(16));
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+
+  const uint64_t resetsBefore = consumer.producerDiagnostics().consumerResets;
+  producer.header()->write_index.store(100, std::memory_order_relaxed);
+  producer.header()->read_index.store(0, std::memory_order_relaxed);
+  float output[2] = {};
+  REQUIRE(consumer.popInterleaved(output, 1) == 0);
+  REQUIRE(producer.header()->read_index.load(std::memory_order_acquire) == 100);
+  REQUIRE(consumer.producerDiagnostics().consumerResets == resetsBefore + 1);
+
+  const float fresh[2] = {0.25f, -0.25f};
+  REQUIRE(producer.pushInterleaved(fresh, 1) == 1);
+  REQUIRE(consumer.popInterleaved(output, 1) == 1);
+  REQUIRE(output[0] == Catch::Approx(fresh[0]));
+  REQUIRE(output[1] == Catch::Approx(fresh[1]));
+
+  consumer.close();
+  producer.close();
+  shm_unlink(ringName.c_str());
+}
+
+TEST_CASE("Consumer refuses reads after ownership token tampering",
+          "[mmap_shm_ring][integrity]") {
+  const std::string ringName = TestRingName('t');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(16));
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+
+  const uint64_t ownedToken =
+      producer.header()->consumer_token.load(std::memory_order_acquire);
+  const float input[2] = {0.5f, -0.5f};
+  float output[2] = {};
+  REQUIRE(producer.pushInterleaved(input, 1) == 1);
+  producer.header()->consumer_token.store(ownedToken + 1, std::memory_order_release);
+  REQUIRE(consumer.popInterleaved(output, 1) == 0);
+
+  producer.header()->consumer_token.store(ownedToken, std::memory_order_release);
+  consumer.close();
   producer.close();
   shm_unlink(ringName.c_str());
 }

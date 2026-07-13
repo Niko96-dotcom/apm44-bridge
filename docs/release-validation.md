@@ -136,6 +136,9 @@ open "/Applications/APM44 Bridge.app"
 # In Cubase: select APM44 Bridge as the audio output and assign Control Room Monitor L/R to APM44 Bridge.
 
 # 4. Smoke, soak, and export-rate proof
+
+Native CI also runs AddressSanitizer plus UndefinedBehaviorSanitizer and a
+separate ThreadSanitizer build. Sanitizer failures are release blocking.
 # Play a 440 Hz tone and confirm menu bar state reaches Running.
 # Complete docs/cubase-soak.md for a 30+ minute hardware soak.
 bash scripts/validate-export-rate.sh --check-file ~/Desktop/your-mix.wav

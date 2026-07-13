@@ -372,26 +372,59 @@ void MmapShmRing::releaseConsumer() {
   ownsConsumer_ = false;
 }
 
+bool MmapShmRing::consumerOwnershipValid() const {
+  if (role_ != ShmRingRole::Consumer) {
+    return true;
+  }
+  return ownsConsumer_ && header_ != nullptr &&
+         header_->consumer_pid.load(std::memory_order_acquire) == ownedConsumerPid_ &&
+         header_->consumer_token.load(std::memory_order_acquire) == ownedConsumerToken_;
+}
+
+bool MmapShmRing::indicesAreSane(uint64_t write, uint64_t read) const {
+  return capacityFrames_ > 0 && write >= read && (write - read) < capacityFrames_;
+}
+
+void MmapShmRing::repairCorruptIndices(uint64_t write) const {
+  if (role_ != ShmRingRole::Consumer || !consumerOwnershipValid()) {
+    return;
+  }
+  // The 0666 object is a documented local-integrity boundary. If another
+  // process corrupts either monotonic index, discard the entire questionable
+  // interval instead of treating an underflow as a full ring and replaying it.
+  header_->read_index.store(write, std::memory_order_release);
+  header_->consumer_resets.fetch_add(1, std::memory_order_relaxed);
+}
+
 float* MmapShmRing::samples() const {
   return reinterpret_cast<float*>(static_cast<char*>(base_) + ShmSamplesOffset());
 }
 
 std::size_t MmapShmRing::availableToRead() const {
-  if (!isMapped() || capacityFrames_ == 0) {
+  if (!isMapped() || capacityFrames_ == 0 || !consumerOwnershipValid()) {
     return 0;
   }
   const uint64_t w = header_->write_index.load(std::memory_order_acquire);
   const uint64_t r = header_->read_index.load(std::memory_order_acquire);
+  if (!indicesAreSane(w, r)) {
+    repairCorruptIndices(w);
+    return 0;
+  }
   const std::size_t used = static_cast<std::size_t>(w - r);
-  return std::min(used, capacityFrames_ - 1);
+  return used;
 }
 
 std::size_t MmapShmRing::availableToWrite() const {
   if (!isMapped() || capacityFrames_ == 0) {
     return 0;
   }
-  const std::size_t used = availableToRead();
-  return capacityFrames_ > used ? capacityFrames_ - used - 1 : 0;
+  const uint64_t w = header_->write_index.load(std::memory_order_acquire);
+  const uint64_t r = header_->read_index.load(std::memory_order_acquire);
+  if (!indicesAreSane(w, r)) {
+    return 0;
+  }
+  const std::size_t used = static_cast<std::size_t>(w - r);
+  return capacityFrames_ - used - 1;
 }
 
 std::size_t MmapShmRing::pushInterleaved(const float* interleaved, std::size_t frameCount) {

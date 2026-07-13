@@ -10,7 +10,8 @@ TEST_CASE("SoakHarness 5s fast skew profile", "[soak]") {
 
   const apm44::SoakMetrics metrics = apm44::RunSoakHarness(options);
   REQUIRE(metrics.durationSec >= 4.5);
-  REQUIRE(metrics.underruns < 10);
+  REQUIRE(metrics.underruns == 0);
+  REQUIRE(metrics.overruns == 0);
   REQUIRE(metrics.maxFillMs <= options.targetFillMs * 2.0 + 5.0);
   REQUIRE(metrics.passed);
 }

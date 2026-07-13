@@ -80,7 +80,10 @@ in shared memory.
 Current mitigations are integrity-oriented rather than access-control-oriented:
 the ring header carries ABI, sample-rate, build-id, size, and generation fields.
 Consumers fail fast on hard compatibility mismatches and detect stale mappings
-when the underlying shm object identity or generation changes.
+when the underlying shm object identity or generation changes. Consumer PID and
+token ownership are rechecked on reads; impossible monotonic indices are treated
+as untrusted audio, discarded, and counted as a consumer reset. These measures
+limit corruption and replay but do not make mode 0666 an access-control boundary.
 
 Future hardening options:
 

@@ -73,6 +73,9 @@ class MmapShmRing {
   void recordError(ShmRingErrorCode code, std::string message, int err = 0);
   void recordErrno(ShmRingErrorCode code, const char* operation, int err);
   bool claimConsumer();
+  bool consumerOwnershipValid() const;
+  bool indicesAreSane(uint64_t write, uint64_t read) const;
+  void repairCorruptIndices(uint64_t write) const;
   void releaseConsumer();
 
   void* base_ = nullptr;

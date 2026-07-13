@@ -69,6 +69,37 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=
 
+  sanitizers:
+    name: ${{ matrix.sanitizer }} sanitizer
+    runs-on: macos-15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread]
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Configure sanitizer build
+        run: |
+          cmake -S . -B "build-${{ matrix.sanitizer }}" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" \
+            -DAPM44_SANITIZER="${{ matrix.sanitizer }}"
+
+      - name: Build native targets
+        run: cmake --build "build-${{ matrix.sanitizer }}" --parallel 4
+
+      - name: Run native tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir "build-${{ matrix.sanitizer }}" --output-on-failure -j2
+
   dependency-review:
     name: Dependency review
     runs-on: ubuntu-latest
