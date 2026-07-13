@@ -9,7 +9,14 @@ final class BridgeSettings: ObservableObject {
     }
 
     @Published var outputDeviceUid: String? {
-        didSet { UserDefaults.standard.set(outputDeviceUid, forKey: Keys.outputDeviceUid) }
+        didSet {
+            UserDefaults.standard.set(outputDeviceUid, forKey: Keys.outputDeviceUid)
+            NotificationCenter.default.post(
+                name: .apm44OutputDeviceChanged,
+                object: nil,
+                userInfo: ["uid": outputDeviceUid ?? ""]
+            )
+        }
     }
 
     @Published var latencyPreset: LatencyPreset {
@@ -54,4 +61,8 @@ final class BridgeSettings: ObservableObject {
             srcQualityOverride = nil
         }
     }
+}
+
+extension Notification.Name {
+    static let apm44OutputDeviceChanged = Notification.Name("apm44.outputDeviceChanged")
 }

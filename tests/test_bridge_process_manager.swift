@@ -267,6 +267,53 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 1)
     }
 
+    func testRestartFromErrorActuallyRelaunches() async {
+        let (manager, _, launcher) = makeManager()
+        manager.setStateForTesting(.error("lost connection"))
+
+        await manager.restart(reason: .user)
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testSleepStopsAndWakeResumesRunningBridge() async {
+        let (manager, _, launcher) = makeManager()
+        manager.start()
+
+        let sleepTask = Task { await manager.handleSystemWillSleep() }
+        for _ in 0..<200 {
+            if case .stopping = manager.state { break }
+            try? await Task.sleep(nanoseconds: 2_000_000)
+        }
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await sleepTask.value
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        await manager.handleSystemDidWake()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testWakeDoesNotAutostartBridgeThatWasIdleBeforeSleep() async {
+        let (manager, _, launcher) = makeManager()
+
+        await manager.handleSystemWillSleep()
+        await manager.handleSystemDidWake()
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+    }
+
     func testUserStopDoesNotSetRecoverableFlag() async {
         let (manager, _, launcher) = makeManager()
 

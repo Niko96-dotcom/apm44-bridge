@@ -6,18 +6,32 @@ struct APM44BridgeApp: App {
     @StateObject private var manager: BridgeProcessManager
     @State private var showFirstRun = false
     private let hotplug: HotplugMonitor
+    private let systemLifecycle: SystemLifecycleMonitor
 
     init() {
         let settings = BridgeSettings()
         _settings = StateObject(wrappedValue: settings)
         let manager = BridgeProcessManager(settings: settings)
         _manager = StateObject(wrappedValue: manager)
-        hotplug = HotplugMonitor {
+        hotplug = HotplugMonitor(selectedUid: settings.outputDeviceUid) {
             Task { @MainActor in
                 await manager.handleHotplug()
             }
         }
+        systemLifecycle = SystemLifecycleMonitor(
+            onWillSleep: {
+                Task { @MainActor in
+                    await manager.handleSystemWillSleep()
+                }
+            },
+            onDidWake: {
+                Task { @MainActor in
+                    await manager.handleSystemDidWake()
+                }
+            }
+        )
         hotplug.start()
+        systemLifecycle.start()
         Task { @MainActor in
             await manager.refreshDevices()
         }
@@ -55,7 +69,7 @@ struct APM44BridgeApp: App {
 
     private var menuBarTint: Color {
         switch manager.state {
-        case .running: return .green
+        case .running: return manager.metricsStale ? .orange : .green
         case .reconnecting: return .orange
         case .error: return .red
         default: return .secondary

@@ -1,8 +1,10 @@
+import AppKit
 import SwiftUI
 
 struct MenuContentView: View {
     @ObservedObject var manager: BridgeProcessManager
     @ObservedObject var settings: BridgeSettings
+    @StateObject private var launchAtLogin = LaunchAtLoginController()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -21,6 +23,10 @@ struct MenuContentView: View {
         }
         .padding(16)
         .frame(width: 340)
+        .onAppear { launchAtLogin.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            launchAtLogin.refresh()
+        }
     }
 
     // MARK: - Status hero
@@ -360,6 +366,19 @@ struct MenuContentView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.caption)
+            if launchAtLogin.requiresApproval {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Label("Approval required in Login Items", systemImage: "exclamationmark.triangle")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                    Spacer(minLength: 4)
+                    Button("Open Settings") {
+                        launchAtLogin.openApprovalSettings()
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.link)
+                }
+            }
             HStack {
                 Text("APM44 Bridge \(Bundle.main.shortVersion)")
                     .font(.caption2)
@@ -398,12 +417,13 @@ struct MenuContentView: View {
 
     private var openAtLoginBinding: Binding<Bool> {
         Binding(
-            get: { LaunchAtLogin.isEnabled },
+            get: { launchAtLogin.isEnabled },
             set: { enabled, _ in
                 do {
-                    try LaunchAtLogin.setEnabled(enabled)
+                    try launchAtLogin.setEnabled(enabled)
                 } catch {
                     manager.bannerMessage = "Could not update Open at login"
+                    launchAtLogin.refresh()
                 }
             }
         )
@@ -476,7 +496,8 @@ struct MenuContentView: View {
         switch manager.state {
         case .error: return .red
         case .reconnecting: return .orange
-        case .running: return manager.connectionPhase == .waitingForDAW ? .orange : .green
+        case .running:
+            return manager.metricsStale || manager.connectionPhase == .waitingForDAW ? .orange : .green
         case .starting: return .orange
         default: return .secondary
         }

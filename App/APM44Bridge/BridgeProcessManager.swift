@@ -62,6 +62,7 @@ final class BridgeProcessManager: ObservableObject {
     private var processHealth: BridgeProcessHealth = .stopped
     private var lastUnexpectedExitStatus: Int32?
     private var lastUnexpectedStderr: String?
+    private var resumeAfterSystemWake = false
 
     private let processLauncher: ProcessLaunching
     private let binaryURLOverride: URL?
@@ -405,7 +406,10 @@ final class BridgeProcessManager: ObservableObject {
 
     private func performRestart(reason: StopReason) async {
         switch state {
-        case .idle, .error:
+        case .idle:
+            return
+        case .error:
+            start()
             return
         case .running, .reconnecting:
             break
@@ -423,6 +427,51 @@ final class BridgeProcessManager: ObservableObject {
             }
         }
 
+        start()
+    }
+
+    func handleSystemWillSleep() async {
+        let shouldResume: Bool
+        switch state {
+        case .running, .starting, .reconnecting:
+            shouldResume = true
+        default:
+            shouldResume = false
+        }
+        resumeAfterSystemWake = shouldResume
+        guard shouldResume else { return }
+
+        wasRunningBeforeDisconnect = false
+        cancelRetryTask()
+        cancelStabilityTask()
+        if process != nil {
+            _ = await terminateProcessWithEscalation(reason: .internal)
+        } else {
+            transitionToIdle()
+        }
+    }
+
+    func handleSystemDidWake() async {
+        let shouldResume = resumeAfterSystemWake
+        resumeAfterSystemWake = false
+        guard await refreshDevices() else {
+            if shouldResume {
+                state = .reconnecting
+                bannerMessage = "Waiting for audio devices after wake…"
+            }
+            return
+        }
+        guard shouldResume else { return }
+        guard let uid = settings.outputDeviceUid,
+              let selected = devices.first(where: { $0.uid == uid }),
+              selected.isAlive,
+              selected.isMonitoringCompatible else {
+            wasRunningBeforeDisconnect = true
+            state = .reconnecting
+            connectionPhase = .stopped
+            bannerMessage = "Output unavailable after wake — waiting for \(deviceDisplayName)…"
+            return
+        }
         start()
     }
 

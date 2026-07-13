@@ -1,17 +1,50 @@
 import Foundation
 import ServiceManagement
 
-/// Register the menu bar app to start at login (macOS 13+).
-enum LaunchAtLogin {
-    static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
+enum LaunchAtLoginState: Equatable {
+    case disabled
+    case enabled
+    case requiresApproval
+    case unavailable
+}
+
+@MainActor
+final class LaunchAtLoginController: ObservableObject {
+    @Published private(set) var state: LaunchAtLoginState
+    private let service: SMAppService
+
+    init(service: SMAppService = .mainApp) {
+        self.service = service
+        state = Self.map(service.status)
     }
 
-    static func setEnabled(_ enabled: Bool) throws {
+    var isEnabled: Bool { state == .enabled }
+    var requiresApproval: Bool { state == .requiresApproval }
+
+    func refresh() {
+        state = Self.map(service.status)
+    }
+
+    func setEnabled(_ enabled: Bool) throws {
         if enabled {
-            try SMAppService.mainApp.register()
+            try service.register()
         } else {
-            try SMAppService.mainApp.unregister()
+            try service.unregister()
+        }
+        refresh()
+    }
+
+    func openApprovalSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+
+    static func map(_ status: SMAppService.Status) -> LaunchAtLoginState {
+        switch status {
+        case .notRegistered: return .disabled
+        case .enabled: return .enabled
+        case .requiresApproval: return .requiresApproval
+        case .notFound: return .unavailable
+        @unknown default: return .unavailable
         }
     }
 }
