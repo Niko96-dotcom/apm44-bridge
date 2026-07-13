@@ -15,7 +15,7 @@ on run argv
 		"rm -rf " & quoted form of halDest & " && " & ¬
 		"ditto " & quoted form of staged & " " & quoted form of halDest & " && " & ¬
 		"chown -R root:wheel " & quoted form of halDest & " && " & ¬
-		"xattr -cr " & quoted form of halDest & " && " & ¬
+		"(xattr -d com.apple.quarantine " & quoted form of halDest & " 2>/dev/null || true) && " & ¬
 		"SRC_BIN=$(find " & quoted form of staged & "/Contents/MacOS -maxdepth 1 -type f | head -1) && " & ¬
 		"DST_BIN=$(find " & quoted form of halDest & "/Contents/MacOS -maxdepth 1 -type f | head -1) && " & ¬
 		"SRC_SHA=$(shasum -a 256 \"$SRC_BIN\" | awk '{print $1}') && " & ¬

@@ -54,7 +54,7 @@ else
 fi
 
 if xattr -l "$DRIVER" 2>/dev/null | grep -q com.apple.quarantine; then
-  warn "quarantine xattr present — run: xattr -cr \"$DRIVER\" before install"
+  warn "quarantine xattr present — run: xattr -d com.apple.quarantine \"$DRIVER\" before install"
 else
   pass "no quarantine xattr on bundle"
 fi

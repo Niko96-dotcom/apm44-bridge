@@ -4,7 +4,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${APM44_BUILD_CONFIG:-Release}"
-VERSION="${APM44_VERSION:-0.12.1}"
+VERSION="$($ROOT/scripts/read-version.sh)"
+[[ -z "${APM44_VERSION:-}" || "$APM44_VERSION" == "$VERSION" ]] || {
+  echo "error: APM44_VERSION disagrees with canonical VERSION=$VERSION" >&2
+  exit 1
+}
 OUT="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 STAGING="${APM44_DMG_STAGING:-$ROOT/build/signing/dmg-staging}"
 PACKAGE_ONLY="${APM44_DMG_PACKAGE_ONLY:-0}"
@@ -46,12 +50,17 @@ if [[ "$PACKAGE_ONLY" != "1" ]]; then
   cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release
   cmake --build "$ROOT/build" --target apm44-bridge APM44Bridge
 
-  (cd "$ROOT/App" && xcodegen generate)
+  bash "$ROOT/scripts/generate-app-project.sh"
   xcodebuild -project "$ROOT/App/APM44Bridge.xcodeproj" -scheme APM44Bridge \
     -configuration "$CONFIG" build CODE_SIGNING_ALLOWED=NO \
     CONFIGURATION_BUILD_DIR="$ROOT/build/$CONFIG"
 
   bash "$ROOT/scripts/embed-daemon-in-app.sh"
+
+  APM44_APP_PATH="$ROOT/build/$CONFIG/APM44 Bridge.app" \
+    bash "$ROOT/scripts/verify-version-identity.sh"
+  APM44_APP_PATH="$ROOT/build/$CONFIG/APM44 Bridge.app" \
+    bash "$ROOT/scripts/verify-release-architectures.sh"
 
   if [[ -n "${SIGN_ID:-}" ]] || security find-identity -v -p codesigning | grep -q 'Developer ID Application'; then
     bash "$ROOT/scripts/sign-release.sh"
@@ -96,7 +105,7 @@ echo "Installing APM44 Bridge (requires admin password)…"
 sudo rm -rf /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
 sudo ditto "\$DIR/APM44Bridge.driver" /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
 sudo chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
-sudo xattr -cr /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver 2>/dev/null || true
+sudo xattr -d com.apple.quarantine /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver 2>/dev/null || true
 SRC_BIN="\$(find "\$DIR/APM44Bridge.driver/Contents/MacOS" -maxdepth 1 -type f | head -1)"
 DST_BIN="\$(find /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS -maxdepth 1 -type f | head -1)"
 SRC_SHA="\$(shasum -a 256 "\$SRC_BIN" | awk '{print \$1}')"

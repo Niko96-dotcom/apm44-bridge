@@ -18,7 +18,7 @@ if [[ ! -d "$DRIVER_SRC" ]]; then
 fi
 
 # Avoid propagating quarantine from Downloads/build tree into HAL.
-xattr -cr "$DRIVER_SRC" 2>/dev/null || true
+xattr -d com.apple.quarantine "$DRIVER_SRC" 2>/dev/null || true
 
 # Root cannot read ~/Documents on many macOS versions without Full Disk Access — stage in /tmp.
 STAGE="${TMPDIR:-/tmp}/APM44Bridge.driver"
@@ -32,7 +32,7 @@ sudo rm -rf "$HAL_DIR/APM44Bridge.driver"
 sudo ditto "$STAGE" "$HAL_DIR/APM44Bridge.driver"
 rm -rf "$STAGE"
 sudo chown -R root:wheel "$HAL_DIR/APM44Bridge.driver"
-sudo xattr -cr "$HAL_DIR/APM44Bridge.driver" 2>/dev/null || true
+sudo xattr -d com.apple.quarantine "$HAL_DIR/APM44Bridge.driver" 2>/dev/null || true
 
 SRC_BIN="$(find "$DRIVER_SRC/Contents/MacOS" -maxdepth 1 -type f 2>/dev/null | head -1)"
 DST_BIN="$(find "$HAL_DIR/APM44Bridge.driver/Contents/MacOS" -maxdepth 1 -type f 2>/dev/null | head -1)"

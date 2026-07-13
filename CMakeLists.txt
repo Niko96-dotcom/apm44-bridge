@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(APM44Bridge VERSION 0.12.1 LANGUAGES CXX)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" APM44_VERSION LIMIT_COUNT 1)
+if(NOT APM44_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "VERSION must contain one semantic version (found '${APM44_VERSION}')")
+endif()
+project(APM44Bridge VERSION "${APM44_VERSION}" LANGUAGES CXX)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Allow pinned third-party projects with older CMake policies")
 
@@ -10,6 +14,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
+  if(NOT CMAKE_OSX_ARCHITECTURES)
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING
+        "Release architectures supported by APM44 Bridge" FORCE)
+  endif()
 endif()
 
 set(APM44_GIT_SHA "nogit")

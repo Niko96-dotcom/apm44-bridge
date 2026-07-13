@@ -22,7 +22,7 @@ if ! codesign --verify --deep --strict "$DRIVER" 2>/dev/null; then
 fi
 
 mkdir -p "$(dirname "$ZIP")"
-xattr -cr "$DRIVER" 2>/dev/null || true
+xattr -d com.apple.quarantine "$DRIVER" 2>/dev/null || true
 
 echo "Packaging $DRIVER -> $ZIP"
 rm -f "$ZIP"

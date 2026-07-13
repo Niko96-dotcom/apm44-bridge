@@ -27,7 +27,7 @@ fi
 
 cd "$ROOT"
 echo "Generating Xcode project..." >&2
-(cd App && xcodegen generate)
+bash scripts/generate-app-project.sh
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Source HEAD: $(git rev-parse --short HEAD)"
 fi

@@ -15,6 +15,7 @@ function(apm44_add_test name)
     ${CMAKE_SOURCE_DIR}/Shared/include
   )
   add_test(NAME ${name} COMMAND ${name})
+  set_tests_properties(${name} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endfunction()
 
 apm44_add_test(test_audio_formats test_audio_formats.cpp)

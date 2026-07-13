@@ -66,6 +66,14 @@ if [[ "${APM44_SKIP_APP:-0}" != "1" ]]; then
       APM44_BUILD_CONFIG="$CONFIG" \
       bash scripts/embed-daemon-in-app.sh
 
+    echo "== Version identity =="
+    APM44_APP_PATH="$APP_PATH" APM44_BUILD_CONFIG="$CONFIG" \
+      bash scripts/verify-version-identity.sh
+
+    echo "== Universal architecture proof =="
+    APM44_APP_PATH="$APP_PATH" APM44_BUILD_CONFIG="$CONFIG" \
+      bash scripts/verify-release-architectures.sh
+
     if [[ ! -x "$HELPER_PATH" ]]; then
       echo "error: embedded helper missing at $HELPER_PATH" >&2
       exit 1

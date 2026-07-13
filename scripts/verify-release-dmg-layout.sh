@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${APM44_VERSION:-0.12.1}"
+VERSION="$($ROOT/scripts/read-version.sh)"
 DMG="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 STAGING="${APM44_DMG_STAGING:-$ROOT/build/signing/dmg-staging}"
 TMP="$(mktemp -d)"

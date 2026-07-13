@@ -17,7 +17,7 @@ inline constexpr uint32_t kDefaultShmCapacityFrames = 4096u;
 inline constexpr std::size_t kShmBuildIdBytes = 64u;
 
 #ifndef APM44_VERSION_STRING
-#define APM44_VERSION_STRING "0.11.1"
+#define APM44_VERSION_STRING "0.0.0-dev"
 #endif
 
 #ifndef APM44_BUILD_ID

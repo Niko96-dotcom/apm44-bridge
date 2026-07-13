@@ -4,7 +4,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${APM44_BUILD_CONFIG:-Release}"
-VERSION="${APM44_VERSION:-0.12.1}"
+VERSION="$($ROOT/scripts/read-version.sh)"
+[[ -z "${APM44_VERSION:-}" || "$APM44_VERSION" == "$VERSION" ]] || {
+  echo "error: APM44_VERSION disagrees with canonical VERSION=$VERSION" >&2
+  exit 1
+}
 PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 UNSIGNED_PKG="${PKG%.pkg}-unsigned.pkg"
 LOCAL_UNSIGNED_PKG="${PKG%.pkg}-local-unsigned.pkg"
@@ -89,6 +93,26 @@ ditto "$DRIVER" "$PAYLOAD/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 cat > "$SCRIPTS/preinstall" <<'PRE'
 #!/bin/bash
 set -e
+# Ask the existing app to quit, then terminate only helpers launched from the
+# installed app bundle. This avoids replacing a running old process image.
+CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
+CONSOLE_UID="$(stat -f%u /dev/console 2>/dev/null || true)"
+if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && "$CONSOLE_UID" =~ ^[0-9]+$ ]]; then
+  launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" \
+    osascript -e 'tell application id "com.niko.apm44.menu" to quit' 2>/dev/null || true
+fi
+HELPER_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge([[:space:]]|$)'
+for _ in {1..20}; do
+  pgrep -f "$HELPER_PATTERN" >/dev/null 2>&1 || break
+  sleep 0.1
+done
+if pgrep -f "$HELPER_PATTERN" >/dev/null 2>&1; then
+  pkill -TERM -f "$HELPER_PATTERN" 2>/dev/null || true
+  sleep 1
+fi
+if pgrep -f "$HELPER_PATTERN" >/dev/null 2>&1; then
+  pkill -KILL -f "$HELPER_PATTERN" 2>/dev/null || true
+fi
 rm -rf "/Applications/APM44 Bridge.app"
 rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 exit 0
@@ -99,9 +123,20 @@ cat > "$SCRIPTS/postinstall" <<'POST'
 #!/bin/bash
 set -e
 chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
-xattr -cr /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver 2>/dev/null || true
+xattr -d com.apple.quarantine /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver 2>/dev/null || true
 [[ -d "/Applications/APM44 Bridge.app" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
 [[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
+APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' '/Applications/APM44 Bridge.app/Contents/Info.plist')"
+DRIVER_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' '/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist')"
+[[ "$APP_VERSION" == "$DRIVER_VERSION" ]] || {
+  echo "Installed app/driver version mismatch: app=$APP_VERSION driver=$DRIVER_VERSION" >&2
+  exit 1
+}
+HELPER_VERSION="$(/Applications/APM44\ Bridge.app/Contents/MacOS/apm44-bridge --version 2>/dev/null || true)"
+[[ "$HELPER_VERSION" == "apm44-bridge $APP_VERSION "* ]] || {
+  echo "Installed helper version mismatch: $HELPER_VERSION" >&2
+  exit 1
+}
 DRIVER_BIN="$(find /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS -maxdepth 1 -type f | head -1)"
 if [[ -z "$DRIVER_BIN" ]]; then
   echo "APM44Bridge.driver executable missing after install" >&2

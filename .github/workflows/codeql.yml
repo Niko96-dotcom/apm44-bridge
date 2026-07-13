@@ -51,7 +51,7 @@ jobs:
         if: matrix.language == 'swift'
         run: |
           bash scripts/prepare-submodules.sh
-          (cd App && xcodegen generate)
+          bash scripts/generate-app-project.sh
           xcodebuild -project App/APM44Bridge.xcodeproj \
             -scheme APM44Bridge \
             -configuration Debug \

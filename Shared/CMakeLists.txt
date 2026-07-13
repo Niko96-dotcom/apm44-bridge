@@ -13,7 +13,7 @@ target_include_directories(apm44_shared
 
 target_compile_definitions(apm44_shared
   PUBLIC
-    APM44_VERSION_STRING="${PROJECT_VERSION}"
+    APM44_VERSION_STRING="${CMAKE_PROJECT_VERSION}"
     APM44_BUILD_ID="${APM44_BUILD_ID}"
 )
 

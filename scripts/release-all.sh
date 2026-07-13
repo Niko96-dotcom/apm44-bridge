@@ -25,10 +25,14 @@ if [[ "$NOTARY_READY" != "1" ]]; then
   echo "Artifacts from this run are LOCAL-ONLY UNNOTARIZED builds, not public release artifacts." >&2
 fi
 
-(cd App && xcodegen generate)
+bash scripts/generate-app-project.sh
 
 echo "== Build + sign + DMG =="
 bash scripts/build-release-dmg.sh
+
+echo "== Verify version and architecture identity =="
+bash scripts/verify-version-identity.sh
+bash scripts/verify-release-architectures.sh
 
 if [[ "$NOTARY_READY" == "1" ]]; then
   echo "== Verify release codesigning =="

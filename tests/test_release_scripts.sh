@@ -327,7 +327,7 @@ if [[ -n "$script" ]]; then
 fi
 
 case "$script" in
-  scripts/build-release-dmg.sh|scripts/codesign-verify-release.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh|scripts/verify-release-dmg-layout.sh)
+  scripts/build-release-dmg.sh|scripts/codesign-verify-release.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh|scripts/verify-release-dmg-layout.sh|scripts/verify-version-identity.sh|scripts/verify-release-architectures.sh)
     prefix=""
     if [[ "${APM44_DMG_PACKAGE_ONLY:-0}" == "1" ]]; then
       prefix="APM44_DMG_PACKAGE_ONLY=1 "
