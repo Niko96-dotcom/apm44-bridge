@@ -1,7 +1,21 @@
 import SwiftUI
 
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    var controlsPresenter: ControlsPresenting = ControlsWindowPresenter.shared
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        controlsPresenter.showControls()
+        return true
+    }
+}
+
 @main
 struct APM44BridgeApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var settings = BridgeSettings()
     @StateObject private var manager: BridgeProcessManager
     @State private var showFirstRun = false
@@ -13,6 +27,7 @@ struct APM44BridgeApp: App {
         _settings = StateObject(wrappedValue: settings)
         let manager = BridgeProcessManager(settings: settings)
         _manager = StateObject(wrappedValue: manager)
+        ControlsWindowPresenter.shared.configure(manager: manager, settings: settings)
         hotplug = HotplugMonitor(selectedUid: settings.outputDeviceUid) {
             Task { @MainActor in
                 await manager.handleHotplug()
