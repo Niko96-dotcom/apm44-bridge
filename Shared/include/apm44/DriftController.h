@@ -18,6 +18,7 @@ class DriftController {
 
   double update(std::size_t currentFillFrames, std::size_t outputFrames,
                 double outputSampleRate = 48000.0);
+  void resetAfterDiscontinuity();
   double currentPpm() const { return currentPpm_; }
   double smoothedRatio() const { return smoothedRatio_; }
 

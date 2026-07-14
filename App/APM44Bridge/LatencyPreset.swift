@@ -13,7 +13,10 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
         switch self {
         case .low: return 8
         case .balanced: return 15
-        case .safe: return 30
+        // A HAL host may deliver 4096 frames at once (~93 ms at 44.1 kHz).
+        // Safe waits for the following burst before playback begins so output
+        // devices with smaller callbacks never run to the edge between blocks.
+        case .safe: return 100
         }
     }
 

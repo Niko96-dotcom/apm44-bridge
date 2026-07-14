@@ -13,7 +13,11 @@ inline constexpr uint32_t kShmMagic = 0x344D5041u;  // 'APM4' little-endian
 inline constexpr uint32_t kShmVersion = 4u;
 inline constexpr uint32_t kShmSampleRate = 44100u;
 inline constexpr uint32_t kShmChannels = 2u;
-inline constexpr uint32_t kDefaultShmCapacityFrames = 4096u;
+// The ring keeps one slot empty to distinguish full from empty. Core Audio can
+// legally hand the HAL driver a 4096-frame callback, so a 4096-slot ring would
+// necessarily discard one sample from every such callback. Keep enough room
+// for a complete maximum-sized callback plus scheduling headroom.
+inline constexpr uint32_t kDefaultShmCapacityFrames = 8192u;
 inline constexpr std::size_t kShmBuildIdBytes = 64u;
 
 #ifndef APM44_VERSION_STRING

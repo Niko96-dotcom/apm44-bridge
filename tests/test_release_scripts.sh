@@ -1073,6 +1073,8 @@ run_ci_03_local_ci_app_bundle_proof_check() {
 
   assert_contains "$script" 'bash scripts/embed-daemon-in-app.sh'
   assert_contains "$script" 'bash scripts/verify-installed-sync.sh --dry-run'
+  assert_contains "$script" 'Restore native driver bundle after release fixtures'
+  assert_contains "$script" 'cmake --build "$BUILD_DIR" --target APM44Bridge --parallel'
   assert_contains "$script" 'embedded helper missing'
 }
 

@@ -77,6 +77,8 @@ class BridgeEngine {
   void restoreDeviceBufferSizes();
   bool resetVirtualStreamEpoch();
   void resetConverterAfterStarvation();
+  void armRecoveryFade(bool countEvent = true);
+  void applyRecoveryFade(float* ch0, float* ch1, std::size_t frames);
   void publishMetricsSnapshot();
   MetricsSnapshot readMetricsSnapshot() const;
 
@@ -97,10 +99,15 @@ class BridgeEngine {
   std::atomic<uint64_t> inputOverruns_{0};
   std::atomic<uint64_t> inputDroppedFrames_{0};
   std::atomic<uint64_t> outputStarvationFrames_{0};
+  std::atomic<uint64_t> partialShortageEvents_{0};
+  std::atomic<uint64_t> converterResetEvents_{0};
+  std::atomic<uint64_t> rebufferEvents_{0};
+  std::atomic<uint64_t> recoveryFadeEvents_{0};
   std::atomic<uint64_t> inputFramesProcessed_{0};
   std::atomic<uint64_t> outputFramesProcessed_{0};
   float lastOutputSample0_ = 0.0f;
   float lastOutputSample1_ = 0.0f;
+  std::size_t recoveryFadeFramesRemaining_ = 0;
   bool running_ = false;
 
   // Seqlock state, extracted into MetricsPublisher so the contract

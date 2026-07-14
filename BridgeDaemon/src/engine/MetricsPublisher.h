@@ -38,6 +38,10 @@ struct MetricsPublisherState {
   std::atomic<uint64_t> laneFrameMismatchDroppedFrames{0};
   std::atomic<uint64_t> consumerResets{0};
   std::atomic<uint64_t> outputStarvationFrames{0};
+  std::atomic<uint64_t> partialShortageEvents{0};
+  std::atomic<uint64_t> converterResetEvents{0};
+  std::atomic<uint64_t> rebufferEvents{0};
+  std::atomic<uint64_t> recoveryFadeEvents{0};
 };
 
 static_assert(std::atomic<uint64_t>::is_always_lock_free,
@@ -74,6 +78,10 @@ inline void PublishMetrics(MetricsPublisherState& state,
                                               std::memory_order_relaxed);
   state.consumerResets.store(next.consumerResets, std::memory_order_relaxed);
   state.outputStarvationFrames.store(next.outputStarvationFrames, std::memory_order_relaxed);
+  state.partialShortageEvents.store(next.partialShortageEvents, std::memory_order_relaxed);
+  state.converterResetEvents.store(next.converterResetEvents, std::memory_order_relaxed);
+  state.rebufferEvents.store(next.rebufferEvents, std::memory_order_relaxed);
+  state.recoveryFadeEvents.store(next.recoveryFadeEvents, std::memory_order_relaxed);
   state.sequence.store(sequence + 2U, std::memory_order_release);
 }
 
@@ -109,6 +117,13 @@ inline MetricsSnapshot ReadMetrics(const MetricsPublisherState& state) {
     copy.consumerResets = state.consumerResets.load(std::memory_order_relaxed);
     copy.outputStarvationFrames =
         state.outputStarvationFrames.load(std::memory_order_relaxed);
+    copy.partialShortageEvents =
+        state.partialShortageEvents.load(std::memory_order_relaxed);
+    copy.converterResetEvents =
+        state.converterResetEvents.load(std::memory_order_relaxed);
+    copy.rebufferEvents = state.rebufferEvents.load(std::memory_order_relaxed);
+    copy.recoveryFadeEvents =
+        state.recoveryFadeEvents.load(std::memory_order_relaxed);
     const uint64_t sequenceAfter =
         state.sequence.load(std::memory_order_acquire);
     if (sequenceBefore == sequenceAfter) {

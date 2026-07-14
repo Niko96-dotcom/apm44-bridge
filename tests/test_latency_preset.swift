@@ -5,7 +5,7 @@ final class LatencyPresetTests: XCTestCase {
     func testTargetFillValues() {
         XCTAssertEqual(LatencyPreset.balanced.targetFillMs, 15)
         XCTAssertEqual(LatencyPreset.low.targetFillMs, 8)
-        XCTAssertEqual(LatencyPreset.safe.targetFillMs, 30)
+        XCTAssertEqual(LatencyPreset.safe.targetFillMs, 100)
     }
 
     func testDefaultSrcQuality() {
@@ -22,7 +22,7 @@ final class LatencyPresetTests: XCTestCase {
     func testHalEffectiveTargetFill() {
         XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: true), 20)
         XCTAssertEqual(LatencyPreset.balanced.effectiveTargetFillMs(halMode: true), 20)
-        XCTAssertEqual(LatencyPreset.safe.effectiveTargetFillMs(halMode: true), 30)
+        XCTAssertEqual(LatencyPreset.safe.effectiveTargetFillMs(halMode: true), 100)
         XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: false), 8)
     }
 

@@ -189,12 +189,17 @@ TEST_CASE("testUnderrunDoesNotReplayStaleSrcHistory",
   engine.onOutput(outputChannels, kFrames);
   REQUIRE(output0.back() == 0.0f);
   REQUIRE(output1.back() == 0.0f);
+  const float previousOutput0 = output0.back();
+  const float previousOutput1 = output1.back();
 
   std::vector<float> fresh0(kFrames, -0.8f);
   std::vector<float> fresh1(kFrames, -0.8f);
   const float* freshChannels[2] = {fresh0.data(), fresh1.data()};
   engine.onInput(freshChannels, kFrames);
   engine.onOutput(outputChannels, kFrames);
+
+  REQUIRE(std::abs(output0.front() - previousOutput0) < 0.05f);
+  REQUIRE(std::abs(output1.front() - previousOutput1) < 0.05f);
 
   bool observedFreshSignal = false;
   for (std::size_t i = 0; i < kFrames; ++i) {
@@ -209,5 +214,86 @@ TEST_CASE("testUnderrunDoesNotReplayStaleSrcHistory",
     observedFreshSignal = observedFreshSignal || output0[i] < -0.1f;
   }
   REQUIRE(observedFreshSignal);
-  REQUIRE(engine.metricsSnapshot().outputStarvationFrames > 0);
+  const auto recoveryMetrics = engine.metricsSnapshot();
+  REQUIRE(recoveryMetrics.outputStarvationFrames > 0);
+  REQUIRE(recoveryMetrics.converterResetEvents > 0);
+  REQUIRE(recoveryMetrics.recoveryFadeEvents > 0);
+}
+
+TEST_CASE("minor partial shortage preserves SRC and drift recovery state",
+          "[io_proc][underrun][recovery]") {
+  apm44::BridgeEngine engine;
+  apm44::BridgeDevicePair devices;
+  devices.inputAsbd = apm44::MakeFloat32StereoNonInterleaved(apm44::kInputSampleRate);
+  devices.outputAsbd = apm44::MakeFloat32StereoNonInterleaved(apm44::kOutputSampleRate);
+  apm44::BridgeEngineOptions options;
+  options.targetFillMs = 0.0;
+  REQUIRE(engine.prepare(devices, options));
+
+  constexpr std::size_t kInputFrames = 450;
+  constexpr std::size_t kOutputFrames = 512;
+  std::vector<float> input0(kInputFrames, 0.25f);
+  std::vector<float> input1(kInputFrames, 0.25f);
+  const float* inputChannels[2] = {input0.data(), input1.data()};
+  engine.onInput(inputChannels, kInputFrames);
+
+  std::vector<float> output0(kOutputFrames);
+  std::vector<float> output1(kOutputFrames);
+  float* outputChannels[2] = {output0.data(), output1.data()};
+  engine.onOutput(outputChannels, kOutputFrames);
+
+  const auto metrics = engine.metricsSnapshot();
+  INFO("partial=" << metrics.partialShortageEvents
+                   << " resets=" << metrics.converterResetEvents
+                   << " starvation=" << metrics.outputStarvationFrames
+                   << " underruns=" << metrics.underruns
+                   << " fill_ms=" << metrics.fillMs);
+  REQUIRE(metrics.partialShortageEvents == 1);
+  REQUIRE(metrics.converterResetEvents == 0);
+  REQUIRE(metrics.rebufferEvents == 0);
+}
+
+TEST_CASE("repeated starvation recovery remains click bounded",
+          "[io_proc][underrun][recovery][stress]") {
+  apm44::BridgeEngine engine;
+  apm44::BridgeDevicePair devices;
+  devices.inputAsbd = apm44::MakeFloat32StereoNonInterleaved(apm44::kInputSampleRate);
+  devices.outputAsbd = apm44::MakeFloat32StereoNonInterleaved(apm44::kOutputSampleRate);
+  apm44::BridgeEngineOptions options;
+  options.targetFillMs = 0.0;
+  REQUIRE(engine.prepare(devices, options));
+
+  constexpr std::size_t kFrames = 512;
+  std::vector<float> input0(kFrames);
+  std::vector<float> input1(kFrames);
+  std::vector<float> output0(kFrames);
+  std::vector<float> output1(kFrames);
+  float* outputChannels[2] = {output0.data(), output1.data()};
+
+  for (int cycle = 0; cycle < 16; ++cycle) {
+    const float sample = cycle % 2 == 0 ? 0.8f : -0.8f;
+    std::fill(input0.begin(), input0.end(), sample);
+    std::fill(input1.begin(), input1.end(), sample);
+    const float* inputChannels[2] = {input0.data(), input1.data()};
+    engine.onInput(inputChannels, kFrames);
+    engine.onOutput(outputChannels, kFrames);
+
+    engine.onOutput(outputChannels, kFrames);
+    engine.onOutput(outputChannels, kFrames);
+    REQUIRE(output0.back() == 0.0f);
+    REQUIRE(output1.back() == 0.0f);
+
+    engine.onInput(inputChannels, kFrames);
+    engine.onOutput(outputChannels, kFrames);
+    REQUIRE(std::abs(output0.front()) < 0.05f);
+    REQUIRE(std::abs(output1.front()) < 0.05f);
+    for (std::size_t i = 1; i < kFrames; ++i) {
+      REQUIRE(std::abs(output0[i] - output0[i - 1]) < 0.2f);
+      REQUIRE(std::abs(output1[i] - output1[i - 1]) < 0.2f);
+    }
+  }
+
+  const auto metrics = engine.metricsSnapshot();
+  REQUIRE(metrics.converterResetEvents >= 16);
+  REQUIRE(metrics.recoveryFadeEvents >= 16);
 }

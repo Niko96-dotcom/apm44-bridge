@@ -67,10 +67,9 @@ double DriftController::update(std::size_t currentFillFrames,
   return smoothedRatio_;
 }
 
-void DriftController::notifyUnderrun() {
-  ++underrunCount_;
-  resetControlState();
-}
+void DriftController::notifyUnderrun() { ++underrunCount_; }
+
+void DriftController::resetAfterDiscontinuity() { resetControlState(); }
 
 void DriftController::notifyOverrun() { ++overrunCount_; }
 

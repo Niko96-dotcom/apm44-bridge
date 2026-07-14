@@ -77,3 +77,30 @@ TEST_CASE("VirtualDeviceFeed leaves shm untouched when destination ring is full"
   producer.close();
   shm_unlink(ringName.c_str());
 }
+
+TEST_CASE("VirtualDeviceFeed drains a complete 4096-frame DAW burst in one pass",
+          "[virtual_device][large_callback][regression]") {
+  const std::string ringName = TestRingName();
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(apm44::kDefaultShmCapacityFrames));
+
+  apm44::VirtualDeviceFeed feed(ringName);
+  REQUIRE(feed.open());
+  feed.markReady();
+
+  constexpr std::size_t kCallbackFrames = 4096;
+  std::vector<float> interleaved(kCallbackFrames * 2, 0.25f);
+  REQUIRE(producer.pushInterleaved(interleaved.data(), kCallbackFrames) ==
+          kCallbackFrames);
+
+  apm44::PlanarRingBuffer ring;
+  ring.prepare(apm44::kDefaultShmCapacityFrames + 512);
+  REQUIRE(feed.drainTo(ring, ring.availableToWrite()) == kCallbackFrames);
+  REQUIRE(ring.fillFrames() == kCallbackFrames);
+  REQUIRE(producer.header()->read_index.load(std::memory_order_acquire) ==
+          producer.header()->write_index.load(std::memory_order_acquire));
+
+  feed.close();
+  producer.close();
+  shm_unlink(ringName.c_str());
+}

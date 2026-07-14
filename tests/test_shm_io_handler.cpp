@@ -63,7 +63,8 @@ TEST_CASE("HAL producer drops are visible in shared diagnostics",
   REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
   consumer.setDaemonReady();
 
-  constexpr std::size_t kAttemptedFrames = 5000;
+  constexpr std::size_t kAttemptedFrames =
+      apm44::kDefaultShmCapacityFrames + 905;
   constexpr std::size_t kUsableRingFrames = apm44::kDefaultShmCapacityFrames - 1;
   std::vector<float> frames(kAttemptedFrames * apm44::kShmChannels, 0.25f);
   handler.OnProcessMixedOutput(nullptr, 0.0, 0.0, frames.data(), kAttemptedFrames,
@@ -86,6 +87,33 @@ TEST_CASE("HAL producer drops are visible in shared diagnostics",
 
   handler.OnStopIO();
   observer.close();
+  shm_unlink(ringName.c_str());
+}
+
+TEST_CASE("HAL producer preserves a complete 4096-frame callback",
+          "[shm_io_handler][large_callback][regression]") {
+  const std::string ringName = TestRingName('b');
+  apm44::ShmIoHandler handler(ringName);
+  REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  consumer.setDaemonReady();
+
+  constexpr std::size_t kCallbackFrames = 4096;
+  std::vector<float> frames(kCallbackFrames * apm44::kShmChannels, 0.25f);
+  handler.OnProcessMixedOutput(nullptr, 0.0, 0.0, frames.data(), kCallbackFrames,
+                               apm44::kShmChannels);
+
+  const auto diagnostics = consumer.producerDiagnostics();
+  std::vector<float> output(frames.size());
+  REQUIRE(consumer.popInterleaved(output.data(), kCallbackFrames) ==
+          kCallbackFrames);
+  REQUIRE(diagnostics.overrunEvents == 0);
+  REQUIRE(diagnostics.droppedFrames == 0);
+
+  handler.OnStopIO();
+  consumer.close();
   shm_unlink(ringName.c_str());
 }
 

@@ -60,7 +60,7 @@ void PrintUsage(const char* programName) {
             << "  --shm-status        Check APM44Bridge.driver shared-memory ring once\n"
             << "  --input-device UID  Input device UID (default: BlackHole 2ch)\n"
             << "  --output-device UID Output device UID (default: AirPods Max)\n"
-            << "  --target-fill-ms N  Ring target fill 6–40 ms (default 15)\n"
+            << "  --target-fill-ms N  Ring target fill 6–120 ms (default 15)\n"
             << "  --src-quality Q     SRC quality: medium|high|best (default medium)\n"
             << "  --metrics-json      Emit JSON metrics on stdout every 500 ms while running\n"
             << "  --virtual-device    Read input from APM44Bridge.driver shm (no BlackHole)\n\n"
@@ -116,8 +116,8 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
         std::cerr << "error: invalid --target-fill-ms value\n";
         std::exit(2);
       }
-      if (options.targetFillMs < 6.0 || options.targetFillMs > 40.0) {
-        std::cerr << "error: --target-fill-ms must be between 6 and 40\n";
+      if (options.targetFillMs < 6.0 || options.targetFillMs > 120.0) {
+        std::cerr << "error: --target-fill-ms must be between 6 and 120\n";
         std::exit(2);
       }
     } else if (arg == "--src-quality") {

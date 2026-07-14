@@ -18,7 +18,11 @@ bool VirtualDeviceFeed::open() {
   lastOpenErrorCode_ = ShmRingErrorCode::None;
   lastOpenErrno_ = 0;
   lastOpenError_.clear();
-  constexpr std::size_t kMaxDrain = 2048;
+  // A HAL callback can contain a complete 4096-frame DAW block. The output
+  // device commonly asks for much smaller blocks, so the realtime consumer
+  // must be able to move the whole producer burst into its smoothing ring in
+  // one pass instead of artificially stretching it across callbacks.
+  constexpr std::size_t kMaxDrain = kDefaultShmCapacityFrames;
   interleavedScratch_.resize(PlanarRingBuffer::kChannels * kMaxDrain);
   planarScratch0_.resize(kMaxDrain);
   planarScratch1_.resize(kMaxDrain);

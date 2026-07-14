@@ -16,6 +16,10 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
     var laneFrameMismatchDroppedFrames: UInt64
     var consumerResets: UInt64
     var outputStarvationFrames: UInt64
+    var partialShortageEvents: UInt64
+    var converterResetEvents: UInt64
+    var rebufferEvents: UInt64
+    var recoveryFadeEvents: UInt64
     var estimatedRtMs: Double
     var targetFillMs: Double
     var srcQuality: String
@@ -36,6 +40,10 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         case laneFrameMismatchDroppedFrames = "lane_frame_mismatch_dropped_frames"
         case consumerResets = "consumer_resets"
         case outputStarvationFrames = "output_starvation_frames"
+        case partialShortageEvents = "partial_shortage_events"
+        case converterResetEvents = "converter_reset_events"
+        case rebufferEvents = "rebuffer_events"
+        case recoveryFadeEvents = "recovery_fade_events"
         case estimatedRtMs = "estimated_rt_ms"
         case targetFillMs = "target_fill_ms"
         case srcQuality = "src_quality"
@@ -57,6 +65,10 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         laneFrameMismatchDroppedFrames: UInt64 = 0,
         consumerResets: UInt64 = 0,
         outputStarvationFrames: UInt64 = 0,
+        partialShortageEvents: UInt64 = 0,
+        converterResetEvents: UInt64 = 0,
+        rebufferEvents: UInt64 = 0,
+        recoveryFadeEvents: UInt64 = 0,
         estimatedRtMs: Double,
         targetFillMs: Double,
         srcQuality: String,
@@ -77,6 +89,10 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         self.laneFrameMismatchDroppedFrames = laneFrameMismatchDroppedFrames
         self.consumerResets = consumerResets
         self.outputStarvationFrames = outputStarvationFrames
+        self.partialShortageEvents = partialShortageEvents
+        self.converterResetEvents = converterResetEvents
+        self.rebufferEvents = rebufferEvents
+        self.recoveryFadeEvents = recoveryFadeEvents
         self.estimatedRtMs = estimatedRtMs
         self.targetFillMs = targetFillMs
         self.srcQuality = srcQuality
@@ -100,6 +116,10 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         laneFrameMismatchDroppedFrames = try values.decodeIfPresent(UInt64.self, forKey: .laneFrameMismatchDroppedFrames) ?? 0
         consumerResets = try values.decodeIfPresent(UInt64.self, forKey: .consumerResets) ?? 0
         outputStarvationFrames = try values.decodeIfPresent(UInt64.self, forKey: .outputStarvationFrames) ?? 0
+        partialShortageEvents = try values.decodeIfPresent(UInt64.self, forKey: .partialShortageEvents) ?? 0
+        converterResetEvents = try values.decodeIfPresent(UInt64.self, forKey: .converterResetEvents) ?? 0
+        rebufferEvents = try values.decodeIfPresent(UInt64.self, forKey: .rebufferEvents) ?? 0
+        recoveryFadeEvents = try values.decodeIfPresent(UInt64.self, forKey: .recoveryFadeEvents) ?? 0
         estimatedRtMs = try values.decode(Double.self, forKey: .estimatedRtMs)
         targetFillMs = try values.decode(Double.self, forKey: .targetFillMs)
         srcQuality = try values.decode(String.self, forKey: .srcQuality)

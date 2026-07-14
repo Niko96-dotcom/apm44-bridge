@@ -53,6 +53,10 @@ TEST_CASE("BridgeMetrics JSON contains required fields") {
   REQUIRE(Contains(line, "\"lane_frame_mismatch_dropped_frames\""));
   REQUIRE(Contains(line, "\"consumer_resets\""));
   REQUIRE(Contains(line, "\"output_starvation_frames\""));
+  REQUIRE(Contains(line, "\"partial_shortage_events\""));
+  REQUIRE(Contains(line, "\"converter_reset_events\""));
+  REQUIRE(Contains(line, "\"rebuffer_events\""));
+  REQUIRE(Contains(line, "\"recovery_fade_events\""));
   REQUIRE(Contains(line, "15.200"));
   REQUIRE(line.find('\n') == std::string::npos);
 }
@@ -70,6 +74,10 @@ TEST_CASE("BridgeMetrics exposes every known frame-loss counter", "[metrics][F-0
   snapshot.laneFrameMismatchDroppedFrames = 17;
   snapshot.consumerResets = 19;
   snapshot.outputStarvationFrames = 23;
+  snapshot.partialShortageEvents = 29;
+  snapshot.converterResetEvents = 31;
+  snapshot.rebufferEvents = 37;
+  snapshot.recoveryFadeEvents = 41;
 
   const auto metrics = apm44::MakeBridgeMetrics(snapshot, 15.0, "medium");
   const std::string line = apm44::ToJsonLine(metrics);
@@ -82,6 +90,10 @@ TEST_CASE("BridgeMetrics exposes every known frame-loss counter", "[metrics][F-0
   REQUIRE(Contains(line, "\"lane_frame_mismatch_dropped_frames\":17"));
   REQUIRE(Contains(line, "\"consumer_resets\":19"));
   REQUIRE(Contains(line, "\"output_starvation_frames\":23"));
+  REQUIRE(Contains(line, "\"partial_shortage_events\":29"));
+  REQUIRE(Contains(line, "\"converter_reset_events\":31"));
+  REQUIRE(Contains(line, "\"rebuffer_events\":37"));
+  REQUIRE(Contains(line, "\"recovery_fade_events\":41"));
 }
 
 TEST_CASE("BridgeMetrics JSON truncation fails closed without overreading buffer",
@@ -226,6 +238,10 @@ TEST_CASE("MetricsPublisherPackedFloatingFieldsRoundTrip",
   next.underruns = 2;
   next.overruns = 3;
   next.xruns = 5;
+  next.partialShortageEvents = 7;
+  next.converterResetEvents = 11;
+  next.rebufferEvents = 13;
+  next.recoveryFadeEvents = 17;
 
   apm44::PublishMetrics(state, next);
   const apm44::MetricsSnapshot read = apm44::ReadMetrics(state);
@@ -236,6 +252,10 @@ TEST_CASE("MetricsPublisherPackedFloatingFieldsRoundTrip",
   REQUIRE(read.underruns == next.underruns);
   REQUIRE(read.overruns == next.overruns);
   REQUIRE(read.xruns == next.xruns);
+  REQUIRE(read.partialShortageEvents == next.partialShortageEvents);
+  REQUIRE(read.converterResetEvents == next.converterResetEvents);
+  REQUIRE(read.rebufferEvents == next.rebufferEvents);
+  REQUIRE(read.recoveryFadeEvents == next.recoveryFadeEvents);
 }
 
 TEST_CASE("MetricsPublisherStateAvoidsAtomicDouble",

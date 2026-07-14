@@ -25,6 +25,10 @@ struct MetricsSnapshot {
   uint64_t laneFrameMismatchDroppedFrames = 0;
   uint64_t consumerResets = 0;
   uint64_t outputStarvationFrames = 0;
+  uint64_t partialShortageEvents = 0;
+  uint64_t converterResetEvents = 0;
+  uint64_t rebufferEvents = 0;
+  uint64_t recoveryFadeEvents = 0;
 };
 
 }  // namespace apm44

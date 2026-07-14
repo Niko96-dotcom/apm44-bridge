@@ -50,6 +50,10 @@ BridgeMetrics MakeBridgeMetrics(const MetricsSnapshot& snapshot, double targetFi
   metrics.laneFrameMismatchDroppedFrames = snapshot.laneFrameMismatchDroppedFrames;
   metrics.consumerResets = snapshot.consumerResets;
   metrics.outputStarvationFrames = snapshot.outputStarvationFrames;
+  metrics.partialShortageEvents = snapshot.partialShortageEvents;
+  metrics.converterResetEvents = snapshot.converterResetEvents;
+  metrics.rebufferEvents = snapshot.rebufferEvents;
+  metrics.recoveryFadeEvents = snapshot.recoveryFadeEvents;
   return metrics;
 }
 
@@ -57,7 +61,7 @@ std::string ToJsonLine(const BridgeMetrics& metrics) {
   char buffer[1024];
   const int written = std::snprintf(
       buffer, sizeof(buffer),
-      R"({"fill_ms":%.3f,"ratio":%.8f,"ppm":%.2f,"underruns":%llu,"overruns":%llu,"xruns":%llu,"input_dropped_frames":%llu,"producer_overrun_events":%llu,"producer_dropped_frames":%llu,"producer_not_ready_dropped_frames":%llu,"lane_queue_drops":%llu,"lane_timestamp_mismatches":%llu,"lane_frame_mismatch_dropped_frames":%llu,"consumer_resets":%llu,"output_starvation_frames":%llu,"estimated_rt_ms":%.3f,"target_fill_ms":%.3f,"src_quality":"%s"})",
+      R"({"fill_ms":%.3f,"ratio":%.8f,"ppm":%.2f,"underruns":%llu,"overruns":%llu,"xruns":%llu,"input_dropped_frames":%llu,"producer_overrun_events":%llu,"producer_dropped_frames":%llu,"producer_not_ready_dropped_frames":%llu,"lane_queue_drops":%llu,"lane_timestamp_mismatches":%llu,"lane_frame_mismatch_dropped_frames":%llu,"consumer_resets":%llu,"output_starvation_frames":%llu,"partial_shortage_events":%llu,"converter_reset_events":%llu,"rebuffer_events":%llu,"recovery_fade_events":%llu,"estimated_rt_ms":%.3f,"target_fill_ms":%.3f,"src_quality":"%s"})",
       metrics.fillMs, metrics.ratio, metrics.ppm,
       static_cast<unsigned long long>(metrics.underruns),
       static_cast<unsigned long long>(metrics.overruns),
@@ -71,6 +75,10 @@ std::string ToJsonLine(const BridgeMetrics& metrics) {
       static_cast<unsigned long long>(metrics.laneFrameMismatchDroppedFrames),
       static_cast<unsigned long long>(metrics.consumerResets),
       static_cast<unsigned long long>(metrics.outputStarvationFrames),
+      static_cast<unsigned long long>(metrics.partialShortageEvents),
+      static_cast<unsigned long long>(metrics.converterResetEvents),
+      static_cast<unsigned long long>(metrics.rebufferEvents),
+      static_cast<unsigned long long>(metrics.recoveryFadeEvents),
       metrics.estimatedRtMs, metrics.targetFillMs,
       metrics.srcQuality.c_str());
   if (written < 0) {

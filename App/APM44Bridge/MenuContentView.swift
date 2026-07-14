@@ -303,6 +303,12 @@ struct MenuContentView: View {
                     }
 
                     HStack(alignment: .top) {
+                        metricStat("Partial shortages", "\(metrics.partialShortageEvents)")
+                        Spacer()
+                        metricStat("Rebuffers / SRC resets", "\(metrics.rebufferEvents) / \(metrics.converterResetEvents)", alignment: .trailing)
+                    }
+
+                    HStack(alignment: .top) {
                         metricStat("Drift ratio", String(format: "%.4f", metrics.ratio))
                         Spacer()
                     }

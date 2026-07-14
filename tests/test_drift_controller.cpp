@@ -121,7 +121,7 @@ TEST_CASE("DriftController response is callback-size invariant",
           Catch::Approx(baseline.smoothedRatio()).margin(1e-8));
 }
 
-TEST_CASE("DriftController clears saturated integral after underrun",
+TEST_CASE("DriftController preserves correction until a stream discontinuity",
           "[drift_controller][rebuffer]") {
   apm44::DriftController drift;
   drift.setTargetFillFrames(662);
@@ -130,7 +130,12 @@ TEST_CASE("DriftController clears saturated integral after underrun",
   }
   REQUIRE(std::abs(drift.currentPpm()) > 100.0);
 
+  const double correctionBeforeNotification = drift.currentPpm();
   drift.notifyUnderrun();
+  REQUIRE(drift.currentPpm() == correctionBeforeNotification);
+  REQUIRE(drift.underrunCount() == 1);
+
+  drift.resetAfterDiscontinuity();
   REQUIRE(drift.currentPpm() == 0.0);
   REQUIRE(drift.smoothedRatio() == apm44::DriftController::kNominalRatio);
   REQUIRE(drift.underrunCount() == 1);

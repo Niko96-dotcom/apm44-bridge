@@ -44,11 +44,6 @@ UInt32 ReadBufferFrameSize(AudioDeviceID deviceId) {
   return frames;
 }
 
-std::size_t MaxInputFramesForOutputFrames(std::size_t outputFrames) {
-  return static_cast<std::size_t>(std::ceil(static_cast<double>(outputFrames) *
-                                            kInputSampleRate / kOutputSampleRate));
-}
-
 constexpr std::size_t kUnderrunFadeFrames = 64;
 
 void FadeSamplesToSilence(float* ch0, float* ch1, std::size_t start,
@@ -67,6 +62,14 @@ void FadeSamplesToSilence(float* ch0, float* ch1, std::size_t start,
     ch0[i] = 0.0f;
     ch1[i] = 0.0f;
   }
+}
+
+bool IsSeverePartialShortage(std::size_t requestedFrames,
+                             std::size_t poppedFrames) {
+  if (requestedFrames == 0 || poppedFrames >= requestedFrames) {
+    return false;
+  }
+  return requestedFrames - poppedFrames > requestedFrames / 4;
 }
 
 bool IsFatalShmOpenFailure(ShmRingErrorCode code, int err) {
@@ -127,7 +130,11 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
       virtualDevice_ ? std::max(options_.targetFillMs, 20.0) : options_.targetFillMs;
   targetFillFrames_ =
       PlanarRingBuffer::framesForMilliseconds(targetFillMs, kInputSampleRate);
-  const std::size_t ringRequest = std::max(targetFillFrames_ * 2 + 512, std::size_t{1024});
+  const std::size_t ringRequest =
+      virtualDevice_
+          ? std::max(targetFillFrames_ * 2 + 512,
+                     static_cast<std::size_t>(kDefaultShmCapacityFrames) + 512)
+          : std::max(targetFillFrames_ * 2 + 512, std::size_t{1024});
   ring_.prepare(ringRequest);
   drift_.reset();
   drift_.setTargetFillFrames(targetFillFrames_);
@@ -135,10 +142,15 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   inputOverruns_.store(0, std::memory_order_relaxed);
   inputDroppedFrames_.store(0, std::memory_order_relaxed);
   outputStarvationFrames_.store(0, std::memory_order_relaxed);
+  partialShortageEvents_.store(0, std::memory_order_relaxed);
+  converterResetEvents_.store(0, std::memory_order_relaxed);
+  rebufferEvents_.store(0, std::memory_order_relaxed);
+  recoveryFadeEvents_.store(0, std::memory_order_relaxed);
   inputFramesProcessed_.store(0, std::memory_order_relaxed);
   outputFramesProcessed_.store(0, std::memory_order_relaxed);
   lastOutputSample0_ = 0.0f;
   lastOutputSample1_ = 0.0f;
+  recoveryFadeFramesRemaining_ = kUnderrunFadeFrames;
   inputDemand_.reset();
   virtualPrebuffer_.reset(targetFillFrames_);
 
@@ -172,6 +184,7 @@ bool BridgeEngine::resetVirtualStreamEpoch() {
   virtualPrebuffer_.reset(targetFillFrames_);
   lastOutputSample0_ = 0.0f;
   lastOutputSample1_ = 0.0f;
+  recoveryFadeFramesRemaining_ = kUnderrunFadeFrames;
   return src_.reset();
 }
 
@@ -179,10 +192,39 @@ void BridgeEngine::resetConverterAfterStarvation() {
   // The vendored libsamplerate src_reset path only clears preallocated
   // filter storage (src_sinc.c); it performs no allocation or locking.
   src_.reset();
+  converterResetEvents_.fetch_add(1, std::memory_order_relaxed);
+  drift_.resetAfterDiscontinuity();
   inputDemand_.reset();
   if (virtualDevice_) {
     virtualPrebuffer_.forceRebuffer();
+    rebufferEvents_.fetch_add(1, std::memory_order_relaxed);
   }
+  armRecoveryFade();
+}
+
+void BridgeEngine::armRecoveryFade(bool countEvent) {
+  if (recoveryFadeFramesRemaining_ == 0 && countEvent) {
+    recoveryFadeEvents_.fetch_add(1, std::memory_order_relaxed);
+  }
+  recoveryFadeFramesRemaining_ = kUnderrunFadeFrames;
+}
+
+void BridgeEngine::applyRecoveryFade(float* ch0, float* ch1,
+                                     std::size_t frames) {
+  if (recoveryFadeFramesRemaining_ == 0 || frames == 0) {
+    return;
+  }
+  const std::size_t fadeFrames =
+      std::min(recoveryFadeFramesRemaining_, frames);
+  const std::size_t completed =
+      kUnderrunFadeFrames - recoveryFadeFramesRemaining_;
+  for (std::size_t i = 0; i < fadeFrames; ++i) {
+    const float gain = static_cast<float>(completed + i + 1) /
+                       static_cast<float>(kUnderrunFadeFrames);
+    ch0[i] *= gain;
+    ch1[i] *= gain;
+  }
+  recoveryFadeFramesRemaining_ -= fadeFrames;
 }
 
 double BridgeEngine::converterRatio() const {
@@ -219,6 +261,10 @@ void BridgeEngine::publishMetricsSnapshot() {
     next.consumerResets = producer.consumerResets;
   }
   next.outputStarvationFrames = outputStarvationFrames_.load(std::memory_order_relaxed);
+  next.partialShortageEvents = partialShortageEvents_.load(std::memory_order_relaxed);
+  next.converterResetEvents = converterResetEvents_.load(std::memory_order_relaxed);
+  next.rebufferEvents = rebufferEvents_.load(std::memory_order_relaxed);
+  next.recoveryFadeEvents = recoveryFadeEvents_.load(std::memory_order_relaxed);
   PublishMetrics(publisher_, next);
 }
 
@@ -237,8 +283,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
   std::memset(channels[1], 0, frames * sizeof(float));
 
   if (virtualDevice_) {
-    const std::size_t maxInputFrames = MaxInputFramesForOutputFrames(frames);
-    virtualFeed_.drainTo(ring_, maxInputFrames + 256);
+    virtualFeed_.drainTo(ring_, ring_.availableToWrite());
   }
 
   const std::size_t fill = ring_.fillFrames();
@@ -247,6 +292,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
                          lastOutputSample0_, lastOutputSample1_);
     lastOutputSample0_ = 0.0f;
     lastOutputSample1_ = 0.0f;
+    armRecoveryFade(false);
     return;
   }
 
@@ -282,20 +328,23 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
     return;
   }
 
+  applyRecoveryFade(channels[0], channels[1], converted);
+
   if (converted < frames) {
     outputStarvationFrames_.fetch_add(frames - converted, std::memory_order_relaxed);
     FadeSamplesToSilence(channels[0], channels[1], converted, frames,
                          channels[0][converted - 1], channels[1][converted - 1]);
     lastOutputSample0_ = 0.0f;
     lastOutputSample1_ = 0.0f;
+    armRecoveryFade();
   } else {
     lastOutputSample0_ = channels[0][frames - 1];
     lastOutputSample1_ = channels[1][frames - 1];
   }
   if (popped < maxPop) {
+    partialShortageEvents_.fetch_add(1, std::memory_order_relaxed);
     drift_.notifyUnderrun();
-    if (!virtualDevice_ ||
-        virtualPrebuffer_.shouldRebufferForPartialShortage(maxPop, popped)) {
+    if (IsSeverePartialShortage(maxPop, popped)) {
       resetConverterAfterStarvation();
     }
   }
