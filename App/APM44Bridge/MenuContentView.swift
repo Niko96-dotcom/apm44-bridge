@@ -24,6 +24,13 @@ struct MenuContentView: View {
         .padding(16)
         .frame(width: 340)
         .onAppear { launchAtLogin.refresh() }
+        .task {
+            // The menu-bar popover may not be opened during launch, and the
+            // fallback controls window can appear after a transient Core Audio
+            // refresh. Always reconcile the device list when either surface
+            // becomes visible instead of leaving Output permanently empty.
+            _ = await manager.refreshDevices()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchAtLogin.refresh()
         }
