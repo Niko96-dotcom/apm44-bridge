@@ -56,16 +56,23 @@ SIGN_ID="$(resolve_sign_id)"
 sign_one() {
   local path="$1"
   local entitlements="${2:-}"
+  local deep="${3:-0}"
   if [[ ! -e "$path" ]]; then
     echo "error: missing artifact: $path" >&2
     exit 1
   fi
   echo "Signing: $path"
+  local sign_args=(--force --sign "$SIGN_ID" --timestamp --options runtime)
+  if [[ "$deep" == "1" ]]; then
+    # Sparkle embeds signed executables, nested XPC services, and Updater.app.
+    # Re-sign the complete code tree so every nested object has the same
+    # Developer ID identity and secure timestamp before sealing the app.
+    sign_args+=(--deep)
+  fi
   if [[ -n "$entitlements" && -f "$entitlements" ]]; then
-    codesign --force --sign "$SIGN_ID" --timestamp --options runtime \
-      --entitlements "$entitlements" "$path"
+    codesign "${sign_args[@]}" --entitlements "$entitlements" "$path"
   else
-    codesign --force --sign "$SIGN_ID" --timestamp --options runtime "$path"
+    codesign "${sign_args[@]}" "$path"
   fi
   codesign --verify --verbose "$path"
 }
@@ -79,7 +86,7 @@ if [[ -d "$APP" ]]; then
 fi
 
 sign_one "$DAEMON"
-sign_one "$APP" "$ROOT/App/APM44Bridge/APM44Bridge.entitlements"
+sign_one "$APP" "$ROOT/App/APM44Bridge/APM44Bridge.entitlements" 1
 sign_one "$DRIVER" "$ROOT/Driver/APM44Bridge.entitlements"
 
 echo ""
