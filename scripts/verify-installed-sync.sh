@@ -138,9 +138,15 @@ if [[ -d "$DRIVER" ]]; then
     DRIVER_ID="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' "$DRIVER_PLIST" 2>/dev/null || true)"
     if [[ -n "$DRIVER_ID" ]]; then
       if [[ "$DRIVER_ID" != "$HELPER_ID" ]]; then
-        fail "build ID mismatch: helper=$HELPER_ID driver=$DRIVER_ID repo=$REPO_ID"
+        if [[ "$DRY_RUN" == "1" ]]; then
+          note "WARN: installed driver build ID differs (installed=$DRIVER_ID local=$HELPER_ID); live verification requires installing this build"
+        else
+          fail "build ID mismatch: helper=$HELPER_ID driver=$DRIVER_ID repo=$REPO_ID"
+        fi
       fi
-      note "OK: installed driver build ID matches helper ($DRIVER_ID)"
+      if [[ "$DRIVER_ID" == "$HELPER_ID" ]]; then
+        note "OK: installed driver build ID matches helper ($DRIVER_ID)"
+      fi
     elif [[ "$DRY_RUN" == "1" ]]; then
       note "WARN: installed driver has no APM44BuildID; install the signed release before live identity verification"
     else
