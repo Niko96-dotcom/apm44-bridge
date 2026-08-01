@@ -47,7 +47,7 @@ if(Git_FOUND)
   # freshly signed appcast does not make an otherwise identical payload look
   # stale or mismatched at install time.
   execute_process(
-    COMMAND "${GIT_EXECUTABLE}" rev-list -n 1 HEAD -- . ":(exclude)docs/appcast.xml"
+    COMMAND "${GIT_EXECUTABLE}" rev-list -n 1 --abbrev-commit --abbrev=12 HEAD -- . ":(exclude)docs/appcast.xml"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     OUTPUT_VARIABLE APM44_GIT_SHA_OUT
     OUTPUT_STRIP_TRAILING_WHITESPACE

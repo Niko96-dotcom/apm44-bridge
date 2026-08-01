@@ -1054,7 +1054,7 @@ run_ci_04_published_release_verification_secret_check() {
 # BUILD-04: release metadata must not perturb the source fingerprint embedded
 # in the app, helper, and driver after the signed appcast is committed.
 run_build_04_appcast_excluded_from_source_fingerprint_check() {
-  assert_contains "$ROOT/CMakeLists.txt" 'rev-list -n 1 HEAD -- . ":(exclude)docs/appcast.xml"'
+  assert_contains "$ROOT/CMakeLists.txt" 'rev-list -n 1 --abbrev-commit --abbrev=12 HEAD -- . ":(exclude)docs/appcast.xml"'
   assert_contains "$ROOT/scripts/generate-app-project.sh" "rev-list -n 1 HEAD -- . ':(exclude)docs/appcast.xml'"
 }
 
