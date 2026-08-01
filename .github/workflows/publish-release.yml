@@ -45,5 +45,9 @@ jobs:
             echo "error: SPARKLE_PRIVATE_KEY must be the 44-character base64 Ed25519 key" >&2
             exit 1
           fi
+          if [[ "$(printf '%s' "$SPARKLE_PRIVATE_KEY" | shasum -a 256 | awk '{print $1}')" != "5705c03f8955ff842042560386c336e68d699e088e53ab8278ceda11e46d08fa" ]]; then
+            echo "error: SPARKLE_PRIVATE_KEY does not match the configured release key" >&2
+            exit 1
+          fi
           SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)" \
             bash scripts/verify-published-release.sh
