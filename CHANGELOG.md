@@ -2,6 +2,16 @@
 
 All notable user-facing changes will be documented here.
 
+## 0.12.2 - 2026-08-01
+
+- Promoted the installed AirPods Max playback path to the release source of
+  truth, including burst-safe buffering and recovery diagnostics for long
+  callbacks.
+- Added a fallback controls window and device refresh on every visible control
+  surface, so reopening the menu-bar app restores usable output selection.
+- Safe latency now uses a 100 ms target to keep burst-oriented output devices
+  away from the edge during extended monitoring sessions.
+
 ## 0.12.1 - 2026-07-01
 
 - Fixed the menu bar app reporting version **0.11.1** inside the 0.12.x

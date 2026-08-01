@@ -10,8 +10,8 @@ From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
 
 | Artifact | Use when |
 |----------|----------|
-| **`APM44Bridge-0.12.1.dmg`** | Current PKG-in-DMG public release artifact; open **APM44Bridge-0.12.1.pkg** inside the DMG |
-| **`APM44Bridge-0.12.1.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
+| **`APM44Bridge-0.12.2.dmg`** | Current PKG-in-DMG public release artifact; open **APM44Bridge-0.12.2.pkg** inside the DMG |
+| **`APM44Bridge-0.12.2.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
 
 Maintainer build: `bash scripts/release-all.sh` produces the signed,
 notarized, stapled PKG-in-DMG release. The final DMG is packaged after the
@@ -77,7 +77,7 @@ the HAL driver, reload Core Audio, or remove the virtual audio device.
 
 In the menu bar panel:
 
-- **Safe (~30 ms)** + highest SRC quality — fresh-install default; best for long sessions and subtle click-free monitoring.
+- **Safe (~100 ms)** + highest SRC quality — fresh-install default; best for long sessions and subtle click-free monitoring.
 - **Balanced** — lower-latency everyday option after setup; HAL path uses at least ~20 ms internal buffer automatically.
 - **Low** — lowest latency; may click if the DAW or Bluetooth adds jitter.
 
