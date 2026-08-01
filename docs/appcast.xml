@@ -8,22 +8,31 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.3</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.3</link>
-      <sparkle:version>0.12.3</sparkle:version>
-      <sparkle:shortVersionString>0.12.3</sparkle:shortVersionString>
-      <sparkle:releaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.3</sparkle:releaseNotesLink>
+      <title>APM44 Bridge 0.12.4</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.4</link>
+      <sparkle:version>0.12.4</sparkle:version>
+      <sparkle:shortVersionString>0.12.4</sparkle:shortVersionString>
+      <description sparkle:format="markdown"><![CDATA[
+## 0.12.4 - 2026-08-01
+
+- Corrected the Sparkle no-update result so a current installation returns to
+  the quiet menu-bar state instead of showing a failure message.
+- Avoided the launch-time update-session race that could leave the updater
+  stuck on “Checking…” while the app was already current.
+- Embedded the signed Markdown release notes in the HTTPS appcast so
+  `SURequireSignedFeed` verifies the complete update presentation.
+]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Sat, 01 Aug 2026 08:55:37 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.3/APM44Bridge-0.12.3.pkg"
-                 sparkle:edSignature="eBEI7CYLmf1tuTHFwHJuBX+kCb0cDRZusahvZqx2HYspo5XAFHnECyQHlQsBhg3ocSVDfSoHlz9BcHH1ZF/ZCQ=="
+      <pubDate>Sat, 01 Aug 2026 09:29:42 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.4/APM44Bridge-0.12.4.pkg"
+                 sparkle:edSignature="CH8vO1labdq8iCq5L1SmofkDcDTfyqN75wxKH301CjS3x/hGpfRT1j+qlgjxQRJg/DUvrGdCo03ppyBehtMYDA=="
                  sparkle:installationType="package"
-                 length="7061008"
+                 length="7061371"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: bj+HkRCYmPj9+ScAZy14a0stfasNIP/+tMO9Sj3owFtfIJ4uZsHfDhF7VYiMTC/sGI5H5DXSuE01/1aIVJU/Bw==
-length: 1374
+edSignature: 7vJeofmw6T6I6/XZPitAchLOqBCGCR6KZUpVkG1Rq+CbNY8NaGEPvMCXZC6uTsiSEjE/jKHZePtmaEXXyiMWAA==
+length: 1763
 -->
