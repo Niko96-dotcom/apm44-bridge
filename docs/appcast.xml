@@ -21,16 +21,16 @@
   cryptographically.
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Sat, 01 Aug 2026 10:14:25 +0200</pubDate>
+      <pubDate>Sat, 01 Aug 2026 10:18:11 +0200</pubDate>
       <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.5/APM44Bridge-0.12.5.pkg"
-                 sparkle:edSignature="76X7HFHvql87xpMNarJo1mYbyrYUAuzIf4BYc/WarbdzJoLkhRwAp0/kowetLuJEL6zgXHcrLdNVfcTmVlqGBg=="
+                 sparkle:edSignature="GJBEZyY5pJK/I5MWk7IttcFxZeRiHc9jyB6Ml108TsvIpmhF/DMmAsHYpvrGZMUcKaDqjzdGNAS5EvB3p7oKBw=="
                  sparkle:installationType="package"
-                 length="7061359"
+                 length="7061316"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: s0rlf/RGQ885IYVV2gEM3qtSvoseOrz1rl43sPoWabzmKXyI9nyJ+SdHniRuoj0P/De05XT4MCvEy+puKVOyBw==
+edSignature: sVsaqIJYkFgGziw6MIxscaXbUJZR45Bk6wau50/c6A3e/RSUCcFJ4juODesIjQNXaQGA6UVQirH2OujX0A5sDQ==
 length: 1543
 -->
