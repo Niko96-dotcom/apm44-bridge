@@ -1037,6 +1037,20 @@ run_ci_02_release_script_tests_in_github_ci() {
   fi
 }
 
+# CI-04: the hosted release verifier must receive the encrypted Sparkle key so
+# its appcast check remains cryptographic instead of silently structural.
+run_ci_04_published_release_verification_secret_check() {
+  local workflow="$ROOT/.github/workflows/publish-release.yml"
+  if [[ ! -f "$workflow" ]]; then
+    echo "CI-04: workflow file not found: $workflow" >&2
+    exit 1
+  fi
+
+  assert_contains "$workflow" 'SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}'
+  assert_contains "$workflow" 'SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)"'
+  assert_contains "$workflow" 'bash scripts/verify-published-release.sh'
+}
+
 run_sign_01_03_workflow_release_app_alignment_check() {
   local workflow="$ROOT/.github/workflows/sign-notarize.yml"
   assert_contains "$workflow" "xcodebuild -project App/APM44Bridge.xcodeproj"
@@ -1105,14 +1119,14 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
   assert_not_contains "$release_doc" "APM44_BUILD_PKG=1"
   assert_not_contains "$release_doc" "maintainer-only PKG"
 
-  assert_contains "$validation_doc" "current 0.12.4 PKG-in-DMG distribution validation path"
-  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.12.4}.dmg'
+  assert_contains "$validation_doc" "current 0.12.5 PKG-in-DMG distribution validation path"
+  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.12.5}.dmg'
   assert_contains "$validation_doc" "bash scripts/check-public-release-hygiene.sh"
   assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
 
-  assert_contains "$install_doc" "APM44Bridge-0.12.4.dmg.sha256"
+  assert_contains "$install_doc" "APM44Bridge-0.12.5.dmg.sha256"
   assert_contains "$install_doc" "Current PKG-in-DMG public release artifact"
-  assert_contains "$install_doc" "APM44Bridge-0.12.4.pkg"
+  assert_contains "$install_doc" "APM44Bridge-0.12.5.pkg"
   assert_not_contains "$install_doc" "DMG-primary public release artifact"
   assert_not_contains "$install_doc" "PKG flow is maintainer-only"
   assert_contains "$ROOT/scripts/notarize-release-dmg.sh" 'shasum -a 256 "$(basename "$DMG")"'
@@ -1220,6 +1234,8 @@ run_notarize_hal_driver_shared_helper_check # [NOTARY-01][NOTARY-02][NOTARY-03]
 run_ci_01_workflow_trust_check           # [CI-01]
 
 run_ci_02_release_script_tests_in_github_ci # [CI-02]
+
+run_ci_04_published_release_verification_secret_check # [CI-04]
 
 run_sign_01_03_workflow_release_app_alignment_check # [SIGN-01][SIGN-02][SIGN-03]
 

@@ -2,6 +2,13 @@
 
 All notable user-facing changes will be documented here.
 
+## 0.12.5 - 2026-08-01
+
+- Made sanitizer CI use complete Git history so native version metadata is
+  deterministic on every runner.
+- Made hosted public-release verification enforce the signed appcast
+  cryptographically.
+
 ## 0.12.4 - 2026-08-01
 
 - Corrected the Sparkle no-update result so a current installation returns to

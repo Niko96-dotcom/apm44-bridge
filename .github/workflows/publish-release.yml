@@ -38,6 +38,8 @@ jobs:
         run: bash scripts/check-secrets.sh
 
       - name: Verify public release and Pages appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)" \
             bash scripts/verify-published-release.sh
