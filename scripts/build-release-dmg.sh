@@ -57,7 +57,8 @@ if [[ "$PACKAGE_ONLY" != "1" ]]; then
   rm -rf "$ROOT/build/$CONFIG/APM44 Bridge.app" \
     "$ROOT/build/$CONFIG/APM44 Bridge.app.dSYM"
   xcodebuild -project "$ROOT/App/APM44Bridge.xcodeproj" -scheme APM44Bridge \
-    -configuration "$CONFIG" build CODE_SIGNING_ALLOWED=NO \
+    -configuration "$CONFIG" build \
+    CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
     CONFIGURATION_BUILD_DIR="$ROOT/build/$CONFIG"
 
   bash "$ROOT/scripts/embed-daemon-in-app.sh"
