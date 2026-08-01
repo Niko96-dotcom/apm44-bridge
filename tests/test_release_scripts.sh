@@ -1047,6 +1047,7 @@ run_ci_04_published_release_verification_secret_check() {
   fi
 
   assert_contains "$workflow" 'SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}'
+  assert_contains "$workflow" 'SPARKLE_PRIVATE_KEY}" -ne 44'
   assert_contains "$workflow" 'SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)"'
   assert_contains "$workflow" 'bash scripts/verify-published-release.sh'
 }
