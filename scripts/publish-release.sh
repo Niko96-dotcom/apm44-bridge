@@ -37,7 +37,13 @@ HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD)"
 TAG_SHA="$(git -C "$ROOT" rev-list -n 1 "$TAG" 2>/dev/null || true)"
 [[ -n "$TAG_SHA" ]] || fail "signed tag $TAG is missing; create and push it before publishing"
 [[ "$TAG_SHA" == "$HEAD_SHA" ]] || fail "tag $TAG does not point at HEAD ($HEAD_SHA)"
-REMOTE_TAG_SHA="$(git -C "$ROOT" ls-remote --tags origin "refs/tags/$TAG" | awk 'NR == 1 { sub(/\^\{\}$/, "", $1); print $1 }')"
+REMOTE_TAG_REFS="$(git -C "$ROOT" ls-remote --tags origin \
+  "refs/tags/$TAG" "refs/tags/$TAG^{}")"
+REMOTE_TAG_SHA="$(awk -v tag="$TAG" '
+  $2 == "refs/tags/" tag "^{}" { print $1; found = 1; exit }
+  $2 == "refs/tags/" tag { direct = $1 }
+  END { if (!found && direct != "") print direct }
+' <<<"$REMOTE_TAG_REFS")"
 [[ "$REMOTE_TAG_SHA" == "$HEAD_SHA" ]] || \
   fail "origin tag $TAG is missing or points to $REMOTE_TAG_SHA instead of $HEAD_SHA"
 
