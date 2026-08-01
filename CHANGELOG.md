@@ -2,6 +2,15 @@
 
 All notable user-facing changes will be documented here.
 
+## 0.12.3 - 2026-08-01
+
+- Added a signed Sparkle 2 in-app updater with musician-facing update status,
+  release notes, administrator authorization, and safe relaunch handling.
+- Published package updates replace the menu-bar app and HAL driver together,
+  reload Core Audio, and verify matching app/driver/helper build identities.
+- Added signed appcast generation and immutable GitHub Release publication
+  gates for the notarized PKG update path.
+
 ## 0.12.2 - 2026-08-01
 
 - Promoted the installed AirPods Max playback path to the release source of

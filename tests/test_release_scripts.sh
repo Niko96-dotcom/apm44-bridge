@@ -291,6 +291,12 @@ case "${1:-}" in
     cat >"$dest/Scripts/preinstall" <<'PRE'
 #!/bin/bash
 set -e
+APP_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
+if pgrep -f "$APP_PATTERN" >/dev/null 2>&1; then
+  echo "Terminating running APM44 Bridge before replacing the app" >&2
+  pkill -TERM -f "$APP_PATTERN" 2>/dev/null || true
+  pkill -KILL -f "$APP_PATTERN" 2>/dev/null || true
+fi
 rm -rf "/Applications/APM44 Bridge.app"
 rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 exit 0
@@ -300,6 +306,7 @@ PRE
 set -e
 [[ -d "/Applications/APM44 Bridge.app" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
 [[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
+echo "Installed app/driver/helper build ID mismatch" >&2
 POST
     ;;
   *)
@@ -327,7 +334,7 @@ if [[ -n "$script" ]]; then
 fi
 
 case "$script" in
-  scripts/build-release-dmg.sh|scripts/codesign-verify-release.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh|scripts/verify-release-dmg-layout.sh|scripts/verify-version-identity.sh|scripts/verify-release-architectures.sh)
+  scripts/build-release-dmg.sh|scripts/codesign-verify-release.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh|scripts/verify-release-pkg.sh|scripts/verify-release-dmg-layout.sh|scripts/verify-version-identity.sh|scripts/verify-release-architectures.sh|scripts/generate-appcast.sh|scripts/validate-appcast.sh|scripts/ensure-sparkle-tools.sh)
     prefix=""
     if [[ "${APM44_DMG_PACKAGE_ONLY:-0}" == "1" ]]; then
       prefix="APM44_DMG_PACKAGE_ONLY=1 "
@@ -1098,14 +1105,14 @@ run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
   assert_not_contains "$release_doc" "APM44_BUILD_PKG=1"
   assert_not_contains "$release_doc" "maintainer-only PKG"
 
-  assert_contains "$validation_doc" "current 0.12.2 PKG-in-DMG distribution validation path"
-  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.12.2}.dmg'
+  assert_contains "$validation_doc" "current 0.12.3 PKG-in-DMG distribution validation path"
+  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.12.3}.dmg'
   assert_contains "$validation_doc" "bash scripts/check-public-release-hygiene.sh"
   assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
 
-  assert_contains "$install_doc" "APM44Bridge-0.12.2.dmg.sha256"
+  assert_contains "$install_doc" "APM44Bridge-0.12.3.dmg.sha256"
   assert_contains "$install_doc" "Current PKG-in-DMG public release artifact"
-  assert_contains "$install_doc" "APM44Bridge-0.12.2.pkg"
+  assert_contains "$install_doc" "APM44Bridge-0.12.3.pkg"
   assert_not_contains "$install_doc" "DMG-primary public release artifact"
   assert_not_contains "$install_doc" "PKG flow is maintainer-only"
   assert_contains "$ROOT/scripts/notarize-release-dmg.sh" 'shasum -a 256 "$(basename "$DMG")"'

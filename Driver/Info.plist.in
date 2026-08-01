@@ -26,6 +26,8 @@
     </array>
     <key>CFBundleVersion</key>
     <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+    <key>APM44BuildID</key>
+    <string>${APM44_BUILD_ID}</string>
     <key>CFPlugInFactories</key>
     <dict>
       <key>${DRIVER_UID}</key>

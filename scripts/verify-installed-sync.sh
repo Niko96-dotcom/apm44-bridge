@@ -41,6 +41,7 @@ if [[ -z "$APP" ]]; then
 fi
 BRIDGE="${APM44_BRIDGE_BIN:-$ROOT/build/BridgeDaemon/apm44-bridge}"
 HELPER="$APP/Contents/MacOS/apm44-bridge"
+DRIVER="${APM44_DRIVER_PATH:-/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver}"
 
 parse_build_id() {
   local out="$1"
@@ -95,6 +96,7 @@ note "APM44 installed sync verification"
 note "App:    $APP"
 note "Repo:   $BRIDGE"
 note "Helper: $HELPER"
+note "Driver: $DRIVER"
 note ""
 
 if [[ ! -x "$BRIDGE" ]]; then
@@ -129,6 +131,29 @@ if [[ "$REPO_ID" != "$HELPER_ID" ]]; then
   fail "build ID mismatch: repo=$REPO_ID helper=$HELPER_ID"
 fi
 note "OK: repo and embedded helper match ($REPO_ID)"
+
+if [[ -d "$DRIVER" ]]; then
+  DRIVER_PLIST="$DRIVER/Contents/Info.plist"
+  if [[ -f "$DRIVER_PLIST" ]]; then
+    DRIVER_ID="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' "$DRIVER_PLIST" 2>/dev/null || true)"
+    if [[ -n "$DRIVER_ID" ]]; then
+      if [[ "$DRIVER_ID" != "$HELPER_ID" ]]; then
+        fail "build ID mismatch: helper=$HELPER_ID driver=$DRIVER_ID repo=$REPO_ID"
+      fi
+      note "OK: installed driver build ID matches helper ($DRIVER_ID)"
+    elif [[ "$DRY_RUN" == "1" ]]; then
+      note "WARN: installed driver has no APM44BuildID; install the signed release before live identity verification"
+    else
+      fail "installed driver build ID missing from $DRIVER_PLIST"
+    fi
+  elif [[ "$DRY_RUN" == "1" ]]; then
+    note "WARN: installed driver Info.plist missing; install the signed release before live identity verification"
+  else
+    fail "installed driver Info.plist missing at $DRIVER_PLIST"
+  fi
+elif [[ "$DRY_RUN" != "1" ]]; then
+  note "WARN: installed HAL driver not present; live driver identity check skipped"
+fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
   note "dry-run: skipping live --shm-status (no running bridge required)"

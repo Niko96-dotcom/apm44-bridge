@@ -6,7 +6,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch:
 
 permissions:
@@ -51,6 +51,10 @@ jobs:
       - name: Release script tests
         timeout-minutes: 5
         run: bash tests/test_release_scripts.sh
+
+      - name: Sparkle appcast tests
+        timeout-minutes: 5
+        run: bash tests/test_appcast.sh
 
       - name: Swift app build
         timeout-minutes: 15

@@ -15,11 +15,14 @@ final class ControlsWindowPresenter: NSObject, ControlsPresenting, NSWindowDeleg
 
     private weak var manager: BridgeProcessManager?
     private weak var settings: BridgeSettings?
+    private weak var updater: SparkleUpdateController?
     private var window: NSWindow?
 
-    func configure(manager: BridgeProcessManager, settings: BridgeSettings) {
+    func configure(manager: BridgeProcessManager, settings: BridgeSettings,
+                   updater: SparkleUpdateController? = nil) {
         self.manager = manager
         self.settings = settings
+        self.updater = updater ?? .shared
     }
 
     func showControls() {
@@ -30,6 +33,7 @@ final class ControlsWindowPresenter: NSObject, ControlsPresenting, NSWindowDeleg
             controlsWindow = window
         } else {
             let rootView = MenuContentView(manager: manager, settings: settings)
+                .environmentObject(updater ?? .shared)
             let hostingController = NSHostingController(rootView: rootView)
             let created = NSWindow(contentViewController: hostingController)
             created.title = "APM44 Bridge"

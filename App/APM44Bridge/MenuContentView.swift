@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuContentView: View {
     @ObservedObject var manager: BridgeProcessManager
     @ObservedObject var settings: BridgeSettings
+    @EnvironmentObject private var updater: SparkleUpdateController
     @StateObject private var launchAtLogin = LaunchAtLoginController()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -12,6 +13,7 @@ struct MenuContentView: View {
             statusHero
             routingChain
             controlCard
+            updateSection
             primaryButtons
             Divider()
             statusDetail
@@ -253,6 +255,54 @@ struct MenuContentView: View {
         }
         .controlSize(.large)
         .accessibilityHint("Controls bridge process lifecycle")
+    }
+
+    private var updateSection: some View {
+        Group {
+            switch updater.state {
+            case .idle:
+                EmptyView()
+            case .checking:
+                updateStatus("Checking for updates…", systemImage: "arrow.triangle.2.circlepath", tint: .secondary)
+            case let .available(version):
+                Button {
+                    updater.checkForUpdates()
+                } label: {
+                    Label("Update available — APM44 Bridge \(version)", systemImage: "arrow.down.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityHint("Opens Sparkle release notes and the secure administrator-authorized installer")
+            case let .downloading(version):
+                updateStatus("Downloading APM44 Bridge \(version)…", systemImage: "arrow.down.circle", tint: .accentColor)
+            case let .readyToInstall(version):
+                updateStatus("APM44 Bridge \(version) is ready to install — Sparkle will ask for administrator authorization.", systemImage: "checkmark.circle", tint: .green)
+            case let .installing(version):
+                updateStatus("Installing APM44 Bridge \(version)…", systemImage: "gearshape", tint: .accentColor)
+            case .cancelled:
+                updateStatus("Update cancelled.", systemImage: "xmark.circle", tint: .secondary)
+            case let .failed(message):
+                updateStatus(message, systemImage: "exclamationmark.triangle", tint: .orange)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func updateStatus(_ message: String, systemImage: String, tint: Color) -> some View {
+        Label {
+            Text(message)
+                .font(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(tint.opacity(0.1))
+        )
     }
 
     private var showsStartButton: Bool {

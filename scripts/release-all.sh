@@ -53,6 +53,8 @@ if [[ "$NOTARY_READY" == "1" ]]; then
 
   echo "== Notarize and validate public pkg =="
   bash scripts/notarize-release-pkg.sh
+  echo "== Verify public pkg payload and replacement scripts =="
+  bash scripts/verify-release-pkg.sh
 
   echo "== Package final DMG from stapled artifacts =="
   # DIST-01: package final DMG from stapled artifacts
@@ -63,6 +65,11 @@ if [[ "$NOTARY_READY" == "1" ]]; then
 
   echo "== Notarize DMG (primary distribution) =="
   bash scripts/notarize-release-dmg.sh
+
+  echo "== Generate and validate signed Sparkle appcast =="
+  bash scripts/generate-appcast.sh
+  SPARKLE_SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-$(bash scripts/ensure-sparkle-tools.sh)}" \
+    bash scripts/validate-appcast.sh
 else
   echo "LOCAL-ONLY UNNOTARIZED: skipping notarization because APM44_ALLOW_UNNOTARIZED=1"
   echo "LOCAL-ONLY UNNOTARIZED: skipping public PKG gate because APM44_ALLOW_UNNOTARIZED=1"

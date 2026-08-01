@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This feed is replaced by scripts/generate-appcast.sh only after a signed,
+  notarized PKG has passed all release gates. It is intentionally empty until
+  the first public updater release is published.
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>APM44 Bridge Updates</title>
+    <link>https://github.com/Niko96-dotcom/apm44-bridge</link>
+    <description>Signed APM44 Bridge updates</description>
+    <language>en</language>
+  </channel>
+</rss>

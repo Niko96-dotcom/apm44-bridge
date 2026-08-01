@@ -4,6 +4,10 @@ options:
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.9.4
 settings:
   base:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -16,17 +20,18 @@ targets:
     platform: macOS
     sources:
       - path: APM44Bridge
+    dependencies:
+      - package: Sparkle
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.niko.apm44.menu
       PRODUCT_MODULE_NAME: APM44Bridge
       PRODUCT_NAME: "APM44 Bridge"
       MARKETING_VERSION: "${APM44_VERSION}"
       CURRENT_PROJECT_VERSION: "${APM44_VERSION}"
+      APM44_BUILD_ID: "${APM44_BUILD_ID}"
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-      INFOPLIST_KEY_CFBundleDisplayName: "APM44 Bridge"
-      GENERATE_INFOPLIST_FILE: YES
-      INFOPLIST_KEY_LSUIElement: YES
-      INFOPLIST_KEY_NSHumanReadableCopyright: "APM44 Bridge"
+      INFOPLIST_FILE: APM44Bridge/Info.plist
+      GENERATE_INFOPLIST_FILE: NO
     entitlements:
       path: APM44Bridge/APM44Bridge.entitlements
   APM44BridgeTests:

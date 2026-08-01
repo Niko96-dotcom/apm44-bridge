@@ -4,10 +4,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$($ROOT/scripts/read-version.sh)"
 
+# Keep the menu-bar app's embedded build fingerprint identical to the native
+# daemon/driver fingerprint. CMake appends -dirty while the worktree has
+# uncommitted source changes, so compute the same value before XcodeGen runs.
+GIT_SHA="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || printf 'nogit')"
+if ! git -C "$ROOT" diff --quiet --ignore-submodules HEAD 2>/dev/null; then
+  GIT_SHA="${GIT_SHA}-dirty"
+fi
+BUILD_ID="${VERSION}+${GIT_SHA}"
+
 if [[ -n "${APM44_VERSION:-}" && "$APM44_VERSION" != "$VERSION" ]]; then
   echo "error: APM44_VERSION=$APM44_VERSION disagrees with VERSION=$VERSION" >&2
   exit 1
 fi
 
-echo "Generating app project for APM44 Bridge $VERSION" >&2
-(cd "$ROOT/App" && APM44_VERSION="$VERSION" xcodegen generate)
+echo "Generating app project for APM44 Bridge $VERSION (build=$BUILD_ID)" >&2
+(cd "$ROOT/App" && APM44_VERSION="$VERSION" APM44_BUILD_ID="$BUILD_ID" xcodegen generate)

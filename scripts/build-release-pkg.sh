@@ -101,6 +101,19 @@ if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && "$CONSOLE_UID" =~ ^[0-9
   launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" \
     osascript -e 'tell application id "com.niko.apm44.menu" to quit' 2>/dev/null || true
 fi
+APP_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
+for _ in {1..20}; do
+  pgrep -f "$APP_PATTERN" >/dev/null 2>&1 || break
+  sleep 0.1
+done
+if pgrep -f "$APP_PATTERN" >/dev/null 2>&1; then
+  echo "Terminating running APM44 Bridge before replacing the app" >&2
+  pkill -TERM -f "$APP_PATTERN" 2>/dev/null || true
+  sleep 1
+fi
+if pgrep -f "$APP_PATTERN" >/dev/null 2>&1; then
+  pkill -KILL -f "$APP_PATTERN" 2>/dev/null || true
+fi
 HELPER_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge([[:space:]]|$)'
 for _ in {1..20}; do
   pgrep -f "$HELPER_PATTERN" >/dev/null 2>&1 || break
@@ -135,6 +148,13 @@ DRIVER_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' 
 HELPER_VERSION="$(/Applications/APM44\ Bridge.app/Contents/MacOS/apm44-bridge --version 2>/dev/null || true)"
 [[ "$HELPER_VERSION" == "apm44-bridge $APP_VERSION "* ]] || {
   echo "Installed helper version mismatch: $HELPER_VERSION" >&2
+  exit 1
+}
+APP_BUILD_ID="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' '/Applications/APM44 Bridge.app/Contents/Info.plist' 2>/dev/null || true)"
+DRIVER_BUILD_ID="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' '/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist' 2>/dev/null || true)"
+HELPER_BUILD_ID="$(printf '%s\n' "$HELPER_VERSION" | sed -n 's/.*build=\([^[:space:]]*\).*/\1/p')"
+[[ -n "$APP_BUILD_ID" && "$APP_BUILD_ID" == "$DRIVER_BUILD_ID" && "$APP_BUILD_ID" == "$HELPER_BUILD_ID" ]] || {
+  echo "Installed app/driver/helper build ID mismatch: app=$APP_BUILD_ID driver=$DRIVER_BUILD_ID helper=$HELPER_BUILD_ID" >&2
   exit 1
 }
 DRIVER_BIN="$(find /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS -maxdepth 1 -type f | head -1)"

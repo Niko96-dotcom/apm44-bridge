@@ -18,6 +18,7 @@ struct APM44BridgeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var settings = BridgeSettings()
     @StateObject private var manager: BridgeProcessManager
+    @StateObject private var updater = SparkleUpdateController.shared
     @State private var showFirstRun = false
     private let hotplug: HotplugMonitor
     private let systemLifecycle: SystemLifecycleMonitor
@@ -55,6 +56,7 @@ struct APM44BridgeApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuContentView(manager: manager, settings: settings)
+                .environmentObject(updater)
                 .sheet(isPresented: $showFirstRun) {
                     FirstRunPreflightView(manager: manager, isPresented: $showFirstRun)
                 }

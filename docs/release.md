@@ -97,9 +97,49 @@ commands for Apple credential or hardware-dependent checks.
 7. Repackage the final DMG with the validated PKG as its primary visible content.
 8. Verify final DMG layout.
 9. Notarize, staple, Gatekeeper-assess, checksum, and validate the final public DMG.
+10. Generate and EdDSA-sign `docs/appcast.xml` from the notarized PKG.
 
 This order matters: the distributed DMG should contain the validated PKG, not
 raw app/driver internals or the old command installer.
+
+## Sparkle 2 in-app updates
+
+The menu-bar app embeds Sparkle 2 through Swift Package Manager and reads its
+signed feed from
+`https://niko96-dotcom.github.io/apm44-bridge/appcast.xml`. The feed is served
+from `main/docs` by GitHub Pages; there is deliberately no `gh-pages` branch.
+Each enclosure is the signed, notarized `APM44Bridge-<version>.pkg` and carries
+`sparkle:installationType="package"`, so Sparkle requests administrator
+authorization before replacing the app and HAL driver.
+
+The app contains only the public Ed25519 key. Keep the matching private key in
+the local Sparkle Keychain item or the GitHub Actions `SPARKLE_PRIVATE_KEY`
+secret. Never put the private key in a plist, source file, appcast, log, or
+command-line argument. `scripts/generate-appcast.sh` accepts the secret via
+stdin and `scripts/validate-appcast.sh` fails closed on malformed, unsigned,
+non-HTTPS, or incorrectly typed package items.
+
+After `release-all.sh` succeeds with Apple credentials, commit the generated
+appcast and release notes on `main`, create and push a new signed tag, then
+publish the immutable GitHub release:
+
+```bash
+git status --short                         # must be empty
+git tag -s "v$(cat VERSION)" -m "APM44 Bridge $(cat VERSION)"
+git push origin main "v$(cat VERSION)"
+bash scripts/publish-release.sh
+```
+
+The tag must point at the clean `HEAD`, and `publish-release.sh` refuses to
+overwrite an existing GitHub release or tag. GitHub Actions runs the same
+publisher from `.github/workflows/publish-release.yml` with the private key
+secret and `GITHUB_TOKEN`. Verify public propagation without authentication
+with:
+
+```bash
+SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)" \
+  bash scripts/verify-published-release.sh
+```
 
 Manual steps (after Release build):
 
