@@ -12,6 +12,7 @@ grep -Fq '<key>SUEnableAutomaticChecks</key>' "$ROOT/App/APM44Bridge/Info.plist"
 grep -Fq '<key>SURequireSignedFeed</key>' "$ROOT/App/APM44Bridge/Info.plist"
 grep -Fq '<key>SUVerifyUpdateBeforeExtraction</key>' "$ROOT/App/APM44Bridge/Info.plist"
 grep -Fq 'sparkle:installationType="package"' "$ROOT/scripts/generate-appcast.sh"
+grep -Fq 'sparkle:format="markdown"' "$ROOT/scripts/generate-appcast.sh"
 
 SIGNATURE="$(python3 - <<'PY'
 import base64
@@ -39,6 +40,7 @@ cat >"$GOOD" <<XML
     <title>APM44 Bridge Updates</title>
     <item>
       <sparkle:version>0.12.3</sparkle:version>
+      <description>APM44 Bridge 0.12.3 test notes</description>
       <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.3/APM44Bridge-0.12.3.pkg"
                  sparkle:edSignature="$SIGNATURE"
                  sparkle:installationType="package"
@@ -82,6 +84,10 @@ expect_failure "$UNSIGNED"
 BAD_SIGNATURE="$TMP/bad-signature.xml"
 sed 's/sparkle:edSignature="[^"]*"/sparkle:edSignature="not-a-signature"/' "$GOOD" >"$BAD_SIGNATURE"
 expect_failure "$BAD_SIGNATURE"
+
+UNSIGNED_NOTES="$TMP/unsigned-notes.xml"
+sed 's#<description>APM44 Bridge 0.12.3 test notes</description>#<sparkle:releaseNotesLink>https://example.com/notes.html</sparkle:releaseNotesLink>#' "$GOOD" >"$UNSIGNED_NOTES"
+expect_failure "$UNSIGNED_NOTES"
 
 INSECURE="$TMP/insecure.xml"
 sed 's#https://github.com#http://github.com#' "$GOOD" >"$INSECURE"

@@ -2,6 +2,15 @@
 
 All notable user-facing changes will be documented here.
 
+## 0.12.4 - 2026-08-01
+
+- Corrected the Sparkle no-update result so a current installation returns to
+  the quiet menu-bar state instead of showing a failure message.
+- Avoided the launch-time update-session race that could leave the updater
+  stuck on “Checking…” while the app was already current.
+- Embedded the signed Markdown release notes in the HTTPS appcast so
+  `SURequireSignedFeed` verifies the complete update presentation.
+
 ## 0.12.3 - 2026-08-01
 
 - Added a signed Sparkle 2 in-app updater with musician-facing update status,

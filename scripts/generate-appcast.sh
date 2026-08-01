@@ -9,6 +9,27 @@ APPCAST="${APM44_APPCAST_PATH:-$ROOT/docs/appcast.xml}"
 RELEASE_URL="${APM44_RELEASE_URL:-https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v${VERSION}/APM44Bridge-${VERSION}.pkg}"
 RELEASE_NOTES_URL="${APM44_RELEASE_NOTES_URL:-https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v${VERSION}}"
 
+RELEASE_NOTES_MARKDOWN="$(python3 - "$ROOT/CHANGELOG.md" "$VERSION" <<'PY'
+import pathlib
+import sys
+
+changelog, version = sys.argv[1:]
+text = pathlib.Path(changelog).read_text()
+marker = f"## {version}"
+start = text.find(marker)
+if start < 0:
+    raise SystemExit(f"error: CHANGELOG.md has no section for {version}")
+section = text[start:]
+next_section = section.find("\n## ", len(marker))
+if next_section >= 0:
+    section = section[:next_section]
+section = section.strip()
+# Keep the appcast XML safe even if a future changelog contains a CDATA close.
+print(section.replace("]]>", "]]]]><![CDATA[>"), end="")
+PY
+)"
+[[ -n "$RELEASE_NOTES_MARKDOWN" ]] || { echo "error: release notes section is empty" >&2; exit 1; }
+
 [[ -f "$PKG" ]] || { echo "error: signed release PKG missing at $PKG" >&2; exit 1; }
 [[ "$RELEASE_URL" == https://* ]] || { echo "error: release URL must use HTTPS" >&2; exit 1; }
 
@@ -69,7 +90,9 @@ cat >"$temp_appcast" <<XML
       <link>${RELEASE_NOTES_URL}</link>
       <sparkle:version>${VERSION}</sparkle:version>
       <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
-      <sparkle:releaseNotesLink>${RELEASE_NOTES_URL}</sparkle:releaseNotesLink>
+      <description sparkle:format="markdown"><![CDATA[
+${RELEASE_NOTES_MARKDOWN}
+]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
       <pubDate>$(LC_ALL=C date -R)</pubDate>
       <enclosure url="${RELEASE_URL}"

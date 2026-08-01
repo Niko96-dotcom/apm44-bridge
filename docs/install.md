@@ -10,8 +10,8 @@ From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
 
 | Artifact | Use when |
 |----------|----------|
-| **`APM44Bridge-0.12.3.dmg`** | Current PKG-in-DMG public release artifact; open **APM44Bridge-0.12.3.pkg** inside the DMG |
-| **`APM44Bridge-0.12.3.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
+| **`APM44Bridge-0.12.4.dmg`** | Current PKG-in-DMG public release artifact; open **APM44Bridge-0.12.4.pkg** inside the DMG |
+| **`APM44Bridge-0.12.4.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
 
 Maintainer build: `bash scripts/release-all.sh` produces the signed,
 notarized, stapled PKG-in-DMG release. The final DMG is packaged after the

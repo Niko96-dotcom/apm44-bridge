@@ -45,6 +45,16 @@ final class SparkleUpdaterTests: XCTestCase {
         )
     }
 
+    func testNoUpdateErrorReturnsToIdleInsteadOfFailure() {
+        let noUpdateError = NSError(domain: "SUSparkleErrorDomain", code: 1001,
+                                    userInfo: [NSLocalizedDescriptionKey: "You’re up to date!"])
+        XCTAssertTrue(SparkleUpdateController.isNoUpdateError(noUpdateError))
+        XCTAssertEqual(
+            SparkleUpdateController.userFacingErrorMessage(noUpdateError),
+            "No update is available."
+        )
+    }
+
     func testStateTransitionsDoNotKeepButtonAfterInstall() {
         XCTAssertFalse(AppUpdateState.downloading(version: "0.12.3").showsUpdateButton)
         XCTAssertFalse(AppUpdateState.readyToInstall(version: "0.12.3").showsUpdateButton)

@@ -41,6 +41,24 @@ for item in items:
     enclosure = item.find("enclosure")
     if not version or enclosure is None:
         raise SystemExit("error: every appcast item needs sparkle:version and enclosure")
+    release_notes_link = item.find(f"{{{sparkle}}}releaseNotesLink")
+    description = item.find("description")
+    if release_notes_link is not None:
+        notes_url = release_notes_link.text or ""
+        if urllib.parse.urlparse(notes_url).scheme != "https":
+            raise SystemExit("error: release notes URL must use HTTPS")
+        notes_signature = release_notes_link.get(f"{{{sparkle}}}edSignature", "")
+        try:
+            notes_decoded = base64.b64decode(notes_signature, validate=True)
+        except Exception as exc:
+            raise SystemExit(f"error: invalid EdDSA release notes signature: {exc}")
+        if len(notes_decoded) != 64:
+            raise SystemExit("error: release notes EdDSA signature must decode to 64 bytes")
+        notes_length = release_notes_link.get("length", "")
+        if not notes_length.isdigit() or int(notes_length) <= 0:
+            raise SystemExit("error: release notes length must be a positive integer")
+    elif description is None or not (description.text or "").strip():
+        raise SystemExit("error: every appcast item needs embedded release notes or a signed releaseNotesLink")
     url = enclosure.get("url", "")
     if urllib.parse.urlparse(url).scheme != "https":
         raise SystemExit("error: every enclosure URL must use HTTPS")

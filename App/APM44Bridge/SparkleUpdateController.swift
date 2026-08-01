@@ -84,6 +84,12 @@ struct AppUpdateVersionComparator {
 final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate {
     static let shared = SparkleUpdateController()
 
+    // Sparkle reports a successful "no update" result as an error-shaped
+    // completion with SUNoUpdateError (1001). Keep that result distinct from
+    // feed, network, and installation failures so the musician-facing surface
+    // returns to its quiet idle state instead of showing a false failure.
+    private static let noUpdateErrorCode = 1001
+
     @Published private(set) var state: AppUpdateState = .idle
     @Published private(set) var lastErrorMessage: String?
 
@@ -111,6 +117,12 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             await Task.yield()
             guard let self else { return }
             guard self.updaterController.updater.automaticallyChecksForUpdates else { return }
+            // SPUStandardUpdaterController starts its own first update cycle on
+            // the next main-run-loop turn. If that cycle won the race, the
+            // explicit launch check is a no-op; do not expose a permanent
+            // "Checking" state for a check we did not start.
+            guard !self.updaterController.updater.sessionInProgress else { return }
+            guard self.updaterController.updater.canCheckForUpdates else { return }
             self.state = .checking
             self.updaterController.updater.checkForUpdatesInBackground()
         }
@@ -141,8 +153,12 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
-        state = .idle
-        lastErrorMessage = nil
+        if Self.isNoUpdateError(error) {
+            state = .idle
+            lastErrorMessage = nil
+        } else {
+            fail(error)
+        }
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
@@ -169,8 +185,11 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
         let nsError = error as NSError
-        if nsError.domain == SUSparkleErrorDomain,
-           nsError.code == 4007 { // Sparkle's SUInstallationCanceledError.
+        if Self.isNoUpdateError(error) {
+            state = .idle
+            lastErrorMessage = nil
+        } else if nsError.domain == SUSparkleErrorDomain,
+                  nsError.code == 4007 { // Sparkle's SUInstallationCanceledError.
             state = .cancelled
             lastErrorMessage = nil
         } else {
@@ -183,7 +202,10 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
         error: Error?
     ) {
-        if let error {
+        if let error, Self.isNoUpdateError(error) {
+            state = .idle
+            lastErrorMessage = nil
+        } else if let error {
             fail(error)
         } else if case .checking = state {
             state = .idle
@@ -203,7 +225,15 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         lastErrorMessage = state.failureMessage
     }
 
+    nonisolated static func isNoUpdateError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == SUSparkleErrorDomain && nsError.code == noUpdateErrorCode
+    }
+
     nonisolated static func userFacingErrorMessage(_ error: Error) -> String {
+        if isNoUpdateError(error) {
+            return "No update is available."
+        }
         let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = description.lowercased()
         if lowered.contains("signature") || lowered.contains("appcast") || lowered.contains("secure") {
