@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="$($ROOT/scripts/read-version.sh)"
+VERSION="${APM44_RELEASE_VERSION:-$($ROOT/scripts/read-version.sh)}"
 REPO="${APM44_GITHUB_REPO:-Niko96-dotcom/apm44-bridge}"
 BASE="https://github.com/${REPO}/releases/download/v${VERSION}"
 TMP="$(mktemp -d)"

@@ -27,20 +27,30 @@ jobs:
   verify:
     runs-on: macos-15
     steps:
-      - name: Check out published tag
+      - name: Check out verifier revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Check out published tag for the release scan
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
+          path: published
           fetch-depth: 0
           submodules: recursive
 
       - name: Secret scan
-        run: bash scripts/check-secrets.sh
+        run: bash published/scripts/check-secrets.sh
 
       - name: Verify public release and Pages appcast
         env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
+          RELEASE_VERSION="${RELEASE_TAG#v}"
           if [[ "${#SPARKLE_PRIVATE_KEY}" -ne 44 ]]; then
             echo "error: SPARKLE_PRIVATE_KEY must be the 44-character base64 Ed25519 key" >&2
             exit 1
@@ -49,5 +59,6 @@ jobs:
             echo "error: SPARKLE_PRIVATE_KEY does not match the configured release key" >&2
             exit 1
           fi
-          SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)" \
+          APM44_RELEASE_VERSION="$RELEASE_VERSION" \
+          SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh | tail -n 1)" \
             bash scripts/verify-published-release.sh
