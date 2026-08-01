@@ -42,8 +42,12 @@ endif()
 set(APM44_GIT_SHA "nogit")
 find_package(Git QUIET)
 if(Git_FOUND)
+  # The signed Sparkle feed is release metadata generated after the binaries
+  # are built. Exclude that file from the source fingerprint so committing a
+  # freshly signed appcast does not make an otherwise identical payload look
+  # stale or mismatched at install time.
   execute_process(
-    COMMAND "${GIT_EXECUTABLE}" rev-parse --short=12 HEAD
+    COMMAND "${GIT_EXECUTABLE}" rev-list -n 1 HEAD -- . ":(exclude)docs/appcast.xml"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     OUTPUT_VARIABLE APM44_GIT_SHA_OUT
     OUTPUT_STRIP_TRAILING_WHITESPACE

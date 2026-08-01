@@ -1051,6 +1051,13 @@ run_ci_04_published_release_verification_secret_check() {
   assert_contains "$workflow" 'bash scripts/verify-published-release.sh'
 }
 
+# BUILD-04: release metadata must not perturb the source fingerprint embedded
+# in the app, helper, and driver after the signed appcast is committed.
+run_build_04_appcast_excluded_from_source_fingerprint_check() {
+  assert_contains "$ROOT/CMakeLists.txt" 'rev-list -n 1 HEAD -- . ":(exclude)docs/appcast.xml"'
+  assert_contains "$ROOT/scripts/generate-app-project.sh" "rev-list -n 1 HEAD -- . ':(exclude)docs/appcast.xml'"
+}
+
 run_sign_01_03_workflow_release_app_alignment_check() {
   local workflow="$ROOT/.github/workflows/sign-notarize.yml"
   assert_contains "$workflow" "xcodebuild -project App/APM44Bridge.xcodeproj"
@@ -1236,6 +1243,8 @@ run_ci_01_workflow_trust_check           # [CI-01]
 run_ci_02_release_script_tests_in_github_ci # [CI-02]
 
 run_ci_04_published_release_verification_secret_check # [CI-04]
+
+run_build_04_appcast_excluded_from_source_fingerprint_check # [BUILD-04]
 
 run_sign_01_03_workflow_release_app_alignment_check # [SIGN-01][SIGN-02][SIGN-03]
 

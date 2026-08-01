@@ -5,6 +5,11 @@ It separates credential-free verification
 from Apple Developer credential checks so local-only artifacts are never
 confused with a public release.
 
+The embedded app/driver/helper build fingerprint is the latest source commit
+excluding `docs/appcast.xml`. The appcast is signed release metadata generated
+after the payload is built, so committing it does not change the binary
+identity used by installed-sync verification.
+
 ## Final automated verification
 
 Run the full local gate before using release credentials:
