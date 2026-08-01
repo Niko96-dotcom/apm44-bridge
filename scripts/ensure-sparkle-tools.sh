@@ -46,9 +46,9 @@ fi
 
 DERIVED_DATA="$TOOLS_ROOT/DerivedData"
 xcodebuild -project "$SOURCE/Sparkle.xcodeproj" -scheme sign_update \
-  -configuration Release -derivedDataPath "$DERIVED_DATA" CODE_SIGNING_ALLOWED=NO build
+  -configuration Release -derivedDataPath "$DERIVED_DATA" CODE_SIGNING_ALLOWED=NO build >&2
 xcodebuild -project "$SOURCE/Sparkle.xcodeproj" -scheme generate_appcast \
-  -configuration Release -derivedDataPath "$DERIVED_DATA" CODE_SIGNING_ALLOWED=NO build
+  -configuration Release -derivedDataPath "$DERIVED_DATA" CODE_SIGNING_ALLOWED=NO build >&2
 
 mkdir -p "$TOOLS_ROOT/bin"
 cp "$DERIVED_DATA/Build/Products/Release/sign_update" "$TOOLS_ROOT/bin/sign_update"

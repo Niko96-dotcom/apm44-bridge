@@ -35,6 +35,25 @@ done
 APPCAST="$TMP/appcast.xml"
 curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
   "https://niko96-dotcom.github.io/apm44-bridge/appcast.xml" --output "$APPCAST"
+
+python3 - "$APPCAST" "$VERSION" "$BASE/APM44Bridge-${VERSION}.pkg" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+path, version, expected_url = sys.argv[1:]
+sparkle = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+root = ET.parse(path).getroot()
+for item in root.findall("./channel/item"):
+    if item.findtext(f"{{{sparkle}}}version") != version:
+        continue
+    enclosure = item.find("enclosure")
+    if enclosure is not None and enclosure.get("url") == expected_url:
+        raise SystemExit(0)
+raise SystemExit(
+    f"error: hosted appcast has no v{version} item pointing at {expected_url}"
+)
+PY
+
 APM44_APPCAST_PATH="$APPCAST" \
   SPARKLE_SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-}" \
   bash "$ROOT/scripts/validate-appcast.sh"

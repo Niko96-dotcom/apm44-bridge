@@ -1051,6 +1051,9 @@ run_ci_04_published_release_verification_secret_check() {
   assert_contains "$workflow" 'SPARKLE_PRIVATE_KEY" | shasum -a 256'
   assert_contains "$workflow" 'SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)"'
   assert_contains "$workflow" 'bash scripts/verify-published-release.sh'
+  assert_contains "$ROOT/scripts/ensure-sparkle-tools.sh" 'CODE_SIGNING_ALLOWED=NO build >&2'
+  assert_contains "$ROOT/scripts/verify-published-release.sh" 'hosted appcast has no v'
+  assert_contains "$ROOT/scripts/verify-published-release.sh" 'APM44Bridge-${VERSION}.pkg'
 }
 
 # BUILD-04: release metadata must not perturb the source fingerprint embedded
