@@ -1,7 +1,10 @@
-name: Publish Signed Release
+name: Verify Published Release
 
-# CI-01: publication uses only the official checkout action and the repository
-# scripts. It runs after a signed tag is pushed; no gh-pages branch is used.
+# The maintainer-controlled local release pipeline creates and uploads the
+# notarized artifacts. This tag workflow verifies the public, unauthenticated
+# downloads after GitHub Pages and Releases propagate; it deliberately does
+# not pretend a clean runner has local Apple/Sparkle signing credentials or
+# the gated build artifacts.
 on:
   push:
     tags:
@@ -14,40 +17,27 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: publish-${{ github.ref }}
+  group: verify-published-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  verify:
     runs-on: macos-15
     steps:
-      - name: Check out signed tag
+      - name: Check out published tag
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
           submodules: recursive
-
-      - name: Install project tools
-        run: brew install xcodegen
 
       - name: Secret scan
         run: bash scripts/check-secrets.sh
 
-      - name: Require Sparkle signing secret
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      - name: Verify public release and Pages appcast
         run: |
-          if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
-            echo "error: SPARKLE_PRIVATE_KEY repository secret is required" >&2
-            exit 1
-          fi
-
-      - name: Publish gated assets and signed appcast
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-          APM44_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-        run: bash scripts/publish-release.sh
+          SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)" \
+            bash scripts/verify-published-release.sh

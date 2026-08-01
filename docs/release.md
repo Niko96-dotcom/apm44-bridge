@@ -131,10 +131,10 @@ bash scripts/publish-release.sh
 ```
 
 The tag must point at the clean `HEAD`, and `publish-release.sh` refuses to
-overwrite an existing GitHub release or tag. GitHub Actions runs the same
-publisher from `.github/workflows/publish-release.yml` with the private key
-secret and `GITHUB_TOKEN`. Verify public propagation without authentication
-with:
+overwrite an existing GitHub release or tag. The tag workflow in
+`.github/workflows/publish-release.yml` verifies the already-published public
+assets and Pages feed; it does not rebuild or sign artifacts on a clean runner.
+Verify public propagation without authentication with:
 
 ```bash
 SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)" \
