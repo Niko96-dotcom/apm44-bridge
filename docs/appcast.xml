@@ -8,29 +8,32 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.5</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.5</link>
-      <sparkle:version>0.12.5</sparkle:version>
-      <sparkle:shortVersionString>0.12.5</sparkle:shortVersionString>
+      <title>APM44 Bridge 0.12.6</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.6</link>
+      <sparkle:version>0.12.6</sparkle:version>
+      <sparkle:shortVersionString>0.12.6</sparkle:shortVersionString>
       <description sparkle:format="markdown"><![CDATA[
-## 0.12.5 - 2026-08-01
+## 0.12.6 - 2026-09-05
 
-- Made sanitizer CI use complete Git history so native version metadata is
-  deterministic on every runner.
-- Made hosted public-release verification enforce the signed appcast
-  cryptographically.
+- Fixed discovery of USB AirPods Max that macOS lists before activating their
+  audio device. Starting the bridge now activates the selected USB output.
+- Cleared reconnect notices when the connection recovers and made the signal
+  path show the selected output device.
+- Fixed validation of 44.1 kHz DAW exports with current macOS audio metadata.
+- Simplified process management and audio internals, removed redundant tests,
+  and corrected ordering when publishing audio metrics between threads.
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Sat, 01 Aug 2026 10:18:11 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.5/APM44Bridge-0.12.5.pkg"
-                 sparkle:edSignature="GJBEZyY5pJK/I5MWk7IttcFxZeRiHc9jyB6Ml108TsvIpmhF/DMmAsHYpvrGZMUcKaDqjzdGNAS5EvB3p7oKBw=="
+      <pubDate>Sat, 05 Sep 2026 07:47:06 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.6/APM44Bridge-0.12.6.pkg"
+                 sparkle:edSignature="TVLVZJOmI6ioFtsYXhXlAX6oCBm75EtNUNd8rzg01LS3DQ6wOPTjxWVzzKHC7qPfEc+bzOCbsHKkzDiF17W+Dg=="
                  sparkle:installationType="package"
-                 length="7061316"
+                 length="7063358"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: sVsaqIJYkFgGziw6MIxscaXbUJZR45Bk6wau50/c6A3e/RSUCcFJ4juODesIjQNXaQGA6UVQirH2OujX0A5sDQ==
-length: 1543
+edSignature: BuhpKfAIhrU9HbHcXQTLki2FUeNk/kAvvsCt6mTkBOPkL+J8z38u4xvCkU/fd9m47Oko2x/XjHy/e6WikCE1Bw==
+length: 1843
 -->
