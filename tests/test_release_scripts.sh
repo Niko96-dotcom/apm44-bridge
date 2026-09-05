@@ -954,12 +954,12 @@ run_public_release_hygiene_check() {
   local out="$TMP/hygiene.out"
   mkdir -p "$repo"
   git -C "$repo" init -q
-  (cd "$repo" && /bin/bash "$ROOT/scripts/check-public-release-hygiene.sh") >"$out" 2>&1
+  (cd "$repo" && PATH=/usr/bin:/bin /bin/bash "$ROOT/scripts/check-public-release-hygiene.sh") >"$out" 2>&1
 
   mkdir -p "$repo/.planning"
   printf 'private planning fixture\n' >"$repo/.planning/private.md"
   git -C "$repo" add .planning/private.md
-  if (cd "$repo" && /bin/bash "$ROOT/scripts/check-public-release-hygiene.sh") >"$out" 2>&1; then
+  if (cd "$repo" && PATH=/usr/bin:/bin /bin/bash "$ROOT/scripts/check-public-release-hygiene.sh") >"$out" 2>&1; then
     echo "tracked planning files should fail the public release hygiene check" >&2
     exit 1
   fi
