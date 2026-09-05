@@ -8,32 +8,34 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.6</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.6</link>
-      <sparkle:version>0.12.6</sparkle:version>
-      <sparkle:shortVersionString>0.12.6</sparkle:shortVersionString>
+      <title>APM44 Bridge 0.12.7</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.7</link>
+      <sparkle:version>0.12.7</sparkle:version>
+      <sparkle:shortVersionString>0.12.7</sparkle:shortVersionString>
       <description sparkle:format="markdown"><![CDATA[
-## 0.12.6 - 2026-09-05
+## 0.12.7 - 2026-09-05
 
-- Fixed discovery of USB AirPods Max that macOS lists before activating their
-  audio device. Starting the bridge now activates the selected USB output.
-- Cleared reconnect notices when the connection recovers and made the signal
-  path show the selected output device.
-- Fixed validation of 44.1 kHz DAW exports with current macOS audio metadata.
-- Simplified process management and audio internals, removed redundant tests,
-  and corrected ordering when publishing audio metrics between threads.
+- Reduced shared-memory audio transfer overhead by copying contiguous ring
+  spans instead of calculating wraparound for every frame. Audio quality,
+  buffering settings, and validation are unchanged.
+- Added repeatable transfer benchmarks and stronger tests for stereo ordering,
+  wraparound, and partial transfers.
+- Added an isolated development app launch and fixed verification with custom
+  build directories and fresh worktrees.
+- Added an opt-in workaround for Xcode 26.6 compiler discovery stalls, preserving
+  compiler diagnostics and failure reporting.
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Sat, 05 Sep 2026 07:47:06 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.6/APM44Bridge-0.12.6.pkg"
-                 sparkle:edSignature="TVLVZJOmI6ioFtsYXhXlAX6oCBm75EtNUNd8rzg01LS3DQ6wOPTjxWVzzKHC7qPfEc+bzOCbsHKkzDiF17W+Dg=="
+      <pubDate>Sat, 05 Sep 2026 08:49:13 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.7/APM44Bridge-0.12.7.pkg"
+                 sparkle:edSignature="OYib1uuP4Q9eZGM7k30SsyoCHv3vLxj/D4da375vW/4ZFEAN8/U84BLRwnQ2aLOL97IknZ6b7mQvIHHz2XOfAg=="
                  sparkle:installationType="package"
-                 length="7063358"
+                 length="7064761"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: BuhpKfAIhrU9HbHcXQTLki2FUeNk/kAvvsCt6mTkBOPkL+J8z38u4xvCkU/fd9m47Oko2x/XjHy/e6WikCE1Bw==
-length: 1843
+edSignature: +1NkQpKosF7gJO0csrTLDsPuznmaJNOR/USYfYW2lnNb7/BW5O8EPq4DNimnBsm6y2k15rNHK1jQ8by2SXRDDg==
+length: 1909
 -->
