@@ -54,6 +54,14 @@ std::optional<apm44::BridgeDevicePair> ResolveDevices(const apm44::CliOptions& o
     return std::nullopt;
   }
 
+  if (const auto status = enumerator.activateOutput(*output); status != noErr) {
+    if (requirePresent) {
+      std::cerr << "error: could not activate USB output '" << output->name
+                << "' (Core Audio status " << status << ")\n";
+    }
+    return std::nullopt;
+  }
+
   apm44::BridgeDevicePair pair;
   if (input) {
     pair.input = *input;

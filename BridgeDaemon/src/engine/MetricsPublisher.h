@@ -16,11 +16,8 @@ inline double UnpackMetricDouble(uint64_t bits) {
   return std::bit_cast<double>(bits);
 }
 
-// State for the metrics publisher. Lifted out of `BridgeEngine` so the
-// publication contract can be tested without spinning up the full
-// audio engine (which needs Core Audio device IDs and a real prepared
-// ring). Every payload field is atomic, so the sequence counter never
-// guards a racy non-atomic struct copy.
+// One realtime writer publishes to non-realtime readers. Payload fields remain
+// atomic so even a discarded, overlapping read is free of data races.
 struct MetricsPublisherState {
   std::atomic<uint64_t> sequence{0};
   std::atomic<uint64_t> fillMsBits{PackMetricDouble(0.0)};
@@ -59,7 +56,9 @@ static_assert(std::atomic<uint64_t>::is_always_lock_free,
 inline void PublishMetrics(MetricsPublisherState& state,
                            const MetricsSnapshot& next) {
   const uint64_t sequence = state.sequence.load(std::memory_order_relaxed);
-  state.sequence.store(sequence + 1U, std::memory_order_release);
+  state.sequence.store(sequence + 1U, std::memory_order_relaxed);
+  // Publish the odd sequence before any new payload field can be observed.
+  std::atomic_thread_fence(std::memory_order_release);
   state.fillMsBits.store(PackMetricDouble(next.fillMs), std::memory_order_relaxed);
   state.smoothedRatioBits.store(PackMetricDouble(next.smoothedRatio), std::memory_order_relaxed);
   state.ppmBits.store(PackMetricDouble(next.ppm), std::memory_order_relaxed);
@@ -124,8 +123,11 @@ inline MetricsSnapshot ReadMetrics(const MetricsPublisherState& state) {
     copy.rebufferEvents = state.rebufferEvents.load(std::memory_order_relaxed);
     copy.recoveryFadeEvents =
         state.recoveryFadeEvents.load(std::memory_order_relaxed);
+    // If a field came from a newer write, its release fence makes that write's
+    // odd sequence visible before this final check, forcing a retry.
+    std::atomic_thread_fence(std::memory_order_acquire);
     const uint64_t sequenceAfter =
-        state.sequence.load(std::memory_order_acquire);
+        state.sequence.load(std::memory_order_relaxed);
     if (sequenceBefore == sequenceAfter) {
       return copy;
     }

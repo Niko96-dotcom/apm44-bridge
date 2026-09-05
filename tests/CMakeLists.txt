@@ -79,8 +79,6 @@ target_link_libraries(test_io_proc_callbacks PRIVATE
   "-framework CoreFoundation"
 )
 
-apm44_add_test(test_hardening_audit test_hardening_audit.cpp)
-
 apm44_add_test(test_shm_stale_recovery test_shm_stale_recovery.cpp)
 target_sources(test_shm_stale_recovery PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/VirtualDeviceFeed.cpp

@@ -221,3 +221,18 @@ TEST_CASE("Only one live shm consumer can claim the ring", "[mmap_shm_ring][sess
   producer.close();
   shm_unlink(ringName.c_str());
 }
+
+TEST_CASE("MmapShmRing closed ring returns zero safely", "[mmap_shm_ring]") {
+  apm44::MmapShmRing ring;
+  REQUIRE_FALSE(ring.isMapped());
+
+  float interleaved[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+  float out0[4] = {};
+  float out1[4] = {};
+  float* planar[2] = {out0, out1};
+
+  REQUIRE(ring.pushInterleaved(interleaved, 2) == 0);
+  REQUIRE(ring.popInterleaved(interleaved, 2) == 0);
+  REQUIRE(ring.popToPlanar(planar, 2) == 0);
+  ring.setDaemonReady();
+}

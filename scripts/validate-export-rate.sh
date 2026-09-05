@@ -3,7 +3,6 @@
 # Monitoring path (bridge → AirPods @ 48 kHz) must not alter exported file sample rate.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXPECTED_RATE="44100"
 JSON_MODE=0
 
@@ -81,22 +80,37 @@ check_file() {
   fi
 
   local info rate_hz ok=0
-  info="$(afinfo "$path" 2>/dev/null || true)"
-  if [[ -z "$info" ]]; then
+  if ! info="$(afinfo "$path" 2>/dev/null)" || [[ -z "$info" ]]; then
     echo "FAIL: afinfo could not read $path" >&2
     return 1
   fi
 
-  # afinfo formats vary; match common sample rate lines
-  rate_hz="$(echo "$info" | grep -Ei 'sample rate|Sample Rate' | head -1 | grep -Eo '[0-9]+(\.[0-9]+)?' | head -1 || true)"
+  # Current macOS reports the rate after the channel count on "Data format".
+  # Older output uses a separate "sample rate" line.
+  rate_hz="$(printf '%s\n' "$info" | awk '
+    tolower($0) ~ /^[[:space:]]*data format:/ {
+      if (match($0, /[0-9]+(\.[0-9]+)?[[:space:]]+Hz/)) {
+        rate = substr($0, RSTART, RLENGTH)
+        sub(/[[:space:]]+Hz$/, "", rate)
+        print rate
+        exit
+      }
+    }
+    tolower($0) ~ /^[[:space:]]*sample rate:/ {
+      sub(/^[^:]*:[[:space:]]*/, "")
+      if (match($0, /^[0-9]+(\.[0-9]+)?/)) {
+        print substr($0, RSTART, RLENGTH)
+        exit
+      }
+    }
+  ')"
   if [[ -z "$rate_hz" ]]; then
     echo "FAIL: could not parse sample rate from afinfo output" >&2
     echo "$info" >&2
     return 1
   fi
 
-  # Accept 44100 or 44100.0 (integer compare via truncation)
-  if [[ "${rate_hz%%.*}" == "$EXPECTED_RATE" ]]; then
+  if awk -v rate="$rate_hz" -v expected="$EXPECTED_RATE" 'BEGIN { exit !(rate == expected) }'; then
     ok=1
   fi
 

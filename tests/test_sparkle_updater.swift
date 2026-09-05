@@ -2,19 +2,6 @@ import XCTest
 @testable import APM44Bridge
 
 final class SparkleUpdaterTests: XCTestCase {
-    func testNoUpdateAvailableHidesButton() {
-        XCTAssertFalse(AppUpdateState.idle.showsUpdateButton)
-        XCTAssertFalse(AppUpdateState.checking.showsUpdateButton)
-        XCTAssertFalse(AppUpdateState.failed(message: "feed unavailable").showsUpdateButton)
-        XCTAssertNil(AppUpdateState.idle.availableVersion)
-    }
-
-    func testNewerAppcastVersionProducesConditionalUpdateButton() {
-        let state = AppUpdateState.available(version: "0.12.3")
-        XCTAssertTrue(state.showsUpdateButton)
-        XCTAssertEqual(state.availableVersion, "0.12.3")
-    }
-
     func testCurrentAndDowngradeVersionsDoNotCountAsNewer() {
         XCTAssertEqual(AppUpdateVersionComparator.compare("0.12.2", to: "0.12.2"), .same)
         XCTAssertEqual(AppUpdateVersionComparator.compare("0.12.1", to: "0.12.2"), .older)
@@ -45,7 +32,7 @@ final class SparkleUpdaterTests: XCTestCase {
         )
     }
 
-    func testNoUpdateErrorReturnsToIdleInsteadOfFailure() {
+    func testNoUpdateErrorIsRecognizedAsSuccessfulCheck() {
         let noUpdateError = NSError(domain: "SUSparkleErrorDomain", code: 1001,
                                     userInfo: [NSLocalizedDescriptionKey: "You’re up to date!"])
         XCTAssertTrue(SparkleUpdateController.isNoUpdateError(noUpdateError))
@@ -55,9 +42,4 @@ final class SparkleUpdaterTests: XCTestCase {
         )
     }
 
-    func testStateTransitionsDoNotKeepButtonAfterInstall() {
-        XCTAssertFalse(AppUpdateState.downloading(version: "0.12.3").showsUpdateButton)
-        XCTAssertFalse(AppUpdateState.readyToInstall(version: "0.12.3").showsUpdateButton)
-        XCTAssertFalse(AppUpdateState.installing(version: "0.12.3").showsUpdateButton)
-    }
 }

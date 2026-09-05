@@ -23,7 +23,6 @@ bool VirtualDeviceFeed::open() {
   // must be able to move the whole producer burst into its smoothing ring in
   // one pass instead of artificially stretching it across callbacks.
   constexpr std::size_t kMaxDrain = kDefaultShmCapacityFrames;
-  interleavedScratch_.resize(PlanarRingBuffer::kChannels * kMaxDrain);
   planarScratch0_.resize(kMaxDrain);
   planarScratch1_.resize(kMaxDrain);
   return true;
@@ -64,15 +63,11 @@ std::size_t VirtualDeviceFeed::drainTo(PlanarRingBuffer& ring, std::size_t maxFr
     return 0;
   }
   const std::size_t chunk =
-      std::min({maxFrames, writable, planarScratch0_.size(),
-                interleavedScratch_.size() / PlanarRingBuffer::kChannels});
-  const std::size_t popped = ring_.popInterleaved(interleavedScratch_.data(), chunk);
+      std::min({maxFrames, writable, planarScratch0_.size()});
+  float* planar[2] = {planarScratch0_.data(), planarScratch1_.data()};
+  const std::size_t popped = ring_.popToPlanar(planar, chunk);
   if (popped == 0) {
     return 0;
-  }
-  for (std::size_t i = 0; i < popped; ++i) {
-    planarScratch0_[i] = interleavedScratch_[i * 2 + 0];
-    planarScratch1_[i] = interleavedScratch_[i * 2 + 1];
   }
   const float* channels[2] = {planarScratch0_.data(), planarScratch1_.data()};
   return ring.push(channels, popped);

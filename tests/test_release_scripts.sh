@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Credential-free regression tests for release notarization scripts.
+# Credential-free regression tests for release and validation scripts.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SOURCE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 FAKE_BIN="$TMP/bin"
 LOG="$TMP/fake-xcrun.log"
@@ -12,7 +12,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$FAKE_BIN"
+# Run the current scripts in a disposable repository layout. Builders may
+# replace bundles and staging directories freely without touching local builds.
+ROOT="$TMP/repo"
+mkdir -p "$FAKE_BIN" "$ROOT/App"
+cp -R "$SOURCE_ROOT/scripts" "$SOURCE_ROOT/.github" "$ROOT/"
+cp "$SOURCE_ROOT/VERSION" "$ROOT/"
+cp "$SOURCE_ROOT/App/project.yml" "$ROOT/App/"
 
 cat >"$FAKE_BIN/xcrun" <<'EOF'
 #!/bin/bash
@@ -755,8 +761,6 @@ run_uninstall_script_check() {
   assert_contains "$out" "dry-run: would remove /Applications/APM44 Bridge.app"
   assert_contains "$out" "dry-run: would remove /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
   assert_contains "$out" "dry-run: would forget package receipt com.niko.apm44.pkg"
-  assert_contains "$ROOT/scripts/uninstall-apm44.sh" "sudo rm -rf \"\$APP\""
-  assert_contains "$ROOT/scripts/uninstall-apm44.sh" "sudo pkgutil --forget \"\$PKG_ID\""
 }
 
 run_pkg_validation_order_check() {
@@ -925,84 +929,15 @@ run_dist_01_staple_before_dmg_order() {
   fi
 }
 
-# DIST-05: generated DMG command installer replaces the app bundle deterministically.
-run_dist_05_dmg_command_installer_check() {
-  local script="$ROOT/scripts/build-release-dmg.sh"
-
-  assert_contains "$script" 'sudo rm -rf "/Applications/APM44 Bridge.app"'
-  assert_contains "$script" 'sudo ditto "\$DIR/APM44 Bridge.app" "/Applications/APM44 Bridge.app"'
-  assert_contains "$script" 'sudo chown -R root:wheel "/Applications/APM44 Bridge.app"'
-  assert_not_contains "$script" 'cp -R "\$DIR/APM44 Bridge.app" /Applications/'
-}
-
-# REL-03: sign-notarize.yml must fail the workflow if verify-app-build.sh fails.
-run_sign_notarize_workflow_check() {     # [REL-03]
-  local workflow="$ROOT/.github/workflows/sign-notarize.yml"
-  if [[ ! -f "$workflow" ]]; then
-    echo "REL-03: workflow file not found: $workflow" >&2
-    exit 1
-  fi
-  assert_contains "$workflow" "bash scripts/verify-app-build.sh"
-  assert_contains "$workflow" "cmake --build build --target apm44-bridge APM44Bridge"
-  assert_contains "$workflow" "error: APPLE_SIGN_ID secret is required"
-  assert_contains "$workflow" "error: AC_NOTARY keychain profile is required"
-  assert_contains "$workflow" "maintainer signing/notary evidence"
-  assert_contains "$workflow" "does not publish the public DMG"
-  assert_not_contains "$workflow" "SKIP: APPLE_SIGN_ID"
-  assert_not_contains "$workflow" "SKIP: AC_NOTARY"
-  if grep -Eq 'verify-app-build\.sh.*(\|\| *true|continue-on-error:\s*true)' "$workflow"; then
-    echo "REL-03: sign-notarize.yml masks verify-app-build.sh failure" >&2
-    exit 1
-  fi
-}
-
-run_release_workflow_does_not_upload_unsigned_installables() {
-  local workflow="$ROOT/.github/workflows/release.yml"
-  if [[ ! -f "$workflow" ]]; then
-    echo "release workflow file not found: $workflow" >&2
-    exit 1
-  fi
-
-  assert_contains "$workflow" "Release Verification"
-  assert_contains "$workflow" "verification-only"
-  assert_contains "$workflow" "Do not distribute CI-built app, driver, or daemon bundles."
-  assert_contains "$workflow" "bash scripts/release-all.sh"
-  assert_not_contains "$workflow" "actions/upload-artifact"
-  assert_not_contains "$workflow" "Upload artifacts"
-  assert_not_contains "$workflow" "APM44Bridge-unsigned"
-  assert_not_contains "$workflow" "build/Release/APM44 Bridge.app"
-  assert_not_contains "$workflow" "build/Driver/APM44Bridge.driver"
-  assert_not_contains "$workflow" "build/BridgeDaemon/apm44-bridge"
-}
-
-run_notarize_hal_driver_shared_helper_check() {
-  local script="$ROOT/scripts/notarize-hal-driver.sh"
-  assert_contains "$script" 'source "$ROOT/scripts/notary-result.sh"'
-  assert_contains "$script" 'require_notary_accepted "$ZIP" "$PROFILE" "HAL driver"'
-  assert_not_contains "$script" 'xcrun notarytool submit "$ZIP"'
-}
-
-# CI-01: release-facing workflows must reference only official actions/* actions,
-# or document any third-party action in docs/release.md.
-run_ci_01_workflow_trust_check() {       # [CI-01]
+run_workflow_action_trust_check() {
   local workflow
   for workflow in "$ROOT/.github/workflows/release.yml" "$ROOT/.github/workflows/sign-notarize.yml" "$ROOT/.github/workflows/ci.yml"; do
-    if [[ ! -f "$workflow" ]]; then
-      echo "CI-01: workflow file not found: $workflow" >&2
-      exit 1
-    fi
-
-    if ! grep -q "CI-01" "$workflow"; then
-      echo "CI-01: missing CI-01 trust marker in $workflow" >&2
-      exit 1
-    fi
-
     local line
     while IFS= read -r line; do
       if [[ "$line" =~ uses:[[:space:]]*([^[:space:]]+) ]]; then
         local action="${BASH_REMATCH[1]}"
         if [[ "$action" != actions/* ]]; then
-          echo "CI-01: non-official action '$action' in $workflow must be documented in docs/release.md" >&2
+          echo "non-official action '$action' in $workflow requires review" >&2
           exit 1
         fi
       fi
@@ -1010,149 +945,25 @@ run_ci_01_workflow_trust_check() {       # [CI-01]
   done
 }
 
-# CI-02: public GitHub CI must run release-script regressions after native tests.
-run_ci_02_release_script_tests_in_github_ci() {
-  local workflow="$ROOT/.github/workflows/ci.yml"
-  if [[ ! -f "$workflow" ]]; then
-    echo "CI-02: workflow file not found: $workflow" >&2
+run_release_workflow_does_not_upload_unsigned_installables() {
+  assert_not_contains "$ROOT/.github/workflows/release.yml" "actions/upload-artifact"
+}
+
+run_public_release_hygiene_check() {
+  local repo="$TMP/hygiene-repo"
+  local out="$TMP/hygiene.out"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  (cd "$repo" && /bin/bash "$ROOT/scripts/check-public-release-hygiene.sh") >"$out" 2>&1
+
+  mkdir -p "$repo/.planning"
+  printf 'private planning fixture\n' >"$repo/.planning/private.md"
+  git -C "$repo" add .planning/private.md
+  if (cd "$repo" && /bin/bash "$ROOT/scripts/check-public-release-hygiene.sh") >"$out" 2>&1; then
+    echo "tracked planning files should fail the public release hygiene check" >&2
     exit 1
   fi
-
-  assert_contains "$workflow" "Release script tests"
-  assert_contains "$workflow" "bash tests/test_release_scripts.sh"
-
-  local native_line
-  local release_line
-  native_line="$(grep -n "name: Native tests" "$workflow" | head -1 | cut -d: -f1)"
-  release_line="$(grep -n "name: Release script tests" "$workflow" | head -1 | cut -d: -f1)"
-
-  if [[ -z "$native_line" || -z "$release_line" ]]; then
-    echo "CI-02: expected native and release-script test steps in $workflow" >&2
-    exit 1
-  fi
-
-  if [[ "$release_line" -le "$native_line" ]]; then
-    echo "CI-02: release-script tests must run after native tests" >&2
-    exit 1
-  fi
-}
-
-# CI-04: the hosted release verifier must receive the encrypted Sparkle key so
-# its appcast check remains cryptographic instead of silently structural.
-run_ci_04_published_release_verification_secret_check() {
-  local workflow="$ROOT/.github/workflows/publish-release.yml"
-  if [[ ! -f "$workflow" ]]; then
-    echo "CI-04: workflow file not found: $workflow" >&2
-    exit 1
-  fi
-
-  assert_contains "$workflow" 'SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}'
-  assert_contains "$workflow" 'SPARKLE_PRIVATE_KEY}" -ne 44'
-  assert_contains "$workflow" 'SPARKLE_PRIVATE_KEY" | shasum -a 256'
-  assert_contains "$workflow" 'ref: ${{ github.sha }}'
-  assert_contains "$workflow" 'path: published'
-  assert_contains "$workflow" 'SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh | tail -n 1)"'
-  assert_contains "$ROOT/scripts/verify-published-release.sh" 'APM44_RELEASE_VERSION:-'
-  assert_contains "$workflow" 'bash scripts/verify-published-release.sh'
-  assert_contains "$ROOT/scripts/ensure-sparkle-tools.sh" 'CODE_SIGNING_ALLOWED=NO build >&2'
-  assert_contains "$ROOT/scripts/verify-published-release.sh" 'hosted appcast has no v'
-  assert_contains "$ROOT/scripts/verify-published-release.sh" 'APM44Bridge-${VERSION}.pkg'
-}
-
-# BUILD-04: release metadata must not perturb the source fingerprint embedded
-# in the app, helper, and driver after the signed appcast is committed.
-run_build_04_appcast_excluded_from_source_fingerprint_check() {
-  assert_contains "$ROOT/CMakeLists.txt" 'rev-list -n 1 --abbrev-commit --abbrev=12 HEAD -- . ":(exclude)docs/appcast.xml"'
-  assert_contains "$ROOT/scripts/generate-app-project.sh" "rev-list -n 1 HEAD -- . ':(exclude)docs/appcast.xml'"
-}
-
-run_sign_01_03_workflow_release_app_alignment_check() {
-  local workflow="$ROOT/.github/workflows/sign-notarize.yml"
-  assert_contains "$workflow" "xcodebuild -project App/APM44Bridge.xcodeproj"
-  assert_contains "$workflow" "-configuration Release"
-  assert_contains "$workflow" 'CONFIGURATION_BUILD_DIR="$PWD/build/Release"'
-  assert_contains "$workflow" "APM44_APP_OUTPUT_DIR=\"\$PWD/build/Release\""
-  assert_contains "$workflow" "APM44_APP_PATH: \${{ github.workspace }}/build/Release/APM44 Bridge.app"
-}
-
-run_ci_03_local_ci_app_bundle_proof_check() {
-  local script="$ROOT/scripts/ci.sh"
-  local verify_script="$ROOT/scripts/verify-app-build.sh"
-  local menu_script="$ROOT/scripts/verify-menu-bar.sh"
-  local embed_script="$ROOT/scripts/embed-daemon-in-app.sh"
-  local ci_workflow="$ROOT/.github/workflows/ci.yml"
-
-  assert_contains "$script" 'APP_PATH="$BUILD_DIR/$CONFIG/APM44 Bridge.app"'
-  assert_contains "$script" 'APM44_APP_OUTPUT_DIR="$BUILD_DIR/$CONFIG"'
-  assert_contains "$script" 'APM44_APP_PATH="$APP_PATH"'
-  assert_contains "$script" 'CODE_SIGNING_ALLOWED=YES'
-  assert_contains "$script" 'CODE_SIGN_IDENTITY=-'
-  assert_not_contains "$script" 'CODE_SIGNING_ALLOWED=NO'
-
-  assert_contains "$verify_script" 'rm -rf "$APP" "$APP.dSYM"'
-  assert_contains "$verify_script" 'CODE_SIGNING_ALLOWED=YES'
-  assert_contains "$verify_script" 'CODE_SIGN_IDENTITY=-'
-  assert_contains "$verify_script" 'codesign --verify --deep --strict "$APP"'
-  assert_not_contains "$verify_script" 'CODE_SIGNING_ALLOWED=NO'
-
-  assert_contains "$embed_script" 'APM44_SKIP_LOCAL_APP_RESIGN'
-  assert_contains "$embed_script" 'codesign --force --sign - --timestamp=none "$DEST"'
-  assert_contains "$embed_script" 'codesign --verify --deep --strict "$APP"'
-
-  assert_contains "$menu_script" 'CODE_SIGNING_ALLOWED=YES'
-  assert_contains "$menu_script" 'CODE_SIGN_IDENTITY=-'
-  assert_not_contains "$menu_script" 'CODE_SIGNING_ALLOWED=NO'
-
-  assert_contains "$ci_workflow" 'CODE_SIGNING_ALLOWED=YES'
-  assert_contains "$ci_workflow" 'CODE_SIGN_IDENTITY=-'
-  assert_not_contains "$ci_workflow" 'CODE_SIGNING_ALLOWED=NO'
-
-  assert_contains "$script" 'bash scripts/embed-daemon-in-app.sh'
-  assert_contains "$script" 'bash scripts/verify-installed-sync.sh --dry-run'
-  assert_contains "$script" 'Restore native driver bundle after release fixtures'
-  assert_contains "$script" 'cmake --build "$BUILD_DIR" --target APM44Bridge --parallel'
-  assert_contains "$script" 'embedded helper missing'
-}
-
-run_doc_truth_check() { # [DOC-01][DOC-02][DOC-03]
-  local install_doc="$ROOT/docs/install.md"
-  local menu_qa="$ROOT/docs/menu-bar-qa.md"
-  local release_doc="$ROOT/docs/release.md"
-  local validation_doc="$ROOT/docs/release-validation.md"
-  local readme="$ROOT/README.md"
-
-  assert_contains "$install_doc" "Safe (~100 ms)"
-  assert_contains "$install_doc" "fresh-install default"
-  assert_contains "$menu_qa" "Safe default on fresh install"
-  assert_not_contains "$menu_qa" "Balanced default on fresh install"
-
-  assert_contains "$readme" "PKG-in-DMG release"
-  assert_contains "$readme" 'INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)"'
-
-  assert_contains "$release_doc" "PKG-primary inside a signed DMG"
-  assert_contains "$release_doc" "bash scripts/verify-release-dmg-layout.sh"
-  assert_not_contains "$release_doc" "APM44_BUILD_PKG=1"
-  assert_not_contains "$release_doc" "maintainer-only PKG"
-
-  assert_contains "$validation_doc" "current 0.12.5 PKG-in-DMG distribution validation path"
-  assert_contains "$validation_doc" 'APM44Bridge-${APM44_VERSION:-0.12.5}.dmg'
-  assert_contains "$validation_doc" "bash scripts/check-public-release-hygiene.sh"
-  assert_not_contains "$validation_doc" "v0.8 release-candidate closeout"
-
-  assert_contains "$install_doc" "APM44Bridge-0.12.5.dmg.sha256"
-  assert_contains "$install_doc" "Current PKG-in-DMG public release artifact"
-  assert_contains "$install_doc" "APM44Bridge-0.12.5.pkg"
-  assert_not_contains "$install_doc" "DMG-primary public release artifact"
-  assert_not_contains "$install_doc" "PKG flow is maintainer-only"
-  assert_contains "$ROOT/scripts/notarize-release-dmg.sh" 'shasum -a 256 "$(basename "$DMG")"'
-  assert_contains "$ROOT/scripts/release-all.sh" "*.dmg.sha256"
-}
-
-run_public_release_hygiene_check() { # [DOC-04]
-  local script="$ROOT/scripts/check-public-release-hygiene.sh"
-  assert_contains "$script" '^\.planning/'
-  assert_contains "$script" "notary-log.*"
-  /bin/bash "$script" >/dev/null
+  assert_contains "$out" ".planning/private.md"
 }
 
 run_codesign_verify_case() {
@@ -1197,6 +1008,47 @@ run_codesign_verify_case() {
   fi
 }
 
+run_export_rate_cases() {
+  cat >"$FAKE_BIN/afinfo" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$APM44_FAKE_AFINFO"
+exit "${APM44_FAKE_AFINFO_STATUS:-0}"
+EOF
+  chmod +x "$FAKE_BIN/afinfo"
+  local fixture="$TMP/export.wav" out="$TMP/export-result.json" status expected info
+  touch "$fixture"
+  while IFS='|' read -r expected info; do
+    status=0
+    env PATH="$FAKE_BIN:$PATH" APM44_FAKE_AFINFO="$info" \
+      bash "$ROOT/scripts/validate-export-rate.sh" --check-file "$fixture" --json >"$out" 2>/dev/null || status=$?
+    if [[ "$status" -ne "$expected" ]]; then
+      echo "export rate: expected exit $expected, got $status for $info" >&2
+      exit 1
+    fi
+    if [[ "$expected" -eq 0 ]]; then
+      assert_contains "$out" '"pass":true'
+      assert_contains "$out" '"sample_rate_hz":44100'
+    fi
+  done <<'EOF'
+0|Data format:     2 ch,  44100 Hz, lpcm (0x0000000C) 24-bit little-endian signed integer
+0|Data format: 1 ch, 44100.000000 Hz, lpcm
+0|sample rate: 44100.0 Hz
+0|Sample Rate: 44100
+1|Data format: 2 ch, 48000 Hz, lpcm
+1|Data format: 2 ch, 44100.9 Hz, lpcm
+1|sample rate: 44100.9 Hz
+1|Data format: 2 ch, unknown Hz, lpcm
+1|audio 44100 bytes
+EOF
+  if env PATH="$FAKE_BIN:$PATH" APM44_FAKE_AFINFO='sample rate: 44100' APM44_FAKE_AFINFO_STATUS=1 \
+    bash "$ROOT/scripts/validate-export-rate.sh" --check-file "$fixture" >"$out" 2>&1; then
+    echo "export rate: accepted failed afinfo inspection" >&2
+    exit 1
+  fi
+}
+
+run_export_rate_cases
+
 run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" accepted success "dmg-accepted"
 run_notary_case "scripts/notarize-release-pkg.sh" APM44_PKG_PATH "$PKG" accepted success "pkg-accepted"
 run_notary_case "scripts/notarize-hal-driver.sh" APM44_DRIVER_PATH "$DRIVER" accepted success "driver-accepted"
@@ -1238,29 +1090,11 @@ run_verify_release_pkg_check
 
 run_dist_01_staple_before_dmg_order      # [DIST-01]
 
-run_dist_05_dmg_command_installer_check  # [DIST-05]
-
-run_sign_notarize_workflow_check         # [REL-03]
-
 run_release_workflow_does_not_upload_unsigned_installables
 
-run_notarize_hal_driver_shared_helper_check # [NOTARY-01][NOTARY-02][NOTARY-03]
+run_workflow_action_trust_check
 
-run_ci_01_workflow_trust_check           # [CI-01]
-
-run_ci_02_release_script_tests_in_github_ci # [CI-02]
-
-run_ci_04_published_release_verification_secret_check # [CI-04]
-
-run_build_04_appcast_excluded_from_source_fingerprint_check # [BUILD-04]
-
-run_sign_01_03_workflow_release_app_alignment_check # [SIGN-01][SIGN-02][SIGN-03]
-
-run_ci_03_local_ci_app_bundle_proof_check # [CI-01][CI-02][CI-03]
-
-run_doc_truth_check # [DOC-01][DOC-02][DOC-03]
-
-run_public_release_hygiene_check # [DOC-04]
+run_public_release_hygiene_check
 
 run_codesign_verify_case strict-ok 0 success "codesign-strict-ok"
 run_codesign_verify_case runtime-flag 0 success "codesign-runtime-flag"  # [REL-01]

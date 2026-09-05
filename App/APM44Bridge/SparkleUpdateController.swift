@@ -7,26 +7,10 @@ enum AppUpdateState: Equatable {
     case idle
     case checking
     case available(version: String)
-    case downloading(version: String)
     case readyToInstall(version: String)
     case installing(version: String)
     case cancelled
     case failed(message: String)
-
-    var availableVersion: String? {
-        switch self {
-        case let .available(version), let .downloading(version),
-             let .readyToInstall(version), let .installing(version):
-            return version
-        case .idle, .checking, .cancelled, .failed:
-            return nil
-        }
-    }
-
-    var showsUpdateButton: Bool {
-        if case .available = self { return true }
-        return false
-    }
 }
 
 enum UpdateVersionComparison: Equatable {
@@ -91,7 +75,6 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     private static let noUpdateErrorCode = 1001
 
     @Published private(set) var state: AppUpdateState = .idle
-    @Published private(set) var lastErrorMessage: String?
 
     private(set) var updaterController: SPUStandardUpdaterController!
     private let currentVersion: String
@@ -136,7 +119,6 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     func checkForUpdates() {
         guard updater.canCheckForUpdates else { return }
-        lastErrorMessage = nil
         state = .checking
         updaterController.checkForUpdates(nil)
     }
@@ -148,14 +130,12 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             state = .idle
             return
         }
-        lastErrorMessage = nil
         state = .available(version: item.displayVersionString)
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
         if Self.isNoUpdateError(error) {
             state = .idle
-            lastErrorMessage = nil
         } else {
             fail(error)
         }
@@ -163,7 +143,6 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
         state = .idle
-        lastErrorMessage = nil
     }
 
     func updater(_ updater: SPUUpdater, didDownloadUpdate item: SUAppcastItem) {
@@ -176,7 +155,6 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     func userDidCancelDownload(_ updater: SPUUpdater) {
         state = .cancelled
-        lastErrorMessage = nil
     }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
@@ -187,11 +165,9 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         let nsError = error as NSError
         if Self.isNoUpdateError(error) {
             state = .idle
-            lastErrorMessage = nil
         } else if nsError.domain == SUSparkleErrorDomain,
                   nsError.code == 4007 { // Sparkle's SUInstallationCanceledError.
             state = .cancelled
-            lastErrorMessage = nil
         } else {
             fail(error)
         }
@@ -204,7 +180,6 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     ) {
         if let error, Self.isNoUpdateError(error) {
             state = .idle
-            lastErrorMessage = nil
         } else if let error {
             fail(error)
         } else if case .checking = state {
@@ -222,7 +197,6 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     private func fail(_ error: Error) {
         state = .failed(message: Self.userFacingErrorMessage(error))
-        lastErrorMessage = state.failureMessage
     }
 
     nonisolated static func isNoUpdateError(_ error: Error) -> Bool {
@@ -244,12 +218,5 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         }
         if description.isEmpty { return "Update check failed. Try again later." }
         return "Update check failed: \(description)"
-    }
-}
-
-private extension AppUpdateState {
-    var failureMessage: String? {
-        if case let .failed(message) = self { return message }
-        return nil
     }
 }

@@ -22,6 +22,7 @@ class DeviceEnumerator {
 
   std::optional<AudioDeviceInfo> resolveInput(const std::optional<std::string>& uidOverride);
   std::optional<AudioDeviceInfo> resolveOutput(const std::optional<std::string>& uidOverride);
+  OSStatus activateOutput(AudioDeviceInfo& output);
 };
 
 }  // namespace apm44

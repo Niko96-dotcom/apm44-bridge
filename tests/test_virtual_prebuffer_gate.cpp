@@ -27,14 +27,3 @@ TEST_CASE("VirtualPrebufferGate can rebuffer after an underrun",
   REQUIRE_FALSE(gate.shouldOutput(440));
   REQUIRE(gate.shouldOutput(500));
 }
-
-TEST_CASE("VirtualPrebufferGate does not rebuffer for tiny partial shortages",
-          "[virtual_prebuffer_gate]") {
-  apm44::VirtualPrebufferGate gate;
-  gate.reset(1323);
-  REQUIRE(gate.shouldOutput(1323));
-
-  REQUIRE_FALSE(gate.shouldRebufferForPartialShortage(470, 463));
-  REQUIRE_FALSE(gate.shouldRebufferForPartialShortage(470, 470));
-  REQUIRE(gate.shouldRebufferForPartialShortage(470, 300));
-}

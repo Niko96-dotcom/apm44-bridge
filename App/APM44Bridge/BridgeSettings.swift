@@ -8,9 +8,11 @@ final class BridgeSettings: ObservableObject {
         static let srcQualityOverride = "apm44.srcQualityOverride"
     }
 
+    private let defaults: UserDefaults
+
     @Published var outputDeviceUid: String? {
         didSet {
-            UserDefaults.standard.set(outputDeviceUid, forKey: Keys.outputDeviceUid)
+            defaults.set(outputDeviceUid, forKey: Keys.outputDeviceUid)
             NotificationCenter.default.post(
                 name: .apm44OutputDeviceChanged,
                 object: nil,
@@ -20,15 +22,15 @@ final class BridgeSettings: ObservableObject {
     }
 
     @Published var latencyPreset: LatencyPreset {
-        didSet { UserDefaults.standard.set(latencyPreset.rawValue, forKey: Keys.latencyPreset) }
+        didSet { defaults.set(latencyPreset.rawValue, forKey: Keys.latencyPreset) }
     }
 
     @Published var srcQualityOverride: SrcQuality? {
         didSet {
             if let srcQualityOverride {
-                UserDefaults.standard.set(srcQualityOverride.rawValue, forKey: Keys.srcQualityOverride)
+                defaults.set(srcQualityOverride.rawValue, forKey: Keys.srcQualityOverride)
             } else {
-                UserDefaults.standard.removeObject(forKey: Keys.srcQualityOverride)
+                defaults.removeObject(forKey: Keys.srcQualityOverride)
             }
         }
     }
@@ -41,12 +43,8 @@ final class BridgeSettings: ObservableObject {
         latencyPreset.effectiveTargetFillMs(halMode: halMode)
     }
 
-    var effectiveTargetFillMs: Double {
-        effectiveTargetFillMs(halMode: false)
-    }
-
-    init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         outputDeviceUid = defaults.string(forKey: Keys.outputDeviceUid)
         if let raw = defaults.string(forKey: Keys.latencyPreset),
            let preset = LatencyPreset(rawValue: raw) {

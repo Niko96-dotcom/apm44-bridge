@@ -50,12 +50,4 @@ final class ControlsWindowPresenter: NSObject, ControlsPresenting, NSWindowDeleg
         NSApp.activate(ignoringOtherApps: true)
         controlsWindow.makeKeyAndOrderFront(nil)
     }
-
-    var isControlsWindowVisibleForTesting: Bool {
-        window?.isVisible == true
-    }
-
-    func closeControlsWindowForTesting() {
-        window?.orderOut(nil)
-    }
 }

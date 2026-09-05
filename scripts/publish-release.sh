@@ -22,7 +22,7 @@ fail() { echo "error: $*" >&2; exit 1; }
 [[ -z "${APM44_RELEASE_TAG:-}" || "$APM44_RELEASE_TAG" == "$TAG" ]] || \
   fail "APM44_RELEASE_TAG=$APM44_RELEASE_TAG does not match VERSION=$VERSION"
 
-for command_name in gh git curl shasum; do
+for command_name in gh git curl shasum python3; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required to publish v$VERSION"
 done
 
@@ -60,17 +60,29 @@ gh auth status >/dev/null 2>&1 || fail "GitHub CLI authentication is unavailable
 grep -Fq "https://github.com/${REPO}/releases/download/${TAG}/APM44Bridge-${VERSION}.pkg" "$APPCAST" || \
   fail "appcast enclosure URL does not point at the immutable $TAG PKG asset"
 
-echo "Creating immutable GitHub release $TAG..."
+NOTES="$(mktemp)"
+trap 'rm -f "$NOTES"' EXIT
+python3 - "$APPCAST" >"$NOTES" <<'PYNOTES'
+import sys
+import xml.etree.ElementTree as ET
+
+notes = ET.parse(sys.argv[1]).findtext("./channel/item/description", "").strip()
+if not notes:
+    raise SystemExit("error: signed appcast release notes are empty")
+print(notes)
+PYNOTES
+
+echo "Uploading signed DMG, PKG, and checksums to a draft release..."
 gh release create "$TAG" \
   --repo "$REPO" \
   --verify-tag \
+  --draft \
   --title "APM44 Bridge $VERSION" \
-  --notes-file "$ROOT/CHANGELOG.md"
-
-echo "Uploading signed DMG, PKG, and checksums..."
-gh release upload "$TAG" \
-  --repo "$REPO" \
+  --notes-file "$NOTES" \
   "$DMG" "$PKG" "$DMG_SHA" "$PKG_SHA"
+
+# A failed upload must leave a draft, never a public release with missing assets.
+gh release edit "$TAG" --repo "$REPO" --draft=false --latest
 
 RELEASE_URL="$(gh release view "$TAG" --repo "$REPO" --json url --jq '.url')"
 echo "Release URL: $RELEASE_URL"

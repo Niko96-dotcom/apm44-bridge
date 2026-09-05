@@ -66,24 +66,28 @@ final class BridgeProcessManagerTests: XCTestCase {
         await task.value
     }
 
+    private func makeSettings() -> BridgeSettings {
+        let suite = "com.niko.apm44.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return BridgeSettings(defaults: defaults)
+    }
+
     private func makeManager(
         launcher: MockProcessLauncher? = nil,
-        executable: String = "/usr/bin/sleep",
-        launchArguments: [String] = ["3600"],
         applicationTerminator: @escaping @MainActor () -> Void = {}
     ) -> (BridgeProcessManager, BridgeSettings, MockProcessLauncher) {
         let mockLauncher = launcher ?? MockProcessLauncher()
-        let settings = BridgeSettings()
+        let settings = makeSettings()
         settings.outputDeviceUid = testDevice.uid
         let manager = BridgeProcessManager(
             settings: settings,
             processLauncher: mockLauncher,
-            binaryURLOverride: URL(fileURLWithPath: executable),
+            binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
             applicationTerminator: applicationTerminator
         )
         manager.setDevicesForTesting([testDevice])
         manager.testDeviceListOverride = [testDevice]
-        manager.testLaunchArgumentsOverride = launchArguments
         return (manager, settings, mockLauncher)
     }
 
@@ -103,7 +107,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testStartFromErrorState() async {
         let launcher = MockProcessLauncher()
-        let settings = BridgeSettings()
+        let settings = makeSettings()
         settings.outputDeviceUid = testDevice.uid
         let manager = BridgeProcessManager(
             settings: settings,
@@ -111,7 +115,6 @@ final class BridgeProcessManagerTests: XCTestCase {
             binaryURLOverride: URL(fileURLWithPath: "/usr/bin/sleep")
         )
         manager.setDevicesForTesting([testDevice])
-        manager.testLaunchArgumentsOverride = ["3600"]
         manager.setStateForTesting(.error("previous failure"))
 
         manager.start()
@@ -127,7 +130,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testProductionLaunchUsesParentDeathPipe() async throws {
         let launcher = MockProcessLauncher()
-        let settings = BridgeSettings()
+        let settings = makeSettings()
         settings.outputDeviceUid = testDevice.uid
         let manager = BridgeProcessManager(
             settings: settings,
@@ -257,16 +260,6 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
-    func testErrorToStarting() {
-        let (manager, _, launcher) = makeManager()
-        manager.setStateForTesting(.error("lost connection"))
-
-        manager.start()
-
-        XCTAssertEqual(manager.state, .running)
-        XCTAssertEqual(launcher.makeCount, 1)
-    }
-
     func testRestartFromErrorActuallyRelaunches() async {
         let (manager, _, launcher) = makeManager()
         manager.setStateForTesting(.error("lost connection"))
@@ -312,22 +305,6 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .idle)
         XCTAssertEqual(launcher.makeCount, 0)
-    }
-
-    func testUserStopDoesNotSetRecoverableFlag() async {
-        let (manager, _, launcher) = makeManager()
-
-        manager.start()
-        manager.stop()
-
-        if let proc = launcher.lastProcess {
-            await launcher.fireTermination(for: proc)
-        }
-
-        XCTAssertEqual(manager.lastStopReason, nil)
-        let mirror = Mirror(reflecting: manager)
-        let hasAutoRetry = mirror.children.contains { $0.label == "shouldAutoRetry" }
-        XCTAssertFalse(hasAutoRetry)
     }
 
     func testUserStopNoAutoRetry() async {
@@ -636,6 +613,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         manager.stop()
 
         XCTAssertEqual(manager.state, .idle)
+        XCTAssertNil(manager.bannerMessage)
     }
 
     func testRetryExhaustionLandsInError() async {
@@ -727,11 +705,20 @@ final class BridgeProcessManagerTests: XCTestCase {
     func testRetryBudgetResetsOnlyAfterMetricsAndStabilityWindow() async {
         let (manager, _, launcher) = makeManager()
         manager.testStabilityWindow = 0
-        manager.setRetryAttemptForTesting(2)
+        manager.testRetryDelays = [0]
 
-        manager.start(resetRetryAttempt: false)
+        manager.start()
+        manager.testTerminationStatus = 17
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        for _ in 0..<100 where launcher.makeCount < 2 {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertEqual(launcher.makeCount, 2)
         XCTAssertEqual(manager.processHealthForTesting, .spawning)
-        XCTAssertEqual(manager.retryAttemptForTesting, 2)
+        XCTAssertEqual(manager.retryAttemptForTesting, 1)
+        XCTAssertTrue(manager.bannerMessage?.contains("Reconnecting") == true)
 
         manager.applyMetricsForTesting(sampleMetrics())
         for _ in 0..<100 where manager.processHealthForTesting != .stable {
@@ -740,6 +727,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.processHealthForTesting, .stable)
         XCTAssertEqual(manager.retryAttemptForTesting, 0)
+        XCTAssertNil(manager.bannerMessage, "Recovery must remove its reconnecting banner")
 
         manager.stop()
         if let proc = launcher.lastProcess {
@@ -747,22 +735,50 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
-    func testRetryBackoffDelays() async {
+    func testStopAndStartDuringRecoveryClearsRetryBanner() async {
         let (manager, _, launcher) = makeManager()
-        manager.testRetryDelays = [0.01, 0.02, 0.04, 0.04]
-
+        manager.testRetryDelays = [0]
         manager.start()
-        let startTime = Date()
-        manager.testTerminationStatus = 1
+        manager.testTerminationStatus = 17
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
+        for _ in 0..<100 where launcher.makeCount < 2 {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertNotNil(manager.bannerMessage)
 
-        try? await Task.sleep(nanoseconds: 30_000_000)
-        XCTAssertEqual(manager.testRetryDelays, [0.01, 0.02, 0.04, 0.04])
-        _ = startTime
-        if case .reconnecting = manager.state {
-            XCTAssertTrue(manager.bannerMessage?.contains("attempt 1") == true)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertNil(manager.bannerMessage)
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertNil(manager.bannerMessage)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testStableRecoveryPreservesUnrelatedNotice() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testStabilityWindow = 0
+        manager.setRetryAttemptForTesting(1)
+        manager.start(resetRetryAttempt: false)
+        manager.bannerMessage = "Could not enable launch at login"
+        manager.applyMetricsForTesting(sampleMetrics())
+        for _ in 0..<100 where manager.processHealthForTesting != .stable {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertEqual(manager.processHealthForTesting, .stable)
+        XCTAssertEqual(manager.bannerMessage, "Could not enable launch at login")
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
         }
     }
 

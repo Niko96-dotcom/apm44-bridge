@@ -26,14 +26,6 @@ inline AudioStreamBasicDescription MakeApm44DriverMonoLaneFormat() {
   return asbd;
 }
 
-inline AudioStreamRangedDescription MakeApm44DriverStreamRangedDescription() {
-  AudioStreamRangedDescription ranged{};
-  ranged.mFormat = MakeApm44DriverStreamFormat();
-  ranged.mSampleRateRange.mMinimum = static_cast<Float64>(kApm44DriverSampleRate);
-  ranged.mSampleRateRange.mMaximum = static_cast<Float64>(kApm44DriverSampleRate);
-  return ranged;
-}
-
 inline AudioStreamRangedDescription MakeApm44DriverMonoLaneRangedDescription() {
   AudioStreamRangedDescription ranged{};
   ranged.mFormat = MakeApm44DriverMonoLaneFormat();

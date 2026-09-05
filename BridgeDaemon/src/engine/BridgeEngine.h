@@ -26,10 +26,6 @@ struct BridgeEngineOptions {
   bool virtualDevice = false;
 };
 
-// MetricsSnapshot now lives in <apm44/MetricsSnapshot.h>; the typedef-
-// like alias keeps the rest of the engine compiled unchanged.
-using MetricsSnapshot = ::apm44::MetricsSnapshot;
-
 class BridgeEngine {
  public:
   bool prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options = {});
@@ -47,7 +43,6 @@ class BridgeEngine {
   const BridgeDevicePair& devices() const { return devices_; }
   std::size_t ringCapacity() const { return ring_.capacityFrames(); }
   double converterRatio() const;
-  uint64_t xrunCount() const { return readMetricsSnapshot().xruns; }
   uint64_t inputFramesProcessed() const {
     return inputFramesProcessed_.load(std::memory_order_relaxed);
   }
@@ -55,12 +50,7 @@ class BridgeEngine {
     return outputFramesProcessed_.load(std::memory_order_relaxed);
   }
 
-  double lastFillMs() const { return readMetricsSnapshot().fillMs; }
-  double lastSmoothedRatio() const { return readMetricsSnapshot().smoothedRatio; }
-  double lastPpm() const { return readMetricsSnapshot().ppm; }
-  uint64_t underrunCount() const { return readMetricsSnapshot().underruns; }
-  uint64_t overrunCount() const { return readMetricsSnapshot().overruns; }
-  MetricsSnapshot metricsSnapshot() const { return readMetricsSnapshot(); }
+  MetricsSnapshot metricsSnapshot() const;
 
   // Called from IOProcs (RT-safe).
   void onInput(const float* const channels[2], std::size_t frames);
@@ -80,7 +70,6 @@ class BridgeEngine {
   void armRecoveryFade(bool countEvent = true);
   void applyRecoveryFade(float* ch0, float* ch1, std::size_t frames);
   void publishMetricsSnapshot();
-  MetricsSnapshot readMetricsSnapshot() const;
 
   BridgeDevicePair devices_{};
   BridgeEngineOptions options_{};
@@ -110,9 +99,6 @@ class BridgeEngine {
   std::size_t recoveryFadeFramesRemaining_ = 0;
   bool running_ = false;
 
-  // Seqlock state, extracted into MetricsPublisher so the contract
-  // is independently testable. The legacy `metricsSeq_` /
-  // `metricsSnapshot_` fields are now folded into `publisher_`.
   MetricsPublisherState publisher_;
 
   AudioDeviceIOProcID inputProc_ = nullptr;

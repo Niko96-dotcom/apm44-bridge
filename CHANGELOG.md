@@ -2,6 +2,16 @@
 
 All notable user-facing changes will be documented here.
 
+## 0.12.6 - 2026-09-05
+
+- Fixed discovery of USB AirPods Max that macOS lists before activating their
+  audio device. Starting the bridge now activates the selected USB output.
+- Cleared reconnect notices when the connection recovers and made the signal
+  path show the selected output device.
+- Fixed validation of 44.1 kHz DAW exports with current macOS audio metadata.
+- Simplified process management and audio internals, removed redundant tests,
+  and corrected ordering when publishing audio metrics between threads.
+
 ## 0.12.5 - 2026-08-01
 
 - Made sanitizer CI use complete Git history so native version metadata is

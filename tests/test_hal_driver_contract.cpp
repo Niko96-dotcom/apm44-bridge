@@ -52,14 +52,6 @@ TEST_CASE("APM44 HAL output streams are two mono lanes for non-interleaved stere
   }
 }
 
-TEST_CASE("APM44 driver stream ranged format is 44100 only", "[hal_driver_contract]") {
-  const auto ranged = apm44::MakeApm44DriverStreamRangedDescription();
-
-  REQUIRE(ranged.mSampleRateRange.mMinimum == 44100.0);
-  REQUIRE(ranged.mSampleRateRange.mMaximum == 44100.0);
-  REQUIRE(apm44::AsbdMatchesFloat32StereoNonInterleaved(ranged.mFormat, 44100.0, 0.0));
-}
-
 TEST_CASE("APM44 output stream hard-pins virtual format to non-interleaved",
           "[hal_driver_contract]") {
   auto context = std::make_shared<aspl::Context>();

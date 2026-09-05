@@ -2,8 +2,11 @@ import XCTest
 @testable import APM44Bridge
 
 final class MetricsParserTests: XCTestCase {
+    private let fixtureLine =
+        #"{"fill_ms":15.200,"ratio":1.08843537,"ppm":12.00,"underruns":0,"overruns":0,"xruns":0,"estimated_rt_ms":17.700,"target_fill_ms":15.000,"src_quality":"medium"}"#
+
     func testValidLineDecodes() {
-        let snapshot = MetricsParser.parse(line: MetricsParser.fixtureLine)
+        let snapshot = MetricsParser.parse(line: fixtureLine)
         XCTAssertNotNil(snapshot)
         XCTAssertEqual(snapshot?.fillMs ?? 0, 15.2, accuracy: 0.01)
         XCTAssertGreaterThan(snapshot?.estimatedRtMs ?? 0, 0)
@@ -14,7 +17,7 @@ final class MetricsParserTests: XCTestCase {
     }
 
     func testBridgeBufferingLabelFormat() {
-        let snapshot = MetricsParser.parse(line: MetricsParser.fixtureLine)!
+        let snapshot = MetricsParser.parse(line: fixtureLine)!
         XCTAssertTrue(snapshot.bridgeBufferingLabel.hasPrefix("~"))
         XCTAssertTrue(snapshot.bridgeBufferingLabel.contains("bridge buffering"))
         XCTAssertFalse(snapshot.bridgeBufferingLabel.contains("monitoring latency"))
@@ -41,7 +44,7 @@ final class MetricsParserTests: XCTestCase {
     }
 
     func testOlderMetricsPayloadDefaultsNewCountersToZero() {
-        let snapshot = MetricsParser.parse(line: MetricsParser.fixtureLine)
+        let snapshot = MetricsParser.parse(line: fixtureLine)
         XCTAssertEqual(snapshot?.knownFrameLoss, 0)
         XCTAssertEqual(snapshot?.producerOverrunEvents, 0)
         XCTAssertEqual(snapshot?.partialShortageEvents, 0)

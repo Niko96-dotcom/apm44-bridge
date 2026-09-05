@@ -220,7 +220,7 @@ TEST_CASE("testUnderrunDoesNotReplayStaleSrcHistory",
   REQUIRE(recoveryMetrics.recoveryFadeEvents > 0);
 }
 
-TEST_CASE("minor partial shortage preserves SRC and drift recovery state",
+TEST_CASE("partial shortages reset SRC only when severe",
           "[io_proc][underrun][recovery]") {
   apm44::BridgeEngine engine;
   apm44::BridgeDevicePair devices;
@@ -230,12 +230,20 @@ TEST_CASE("minor partial shortage preserves SRC and drift recovery state",
   options.targetFillMs = 0.0;
   REQUIRE(engine.prepare(devices, options));
 
-  constexpr std::size_t kInputFrames = 450;
+  std::size_t inputFrames = 0;
+  uint64_t expectedResets = 0;
+  SECTION("minor shortage preserves converter state") {
+    inputFrames = 450;
+  }
+  SECTION("severe shortage resets converter state") {
+    inputFrames = 300;
+    expectedResets = 1;
+  }
   constexpr std::size_t kOutputFrames = 512;
-  std::vector<float> input0(kInputFrames, 0.25f);
-  std::vector<float> input1(kInputFrames, 0.25f);
+  std::vector<float> input0(inputFrames, 0.25f);
+  std::vector<float> input1(inputFrames, 0.25f);
   const float* inputChannels[2] = {input0.data(), input1.data()};
-  engine.onInput(inputChannels, kInputFrames);
+  engine.onInput(inputChannels, inputFrames);
 
   std::vector<float> output0(kOutputFrames);
   std::vector<float> output1(kOutputFrames);
@@ -249,7 +257,7 @@ TEST_CASE("minor partial shortage preserves SRC and drift recovery state",
                    << " underruns=" << metrics.underruns
                    << " fill_ms=" << metrics.fillMs);
   REQUIRE(metrics.partialShortageEvents == 1);
-  REQUIRE(metrics.converterResetEvents == 0);
+  REQUIRE(metrics.converterResetEvents == expectedResets);
   REQUIRE(metrics.rebufferEvents == 0);
 }
 
@@ -296,4 +304,26 @@ TEST_CASE("repeated starvation recovery remains click bounded",
   const auto metrics = engine.metricsSnapshot();
   REQUIRE(metrics.converterResetEvents >= 16);
   REQUIRE(metrics.recoveryFadeEvents >= 16);
+}
+
+TEST_CASE("input overrun counts the frames actually rejected by the ring", "[io_proc][overrun]") {
+  apm44::BridgeEngine engine;
+  apm44::BridgeDevicePair devices;
+  apm44::BridgeEngineOptions options;
+  options.targetFillMs = 0.0;
+  REQUIRE(engine.prepare(devices, options));
+
+  const std::size_t frames = engine.ringCapacity();
+  std::vector<float> input(frames, 0.25f);
+  const float* channels[2] = {input.data(), input.data()};
+  engine.onInput(channels, frames); // One slot stays empty.
+  engine.onInput(channels, 7);      // Already full: all seven frames are dropped.
+
+  float left[512] = {};
+  float right[512] = {};
+  float* output[2] = {left, right};
+  engine.onOutput(output, 512);     // Publish the counters.
+  const auto metrics = engine.metricsSnapshot();
+  REQUIRE(metrics.overruns == 2);
+  REQUIRE(metrics.inputDroppedFrames == 8);
 }

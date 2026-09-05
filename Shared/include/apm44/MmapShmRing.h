@@ -62,7 +62,6 @@ class MmapShmRing {
   ShmProducerDiagnostics producerDiagnostics() const;
 
   const ShmObjectIdentity& mappedObjectIdentity() const { return mappedIdentity_; }
-  uint32_t mappedDriverGeneration() const { return mappedDriverGeneration_; }
   bool isMappedObjectStale() const;
 
  private:
@@ -89,7 +88,6 @@ class MmapShmRing {
   int lastErrno_ = 0;
   std::string lastError_;
   ShmObjectIdentity mappedIdentity_{};
-  uint32_t mappedDriverGeneration_ = 0;
   bool ownsConsumer_ = false;
   uint32_t ownedConsumerPid_ = 0;
   uint64_t ownedConsumerToken_ = 0;

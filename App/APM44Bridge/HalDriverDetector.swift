@@ -5,7 +5,6 @@ import Foundation
 enum HalDriverDetector {
     static let deviceUid = "com.niko.apm44.bridge.device"
     static let deviceName = "APM44 Bridge"
-    static let expectedRate: Double = 44100
 
     /// Absolute path where the HAL driver bundle is installed on disk.
     static let installedBundlePath = "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
@@ -184,12 +183,13 @@ enum RoutingMode: Equatable {
         }
     }
 
-    var detail: String {
+    func detail(outputName: String?) -> String {
+        let output = outputName.map { "\($0) @ 48 kHz" } ?? "Choose output…"
         switch self {
         case .halVirtualDevice:
-            return "Cubase → APM44 Bridge @ 44.1 kHz → AirPods @ 48 kHz"
+            return "DAW → APM44 Bridge @ 44.1 kHz → \(output)"
         case .blackHoleFallback:
-            return "DAW → BlackHole @ 44.1 kHz → AirPods @ 48 kHz"
+            return "DAW → BlackHole @ 44.1 kHz → \(output)"
         }
     }
 }

@@ -1,18 +1,17 @@
 name: Verify Published Release
 
 # The maintainer-controlled local release pipeline creates and uploads the
-# notarized artifacts. This tag workflow verifies the public, unauthenticated
+# notarized artifacts. This publication workflow verifies the public, unauthenticated
 # downloads after GitHub Pages and Releases propagate; it deliberately does
 # not pretend a clean runner has local Apple/Sparkle signing credentials or
 # the gated build artifacts.
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing signed tag to publish (for example v0.12.3)"
+        description: "Existing signed tag to verify (for example v0.12.3)"
         required: true
         type: string
 
@@ -37,7 +36,7 @@ jobs:
       - name: Check out published tag for the release scan
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
           path: published
           fetch-depth: 0
           submodules: recursive
@@ -47,7 +46,7 @@ jobs:
 
       - name: Verify public release and Pages appcast
         env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           RELEASE_VERSION="${RELEASE_TAG#v}"

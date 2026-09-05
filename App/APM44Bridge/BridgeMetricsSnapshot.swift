@@ -71,8 +71,7 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         recoveryFadeEvents: UInt64 = 0,
         estimatedRtMs: Double,
         targetFillMs: Double,
-        srcQuality: String,
-        isStale: Bool = false
+        srcQuality: String
     ) {
         self.fillMs = fillMs
         self.ratio = ratio
@@ -96,7 +95,6 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         self.estimatedRtMs = estimatedRtMs
         self.targetFillMs = targetFillMs
         self.srcQuality = srcQuality
-        self.isStale = isStale
     }
 
     init(from decoder: Decoder) throws {
@@ -123,7 +121,6 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         estimatedRtMs = try values.decode(Double.self, forKey: .estimatedRtMs)
         targetFillMs = try values.decode(Double.self, forKey: .targetFillMs)
         srcQuality = try values.decode(String.self, forKey: .srcQuality)
-        isStale = false
     }
 
     var knownFrameLoss: UInt64 {
@@ -139,6 +136,4 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
         guard targetFillMs > 0 else { return 0 }
         return min(1.0, max(0, fillMs / targetFillMs))
     }
-
-    var isStale: Bool = false
 }

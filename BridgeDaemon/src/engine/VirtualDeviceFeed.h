@@ -24,7 +24,6 @@ class VirtualDeviceFeed {
   std::size_t drainTo(PlanarRingBuffer& ring, std::size_t maxFrames);
   bool isRingStale() const;
   StaleRingPollResult pollStaleRing();
-  uint64_t consumerEpoch() const { return ring_.consumerEpoch(); }
   ShmProducerDiagnostics producerDiagnostics() const {
     return ring_.producerDiagnostics();
   }
@@ -34,7 +33,6 @@ class VirtualDeviceFeed {
   ShmRingErrorCode lastOpenErrorCode_ = ShmRingErrorCode::None;
   int lastOpenErrno_ = 0;
   std::string lastOpenError_;
-  std::vector<float> interleavedScratch_;
   std::vector<float> planarScratch0_;
   std::vector<float> planarScratch1_;
 };

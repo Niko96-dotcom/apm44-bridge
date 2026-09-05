@@ -4,13 +4,33 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace apm44 {
 
 namespace {
+
+std::vector<AudioObjectID> GetObjectList(AudioObjectID object,
+                                       AudioObjectPropertySelector selector) {
+  AudioObjectPropertyAddress address{
+      selector, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+  UInt32 size = 0;
+  if (AudioObjectGetPropertyDataSize(object, &address, 0, nullptr, &size) != noErr) {
+    return {};
+  }
+  std::vector<AudioObjectID> ids(size / sizeof(AudioObjectID));
+  if (size == 0) return ids;
+  if (AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, ids.data()) != noErr) {
+    return {};
+  }
+  ids.resize(size / sizeof(AudioObjectID));
+  return ids;
+}
 
 std::string ToLower(std::string_view s) {
   std::string out(s);
@@ -187,24 +207,28 @@ std::optional<AudioDeviceInfo> MatchAirPodsDefault(const std::vector<AudioDevice
 
 std::vector<AudioDeviceInfo> DeviceEnumerator::listAll() {
   std::vector<AudioDeviceInfo> result;
-  AudioObjectPropertyAddress address{kAudioHardwarePropertyDevices,
-                                     kAudioObjectPropertyScopeGlobal,
-                                     kAudioObjectPropertyElementMain};
-  UInt32 dataSize = 0;
-  if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &address, 0, nullptr, &dataSize) !=
-      noErr) {
-    return result;
-  }
-  const UInt32 deviceCount = dataSize / sizeof(AudioDeviceID);
-  std::vector<AudioDeviceID> deviceIds(deviceCount);
-  if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &dataSize,
-                                 deviceIds.data()) != noErr) {
-    return result;
+  auto deviceIds = GetObjectList(kAudioObjectSystemObject, kAudioHardwarePropertyDevices);
+  std::unordered_map<AudioDeviceID, AudioObjectID> inactiveBoxes;
+  // USB AirPods can publish a live device inside an unacquired AudioBox while
+  // omitting it from the system device list. Discovery must not activate it.
+  for (const auto box : GetObjectList(kAudioObjectSystemObject, kAudioHardwarePropertyBoxList)) {
+    if (GetUInt32Property(box, kAudioBoxPropertyAcquired) != 0 ||
+        GetUInt32Property(box, kAudioBoxPropertyIsProtected) != 0) continue;
+    for (const auto device : GetObjectList(box, kAudioBoxPropertyDeviceList)) {
+      if (GetUInt32Property(device, kAudioDevicePropertyTransportType) !=
+          kAudioDeviceTransportTypeUSB) continue;
+      if (std::find(deviceIds.begin(), deviceIds.end(), device) != deviceIds.end()) continue;
+      deviceIds.push_back(device);
+      inactiveBoxes.emplace(device, box);
+    }
   }
 
   for (AudioDeviceID deviceId : deviceIds) {
     AudioDeviceInfo info;
     info.deviceId = deviceId;
+    if (const auto box = inactiveBoxes.find(deviceId); box != inactiveBoxes.end()) {
+      info.inactiveBoxId = box->second;
+    }
     if (GetStringProperty(deviceId, kAudioDevicePropertyDeviceUID, info.uid) != noErr) {
       continue;
     }
@@ -284,6 +308,28 @@ std::optional<AudioDeviceInfo> DeviceEnumerator::resolveOutput(
     return findOutputByUid(*uidOverride);
   }
   return defaultOutput();
+}
+
+OSStatus DeviceEnumerator::activateOutput(AudioDeviceInfo& output) {
+  if (output.inactiveBoxId == kAudioObjectUnknown) return noErr;
+  AudioObjectPropertyAddress address{
+      kAudioBoxPropertyAcquired, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+  const UInt32 acquired = 1;
+  const auto status = AudioObjectSetPropertyData(
+      output.inactiveBoxId, &address, 0, nullptr, sizeof(acquired), &acquired);
+  if (status != noErr) return status;
+
+  // Acquisition may publish the device asynchronously or replace its ID.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  do {
+    if (auto refreshed = findOutputByUid(output.uid);
+        refreshed && refreshed->inactiveBoxId == kAudioObjectUnknown) {
+      output = *refreshed;
+      return noErr;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  } while (std::chrono::steady_clock::now() < deadline);
+  return kAudioHardwareNotReadyError;
 }
 
 }  // namespace apm44

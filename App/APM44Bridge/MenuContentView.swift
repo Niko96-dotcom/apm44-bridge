@@ -83,8 +83,11 @@ struct MenuContentView: View {
     }
 
     private var routingChain: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Text(manager.routingMode.detail)
+        let detail = manager.routingMode.detail(
+            outputName: settings.outputDeviceUid == nil ? nil : manager.deviceDisplayName
+        )
+        return HStack(alignment: .center, spacing: 8) {
+            Text(detail)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -98,7 +101,7 @@ struct MenuContentView: View {
                 .fill(Color.primary.opacity(0.04))
         )
         .accessibilityLabel("Signal path")
-        .accessibilityValue(manager.routingMode.detail)
+        .accessibilityValue(detail)
     }
 
     // MARK: - Controls
@@ -274,8 +277,6 @@ struct MenuContentView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .accessibilityHint("Opens Sparkle release notes and the secure administrator-authorized installer")
-            case let .downloading(version):
-                updateStatus("Downloading APM44 Bridge \(version)…", systemImage: "arrow.down.circle", tint: .accentColor)
             case let .readyToInstall(version):
                 updateStatus("APM44 Bridge \(version) is ready to install — Sparkle will ask for administrator authorization.", systemImage: "checkmark.circle", tint: .green)
             case let .installing(version):

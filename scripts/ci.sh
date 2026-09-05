@@ -31,13 +31,6 @@ bash tests/test_release_scripts.sh
 echo "== Sparkle appcast tests =="
 bash tests/test_appcast.sh
 
-# The release-script suite exercises package builders against repo-local fake
-# app/driver fixtures. Recreate the real driver bundle before version and
-# architecture verification consume it.
-echo "== Restore native driver bundle after release fixtures =="
-rm -rf "$BUILD_DIR/Driver/APM44Bridge.driver"
-cmake --build "$BUILD_DIR" --target APM44Bridge --parallel
-
 if [[ "${APM44_RUN_SOAK:-0}" == "1" ]]; then
   echo "== Offline soak =="
   "$BUILD_DIR/BridgeDaemon/apm44-soak" --duration-sec "${APM44_SOAK_SECONDS:-60}"

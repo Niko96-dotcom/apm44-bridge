@@ -33,13 +33,11 @@ bool ProcessIsAlive(uint32_t pid) {
   return errno == EPERM;
 }
 
-void CaptureMappedIdentity(int fd, ShmObjectIdentity& identity, uint32_t& generation,
+void CaptureMappedIdentity(int fd, ShmObjectIdentity& identity,
                            const ShmRingHeader* header) {
   identity = {};
-  generation = 0;
   if (header != nullptr) {
-    generation = header->driver_generation.load(std::memory_order_relaxed);
-    identity.driver_generation = generation;
+    identity.driver_generation = header->driver_generation.load(std::memory_order_relaxed);
     identity.has_generation = true;
   }
   struct stat st {};
@@ -140,7 +138,7 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
       gNextShmDriverGeneration.fetch_add(1, std::memory_order_relaxed) + 1;
   header_->driver_generation.store(generation, std::memory_order_relaxed);
   header_->producer_epoch.store(generation, std::memory_order_relaxed);
-  CaptureMappedIdentity(fd_, mappedIdentity_, mappedDriverGeneration_, header_);
+  CaptureMappedIdentity(fd_, mappedIdentity_, header_);
   return true;
 }
 
@@ -217,7 +215,7 @@ bool MmapShmRing::open(ShmRingRole role) {
     return false;
   }
   capacityFrames_ = header_->capacity_frames;
-  CaptureMappedIdentity(fd_, mappedIdentity_, mappedDriverGeneration_, header_);
+  CaptureMappedIdentity(fd_, mappedIdentity_, header_);
   if (role_ == ShmRingRole::Consumer && !claimConsumer()) {
     const uint32_t ownerPid = header_->consumer_pid.load(std::memory_order_acquire);
     close();
@@ -238,7 +236,6 @@ void MmapShmRing::close() {
   capacityFrames_ = 0;
   header_ = nullptr;
   mappedIdentity_ = {};
-  mappedDriverGeneration_ = 0;
   ownsConsumer_ = false;
   ownedConsumerPid_ = 0;
   ownedConsumerToken_ = 0;

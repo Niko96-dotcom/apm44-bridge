@@ -1,7 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "apm44/PlanarRingBuffer.h"
-#include "engine/BridgeInputOverrun.h"
 
 #include <cmath>
 #include <cstdint>
@@ -77,49 +76,28 @@ TEST_CASE("PlanarRingBuffer 10k push pop alternation", "[planar_ring]") {
   }
 }
 
-// RT-01 / RT-02 / RT-05: producer-side overrun handling must drop the
-// unaccepted tail and return an overrun flag without ever calling
-// `pop` from the producer path. The test instantiates a non-production
-// `PlanarRingBuffer` directly — no `/apm44_bridge_ring` is touched.
-TEST_CASE("ProducerPushDroppingNewInputDropsUnacceptedAndNotifiesOverrun",
-          "[planar_ring][rt][RT-01][RT-02][SEC-02]") {
-  apm44::PlanarRingBuffer ring;
-  ring.prepare(8);  // capacity 8, max writable 7
-
-  // Fill the ring to its max writable depth.
-  float fillCh0[8] = {1, 1, 1, 1, 1, 1, 1, 1};
-  float fillCh1[8] = {2, 2, 2, 2, 2, 2, 2, 2};
-  const float* fillIn[2] = {fillCh0, fillCh1};
-  REQUIRE(ring.push(fillIn, 7) == 7);
-  REQUIRE(ring.availableToWrite() == 0);
-
-  // Now the producer is invoked with another 4-frame block. The ring is
-  // full; the producer must drop the unaccepted tail and bump the
-  // overrun counter. It must NOT mutate the fill that the consumer will
-  // see (no producer-side `pop`).
-  float incCh0[4] = {9, 9, 9, 9};
-  float incCh1[4] = {9, 9, 9, 9};
-  const float* incIn[2] = {incCh0, incCh1};
-
-  const bool inputOverrun = apm44::PushDroppingNewInput(ring, incIn, 4);
-
-  REQUIRE(inputOverrun);
-  // Consumer-visible fill is unchanged: 7 frames still pending read.
-  REQUIRE(ring.availableToRead() == 7);
-}
-
-TEST_CASE("ProducerPathSucceedsWhenRingHasCapacity",
-          "[planar_ring][rt][RT-01]") {
+TEST_CASE("PlanarRingBuffer drops the unaccepted tail and preserves queued audio",
+          "[planar_ring][rt]") {
   apm44::PlanarRingBuffer ring;
   ring.prepare(8);
+  const float left[6] = {1, 2, 3, 4, 5, 6};
+  const float right[6] = {-1, -2, -3, -4, -5, -6};
+  const float* input[2] = {left, right};
+  REQUIRE(ring.push(input, 6) == 6);
 
-  float ch0[4] = {1, 2, 3, 4};
-  float ch1[4] = {5, 6, 7, 8};
-  const float* in[2] = {ch0, ch1};
+  const float newLeft[2] = {7, 99};
+  const float newRight[2] = {-7, -99};
+  const float* incoming[2] = {newLeft, newRight};
+  REQUIRE(ring.push(incoming, 2) == 1);
+  REQUIRE(ring.push(incoming, 2) == 0);
+  REQUIRE(ring.availableToRead() == 7);
 
-  const bool inputOverrun = apm44::PushDroppingNewInput(ring, in, 4);
-
-  // No overrun, and the consumer can read exactly the 4 pushed frames.
-  REQUIRE_FALSE(inputOverrun);
-  REQUIRE(ring.availableToRead() == 4);
+  float outLeft[7] = {};
+  float outRight[7] = {};
+  float* output[2] = {outLeft, outRight};
+  REQUIRE(ring.pop(output, 7) == 7);
+  for (int i = 0; i < 7; ++i) {
+    REQUIRE(outLeft[i] == static_cast<float>(i + 1));
+    REQUIRE(outRight[i] == -static_cast<float>(i + 1));
+  }
 }

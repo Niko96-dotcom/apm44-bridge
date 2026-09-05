@@ -14,7 +14,6 @@ class ProcessSingletonLock {
 
   bool acquire(const std::string& path = DefaultPath());
   void release();
-  bool ownsLock() const { return fileDescriptor_ >= 0; }
   const std::string& lastError() const { return lastError_; }
 
   static std::string DefaultPath();

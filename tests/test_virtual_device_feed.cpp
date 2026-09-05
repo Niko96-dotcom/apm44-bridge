@@ -27,8 +27,8 @@ TEST_CASE("VirtualDeviceFeed drains shm into ring", "[virtual_device]") {
 
   std::vector<float> interleaved(64);
   for (std::size_t i = 0; i < 32; ++i) {
-    interleaved[i * 2] = 0.1f;
-    interleaved[i * 2 + 1] = 0.2f;
+    interleaved[i * 2] = static_cast<float>(i);
+    interleaved[i * 2 + 1] = -static_cast<float>(i);
   }
   apm44::VirtualDeviceFeed feed(ringName);
   REQUIRE(feed.open());
@@ -40,6 +40,15 @@ TEST_CASE("VirtualDeviceFeed drains shm into ring", "[virtual_device]") {
   const std::size_t pushed = feed.drainTo(ring, 64);
   REQUIRE(pushed == 32);
   REQUIRE(ring.fillFrames() == 32);
+
+  float left[32] = {};
+  float right[32] = {};
+  float* output[2] = {left, right};
+  REQUIRE(ring.pop(output, 32) == 32);
+  for (std::size_t i = 0; i < 32; ++i) {
+    REQUIRE(left[i] == interleaved[i * 2]);
+    REQUIRE(right[i] == interleaved[i * 2 + 1]);
+  }
 
   feed.close();
   shm_unlink(ringName.c_str());

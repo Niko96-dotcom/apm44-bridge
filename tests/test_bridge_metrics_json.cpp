@@ -4,10 +4,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
+#include <barrier>
 #include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <string>
 #include <thread>
 #include <vector>
@@ -16,17 +14,6 @@ namespace {
 
 bool Contains(const std::string& haystack, const std::string& needle) {
   return haystack.find(needle) != std::string::npos;
-}
-
-std::filesystem::path RepoRoot() {
-  return std::filesystem::path(__FILE__).parent_path().parent_path();
-}
-
-std::string ReadRepoFile(const std::string& rel) {
-  std::ifstream in(RepoRoot() / rel);
-  REQUIRE(in.good());
-  return std::string((std::istreambuf_iterator<char>(in)),
-                     std::istreambuf_iterator<char>());
 }
 
 }  // namespace
@@ -121,111 +108,49 @@ TEST_CASE("estimated_rt_ms distinguishes public SRC quality labels", "[metrics][
   REQUIRE(high.estimatedRtMs < best.estimatedRtMs);
 }
 
-// METR-01/03: prove the metrics publisher is data-race-free. Spawn
-// one writer thread and four reader threads, exercise the publisher
-// for many iterations, then assert the sequence retry never delivered
-// a torn snapshot (counters observed by readers are monotonically
-// non-decreasing — the writer only ever increments).
-TEST_CASE("MetricsPublisherSeqlockNeverDeliversTornSnapshot",
-          "[metrics][rt][METR-01][METR-03]") {
+TEST_CASE("MetricsPublisher keeps fields from the same publication", "[metrics][rt]") {
   apm44::MetricsPublisherState state;
-  std::atomic<bool> stop{false};
-  std::atomic<uint64_t> expectedFinalUnderruns{0};
-  std::atomic<uint64_t> maxObservedUnderruns{0};
-  std::atomic<uint64_t> maxObservedOverruns{0};
-  std::atomic<uint64_t> maxObservedXruns{0};
-
-  // Writer thread: publish 50,000 snapshots, each bumping the three
-  // counters by small increments.
-  std::thread writer([&]() {
-    uint64_t underruns = 0;
-    uint64_t overruns = 0;
-    uint64_t xruns = 0;
-    for (int i = 0; i < 50000 && !stop.load(std::memory_order_relaxed); ++i) {
-      apm44::MetricsSnapshot next;
-      next.fillMs = 15.0 + static_cast<double>(i % 100) * 0.01;
-      next.smoothedRatio = 1.0884;
-      next.ppm = 12.0;
-      next.underruns = underruns;
-      next.overruns = overruns;
-      next.xruns = xruns;
-      apm44::PublishMetrics(state, next);
-      underruns += (i % 7 == 0) ? 1 : 0;
-      overruns += (i % 11 == 0) ? 1 : 0;
-      xruns += (i % 13 == 0) ? 1 : 0;
-    }
-    expectedFinalUnderruns.store(underruns, std::memory_order_relaxed);
-  });
-
-  // Reader threads: each reads as fast as possible, tracking the max
-  // counter values they ever observed. A torn snapshot would be
-  // visible as a regression (a smaller counter value than the
-  // reader's local max) — which must never happen because the
-  // sequence check retries on concurrent publication.
+  std::atomic<bool> done{false};
+  std::atomic<bool> incoherent{false};
   constexpr int kReaderCount = 4;
+  constexpr uint64_t kPublications = 50000;
+  std::barrier ready(kReaderCount + 1);
   std::vector<std::thread> readers;
-  readers.reserve(kReaderCount);
-  for (int t = 0; t < kReaderCount; ++t) {
-    readers.emplace_back([&]() {
-      uint64_t lastUnderruns = 0;
-      uint64_t lastOverruns = 0;
-      uint64_t lastXruns = 0;
-      while (!stop.load(std::memory_order_relaxed)) {
-        apm44::MetricsSnapshot snap = apm44::ReadMetrics(state);
-        if (snap.underruns < lastUnderruns ||
-            snap.overruns < lastOverruns ||
-            snap.xruns < lastXruns) {
-          // Torn snapshot — record and stop; assertion below will fail.
-          stop.store(true, std::memory_order_relaxed);
-          FAIL("Torn snapshot detected: underruns "
-               << snap.underruns << " < " << lastUnderruns);
-          return;
+
+  for (int i = 0; i < kReaderCount; ++i) {
+    readers.emplace_back([&] {
+      ready.arrive_and_wait();
+      do {
+        const auto snapshot = apm44::ReadMetrics(state);
+        // Independently increasing fields can still form a torn snapshot.
+        // These relationships hold only when every field has the same version.
+        if (snapshot.overruns != snapshot.underruns * 2 ||
+            snapshot.xruns != snapshot.underruns * 3 ||
+            snapshot.fillMs != static_cast<double>(snapshot.underruns) ||
+            snapshot.ppm != -static_cast<double>(snapshot.underruns)) {
+          incoherent.store(true, std::memory_order_relaxed);
         }
-        lastUnderruns = snap.underruns;
-        lastOverruns = snap.overruns;
-        lastXruns = snap.xruns;
-        uint64_t cur;
-        cur = maxObservedUnderruns.load(std::memory_order_relaxed);
-        while (lastUnderruns > cur) {
-          if (maxObservedUnderruns.compare_exchange_weak(
-                  cur, lastUnderruns)) {
-            break;
-          }
-        }
-        cur = maxObservedOverruns.load(std::memory_order_relaxed);
-        while (lastOverruns > cur) {
-          if (maxObservedOverruns.compare_exchange_weak(
-                  cur, lastOverruns)) {
-            break;
-          }
-        }
-        cur = maxObservedXruns.load(std::memory_order_relaxed);
-        while (lastXruns > cur) {
-          if (maxObservedXruns.compare_exchange_weak(
-                  cur, lastXruns)) {
-            break;
-          }
-        }
-      }
+      } while (!done.load(std::memory_order_acquire));
     });
   }
 
-  writer.join();
-  // Give readers a moment to observe the final value, then signal
-  // them to stop.
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  stop.store(true, std::memory_order_relaxed);
-  for (auto& t : readers) {
-    t.join();
+  ready.arrive_and_wait();
+  for (uint64_t i = 1; i <= kPublications; ++i) {
+    apm44::MetricsSnapshot next;
+    next.underruns = i;
+    next.overruns = i * 2;
+    next.xruns = i * 3;
+    next.fillMs = static_cast<double>(i);
+    next.ppm = -static_cast<double>(i);
+    apm44::PublishMetrics(state, next);
+  }
+  done.store(true, std::memory_order_release);
+  for (auto& reader : readers) {
+    reader.join();
   }
 
-  // The sequence retry guarantees that the final published value is
-  // eventually visible to readers; the writer's last value must be
-  // observed by at least one reader.
-  REQUIRE(maxObservedUnderruns.load() ==
-          expectedFinalUnderruns.load());
-  REQUIRE(maxObservedOverruns.load() > 0);
-  REQUIRE(maxObservedXruns.load() > 0);
+  REQUIRE_FALSE(incoherent.load());
+  REQUIRE(apm44::ReadMetrics(state).underruns == kPublications);
 }
 
 TEST_CASE("MetricsPublisherPackedFloatingFieldsRoundTrip",
@@ -256,80 +181,4 @@ TEST_CASE("MetricsPublisherPackedFloatingFieldsRoundTrip",
   REQUIRE(read.converterResetEvents == next.converterResetEvents);
   REQUIRE(read.rebufferEvents == next.rebufferEvents);
   REQUIRE(read.recoveryFadeEvents == next.recoveryFadeEvents);
-}
-
-TEST_CASE("MetricsPublisherStateAvoidsAtomicDouble",
-          "[metrics][rt][METR-04]") {
-  const std::string header = ReadRepoFile("BridgeDaemon/src/engine/MetricsPublisher.h");
-  REQUIRE(!Contains(header, "std::atomic<double>"));
-  REQUIRE(Contains(header, "std::atomic<uint64_t> fillMsBits"));
-  REQUIRE(Contains(header, "std::atomic<uint64_t> smoothedRatioBits"));
-  REQUIRE(Contains(header, "std::atomic<uint64_t> ppmBits"));
-  REQUIRE(Contains(header, "std::atomic<uint64_t>::is_always_lock_free"));
-}
-
-TEST_CASE("LegacyConverterPathRemovedFromPublicRuntime",
-          "[converter][CONV-01]") {
-  const std::vector<std::string> files = {
-      "BridgeDaemon/src/CliOptions.cpp",
-      "BridgeDaemon/src/CliOptions.h",
-      "BridgeDaemon/src/engine/BridgeEngine.cpp",
-      "BridgeDaemon/src/engine/BridgeEngine.h",
-      "BridgeDaemon/CMakeLists.txt",
-      "tests/CMakeLists.txt",
-      "docs/soak-test.md",
-  };
-  const std::vector<std::string> forbidden = {
-      "--legacy-" "converter",
-      "Audio" "ConverterSrc",
-      "legacy" "Converter",
-      "useLegacy" "Converter",
-  };
-
-  for (const auto& rel : files) {
-    const std::string contents = ReadRepoFile(rel);
-    for (const auto& needle : forbidden) {
-      REQUIRE(!Contains(contents, needle));
-    }
-  }
-}
-
-// METR-03 regression guard: a bare copy of MetricsSnapshot across
-// threads would not be data-race-free. Scan the source tree for
-// any line that mentions `MetricsSnapshot` outside the seqlock
-// pair; if the scan finds one, the test fails so a future
-// regression that reintroduces a plain copy is caught.
-TEST_CASE("NoBareMetricsSnapshotCopyInSource",
-          "[metrics][rt][METR-03]") {
-  // The allow-list of files where MetricsSnapshot is expected to
-  // appear alongside the publisher free functions. The test reads
-  // each file and asserts any reference to `MetricsSnapshot` is
-  // near a call to `PublishMetrics` or `ReadMetrics`.
-  const std::vector<std::string> files = {
-      "BridgeDaemon/src/engine/BridgeEngine.cpp",
-      "BridgeDaemon/src/engine/BridgeEngine.h",
-      "BridgeDaemon/src/engine/MetricsPublisher.h",
-      "Shared/include/apm44/MetricsSnapshot.h",
-  };
-
-  for (const auto& rel : files) {
-    const std::string contents = ReadRepoFile(rel);
-    // Check that any non-comment, non-include mention of
-    // MetricsSnapshot is preceded within the same file by either
-    // PublishMetrics or ReadMetrics (the publisher pair). The check
-    // is intentionally loose: it only fails if a file uses
-    // MetricsSnapshot without ever going through the publisher.
-    const bool usesSeqlock =
-        contents.find("PublishMetrics") != std::string::npos ||
-        contents.find("ReadMetrics") != std::string::npos ||
-        contents.find("MetricsPublisherState") != std::string::npos ||
-        rel.find("MetricsSnapshot.h") != std::string::npos;
-    const bool usesSnapshot =
-        contents.find("MetricsSnapshot") != std::string::npos;
-    if (usesSnapshot && !usesSeqlock) {
-      FAIL(rel << " uses MetricsSnapshot without going through the "
-                  "MetricsPublisher — bare cross-thread copy");
-    }
-  }
-  SUCCEED("All MetricsSnapshot references are seqlock-mediated");
 }

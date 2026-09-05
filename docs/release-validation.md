@@ -1,6 +1,6 @@
 # Release validation checklist
 
-This checklist is the current 0.12.5 PKG-in-DMG distribution validation path.
+This checklist is the current 0.12.6 PKG-in-DMG distribution validation path.
 It separates credential-free verification
 from Apple Developer credential checks so local-only artifacts are never
 confused with a public release.
@@ -65,8 +65,16 @@ bash scripts/release-all.sh
 3. Sign the daemon, app, and driver.
 4. Submit the app/driver evidence zip and require `status: Accepted`.
 5. Staple and validate the inner app and driver.
-6. Package the final DMG from those stapled inner artifacts.
-7. Notarize, staple, and validate the final public DMG.
+6. Build, sign, notarize, staple, and validate the installer PKG.
+7. Package that PKG inside the final DMG.
+8. Notarize, staple, and validate the final public DMG.
+9. Generate and cryptographically validate the signed Sparkle appcast.
+
+Commit the appcast metadata, create and push the signed version tag, then run
+`bash scripts/publish-release.sh`. Publication uploads the installer, disk image,
+and checksums to a draft before making the complete release public. Release
+notes contain only the current version. Verify the fresh public downloads with
+`bash scripts/verify-published-release.sh`.
 
 ## Public tree hygiene
 
@@ -109,8 +117,8 @@ bash scripts/release-all.sh
 bash scripts/codesign-verify-release.sh
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.5}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.5}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
 
 # 5. Installed app / HAL checks after installing from the DMG
 APM44_RUN_FINAL_INSTALL_SMOKE=1 bash scripts/verify-final-install-artifact.sh
@@ -125,7 +133,7 @@ Run this on the target Mac with USB-C AirPods Max and Cubase available:
 
 ```bash
 # 1. Clean install from the final DMG
-hdiutil attach "build/signing/APM44Bridge-${APM44_VERSION:-0.12.5}.dmg"
+hdiutil attach "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
 # Open the mounted PKG, or run:
 APM44_RUN_FINAL_INSTALL_SMOKE=1 bash scripts/verify-final-install-artifact.sh
 # Reboot once if Audio MIDI Setup does not show the HAL device after install.
@@ -178,12 +186,12 @@ For the PKG-in-DMG public path, assess these artifacts after
 
 ```bash
 bash scripts/codesign-verify-release.sh
-codesign --verify --verbose "build/signing/APM44Bridge-${APM44_VERSION:-0.12.5}.dmg"
+codesign --verify --verbose "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
 bash scripts/verify-release-dmg-layout.sh
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.5}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.5}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
 ```
 
 The final command is the Gatekeeper assessment for the public DMG.
@@ -258,8 +266,8 @@ repackaging:
 
 ```bash
 bash scripts/codesign-verify-release.sh
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.5}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.5}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
 ```
 
 If hardware/operator evidence is needed for a final ship decision, run it on a

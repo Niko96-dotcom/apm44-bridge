@@ -35,7 +35,21 @@ final class BridgeProcessManager: ObservableObject {
     @Published private(set) var routingMode: RoutingMode = .blackHoleFallback
     @Published private(set) var connectionPhase: BridgeConnectionPhase = .stopped
     @Published private(set) var lastStopReason: StopReason?
-    @Published var bannerMessage: String?
+    @Published private var noticeMessage: String?
+
+    var bannerMessage: String? {
+        get {
+            if let noticeMessage { return noticeMessage }
+            guard retryAttempt > 0 else { return nil }
+            switch state {
+            case .idle, .stopping: return nil
+            default: break
+            }
+            if retryAttempt >= maxUnhealthyLaunches { return exhaustedRetryMessage() }
+            return "Reconnecting… (attempt \(retryAttempt) of \(maxUnhealthyLaunches); launch not yet stable)"
+        }
+        set { noticeMessage = newValue }
+    }
 
     private var process: Process?
     private var stdoutPipe: Pipe?
@@ -55,7 +69,7 @@ final class BridgeProcessManager: ObservableObject {
     private var lastKnownDeviceName: String?
     private var lastKnownDeviceUid: String?
     private var runningOutputFingerprint: AudioDeviceRow?
-    private var retryAttempt = 0
+    @Published private var retryAttempt = 0
     private let maxUnhealthyLaunches = 4
     private var retryTask: Task<Void, Never>?
     private var stabilityTask: Task<Void, Never>?
@@ -139,7 +153,6 @@ final class BridgeProcessManager: ObservableObject {
     internal var retryAttemptForTesting: Int { retryAttempt }
     internal var processHealthForTesting: BridgeProcessHealth { processHealth }
 
-    internal var testLaunchArgumentsOverride: [String]?
     internal var testTerminationStatus: Int32?
     internal var testDeviceListOverride: [AudioDeviceRow]?
 
@@ -253,7 +266,7 @@ final class BridgeProcessManager: ObservableObject {
 
         let proc = processLauncher.makeProcess()
         proc.executableURL = url
-        proc.arguments = testLaunchArgumentsOverride ?? buildArguments(outputUid: uid)
+        proc.arguments = buildArguments(outputUid: uid)
 
         let parentPipe = Pipe()
         parentWatchPipe = parentPipe
@@ -320,35 +333,32 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func stop() {
-        wasRunningBeforeDisconnect = false
-        cancelRetryTask()
-        cancelStabilityTask()
-        retryAttempt = 0
-        if process != nil {
-            initiateStop(reason: .user)
+        if initiateUserStop() {
             Task { await finishStopWithEscalation() }
-        } else if case .reconnecting = state {
-            state = .idle
-            bannerMessage = nil
-            lastStopReason = nil
-            clearPipeHandlers()
         }
     }
 
     func stopAsync() async {
+        if initiateUserStop() {
+            await finishStopWithEscalation()
+        }
+    }
+
+    private func initiateUserStop() -> Bool {
         wasRunningBeforeDisconnect = false
         cancelRetryTask()
         cancelStabilityTask()
         retryAttempt = 0
         if process != nil {
             initiateStop(reason: .user)
-            await finishStopWithEscalation()
+            return true
         } else if case .reconnecting = state {
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
             clearPipeHandlers()
         }
+        return false
     }
 
     func quitApplication() async {
@@ -473,14 +483,6 @@ final class BridgeProcessManager: ObservableObject {
             return
         }
         start()
-    }
-
-    func toggle() {
-        if isRunning {
-            stop()
-        } else {
-            start()
-        }
     }
 
     func handleHotplug() async {
@@ -693,9 +695,6 @@ final class BridgeProcessManager: ObservableObject {
 
     private func bridgeFailureMessage(defaultMessage: String) -> String {
         let stderr = stderrLines.joined(separator: "\n")
-        if stderr.localizedCaseInsensitiveContains("stale shm ring") {
-            return "APM44 driver IPC failed. Reinstall the matching driver and reload Core Audio."
-        }
         if stderr.localizedCaseInsensitiveContains("shm") {
             return "APM44 driver IPC failed. Reinstall the matching driver and reload Core Audio."
         }
@@ -843,13 +842,10 @@ final class BridgeProcessManager: ObservableObject {
         if retryAttempt >= maxUnhealthyLaunches {
             let message = exhaustedRetryMessage()
             state = .error(message)
-            bannerMessage = message
             return
         }
 
         state = .reconnecting
-        bannerMessage =
-            "Reconnecting… (attempt \(retryAttempt) of \(maxUnhealthyLaunches); launch not yet stable)"
 
         // Capture the attempt before creating the task. Stop/reset can set the
         // live counter back to zero before a cancelled task begins executing.

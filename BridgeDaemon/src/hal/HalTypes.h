@@ -10,6 +10,7 @@ namespace apm44 {
 
 struct AudioDeviceInfo {
   AudioDeviceID deviceId = kAudioObjectUnknown;
+  AudioObjectID inactiveBoxId = kAudioObjectUnknown;
   std::string uid;
   std::string name;
   double nominalRate = 0.0;

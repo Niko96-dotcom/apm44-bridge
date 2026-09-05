@@ -1,7 +1,6 @@
 #include "engine/BridgeEngine.h"
 
 #include "engine/BridgeControlLoop.h"
-#include "engine/BridgeInputOverrun.h"
 #include "engine/IoProcHandlers.h"
 
 #include <algorithm>
@@ -233,10 +232,11 @@ double BridgeEngine::converterRatio() const {
 
 void BridgeEngine::onInput(const float* const channels[2], std::size_t frames) {
   inputFramesProcessed_.fetch_add(frames, std::memory_order_relaxed);
-  const std::size_t available = ring_.availableToWrite();
-  if (PushDroppingNewInput(ring_, channels, frames)) {
+  // The producer drops the unaccepted tail without moving the consumer cursor.
+  const std::size_t accepted = ring_.push(channels, frames);
+  if (accepted < frames) {
     inputOverruns_.fetch_add(1, std::memory_order_relaxed);
-    inputDroppedFrames_.fetch_add(frames - std::min(frames, available),
+    inputDroppedFrames_.fetch_add(frames - accepted,
                                   std::memory_order_relaxed);
   }
 }
@@ -268,7 +268,7 @@ void BridgeEngine::publishMetricsSnapshot() {
   PublishMetrics(publisher_, next);
 }
 
-MetricsSnapshot BridgeEngine::readMetricsSnapshot() const {
+MetricsSnapshot BridgeEngine::metricsSnapshot() const {
   return ReadMetrics(publisher_);
 }
 
@@ -544,7 +544,7 @@ void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>
     std::this_thread::sleep_for(kControlLoopInterval);
   }
   stop();
-  const MetricsSnapshot stopped = readMetricsSnapshot();
+  const MetricsSnapshot stopped = metricsSnapshot();
   std::cerr << "apm44-bridge: stopped. fill_ms=" << stopped.fillMs
             << " ratio=" << drift_.smoothedRatio() << " ppm=" << drift_.currentPpm()
             << " underruns=" << drift_.underrunCount() << " overruns=" << stopped.overruns
