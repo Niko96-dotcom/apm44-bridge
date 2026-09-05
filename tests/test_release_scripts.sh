@@ -284,12 +284,20 @@ case "${1:-}" in
     echo "Package \"$2\":"
     echo "   Status: signed by a certificate trusted by macOS"
     echo "   1. Developer ID Installer: APM44 Test Org (LOCALTEAM)"
+    # Longer than a pipe buffer: an early grep -q match must not turn a valid
+    # signature into failure when the caller enables pipefail.
+    for ((i = 0; i < 2048; i++)); do
+      echo "       Certificate chain detail $i: trusted timestamp and fingerprint"
+    done
     ;;
   --payload-files)
     echo "Applications/APM44 Bridge.app"
     echo "Applications/APM44 Bridge.app/Contents/MacOS/APM44Bridge"
     echo "Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
     echo "Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS/APM44Bridge"
+    for ((i = 0; i < 2048; i++)); do
+      echo "Applications/APM44 Bridge.app/Contents/Resources/payload-$i"
+    done
     ;;
   --expand-full)
     dest="$3"

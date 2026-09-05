@@ -45,7 +45,8 @@ pkg_count="$(find "$MOUNT" -maxdepth 1 -type f -name '*.pkg' | wc -l | tr -d ' '
 PKG="$(find "$MOUNT" -maxdepth 1 -type f -name '*.pkg' | head -1)"
 
 echo "Final install source: $PKG"
-pkgutil --check-signature "$PKG" | grep -q "Developer ID Installer" || fail "mounted package is not Developer ID Installer signed"
+signature="$(pkgutil --check-signature "$PKG" 2>&1)" || fail "mounted package signature check failed"
+grep -q "Developer ID Installer" <<<"$signature" || fail "mounted package is not Developer ID Installer signed"
 xcrun stapler validate "$PKG"
 spctl --assess --type install --verbose=4 "$PKG"
 

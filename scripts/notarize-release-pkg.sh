@@ -23,7 +23,8 @@ require_developer_id_installer_signature() {
     echo "error: pkg signature check failed - run scripts/build-release-pkg.sh with INSTALLER_SIGN_ID" >&2
     exit 1
   fi
-  if ! printf '%s\n' "$signature" | grep -q "Developer ID Installer"; then
+  # A pipe into grep -q can SIGPIPE printf under pipefail after an early match.
+  if ! grep -q "Developer ID Installer" <<<"$signature"; then
     printf '%s\n' "$signature" >&2
     echo "error: pkg is not signed by a Developer ID Installer identity - run scripts/build-release-pkg.sh with INSTALLER_SIGN_ID" >&2
     exit 1

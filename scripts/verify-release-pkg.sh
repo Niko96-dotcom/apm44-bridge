@@ -28,7 +28,7 @@ require_developer_id_installer_signature() {
     printf '%s\n' "$signature" >&2
     fail "pkg signature check failed"
   }
-  printf '%s\n' "$signature" | grep -q "Developer ID Installer" || {
+  grep -q "Developer ID Installer" <<<"$signature" || {
     printf '%s\n' "$signature" >&2
     fail "pkg is not signed by a Developer ID Installer identity"
   }
@@ -37,7 +37,7 @@ require_developer_id_installer_signature() {
 require_payload_path() {
   local payload="$1"
   local needle="$2"
-  printf '%s\n' "$payload" | grep -Fq "$needle" || fail "pkg payload missing $needle"
+  grep -Fq "$needle" <<<"$payload" || fail "pkg payload missing $needle"
 }
 
 require_script_marker() {
