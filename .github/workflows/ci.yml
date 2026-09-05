@@ -56,6 +56,10 @@ jobs:
         timeout-minutes: 5
         run: bash tests/test_appcast.sh
 
+      - name: Compiler probe tests
+        timeout-minutes: 5
+        run: bash tests/test_compiler_probe.sh
+
       - name: Swift app build
         timeout-minutes: 15
         run: bash scripts/verify-app-build.sh
@@ -63,7 +67,7 @@ jobs:
       - name: Swift unit tests
         timeout-minutes: 15
         run: |
-          xcodebuild -project App/APM44Bridge.xcodeproj \
+          bash scripts/run-xcodebuild.sh -project App/APM44Bridge.xcodeproj \
             -scheme APM44Bridge \
             -destination 'platform=macOS' \
             -derivedDataPath build/app \

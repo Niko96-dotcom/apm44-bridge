@@ -1,0 +1,10 @@
+version = 1
+name = "APM44 Bridge"
+
+[setup]
+script = "bash scripts/prepare-submodules.sh"
+
+[[actions]]
+name = "Run"
+icon = "run"
+command = "APM44_BUFFER_COMPILER_PROBE=1 bash scripts/rebuild-and-open-app.sh --isolated"

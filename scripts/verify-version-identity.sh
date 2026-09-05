@@ -18,7 +18,7 @@ grep -Fq 'set(DRIVER_VERSION "${CMAKE_PROJECT_VERSION}")' "$ROOT/Driver/CMakeLis
   fail "driver version is not derived from the root CMake project"
 
 [[ -x "$DAEMON" ]] || fail "daemon missing at $DAEMON"
-daemon_out="$($DAEMON --version)"
+daemon_out="$("$DAEMON" --version)"
 [[ "$daemon_out" == "apm44-bridge $VERSION "* ]] ||
   fail "daemon version mismatch: $daemon_out"
 

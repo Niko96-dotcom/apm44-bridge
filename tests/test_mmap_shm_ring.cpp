@@ -3,12 +3,16 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cmath>
+#include <deque>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -19,6 +23,58 @@ std::string TestRingName(char suffix) {
 }
 
 }  // namespace
+
+TEST_CASE("Ring transfers preserve FIFO samples across wraps and partial operations",
+          "[mmap_shm_ring][wrap][regression]") {
+  const auto capacity = GENERATE(2u, 7u, 8u, 8191u, 8192u);
+  const std::string name = TestRingName('w');
+  struct Cleanup {
+    std::string name;
+    ~Cleanup() { shm_unlink(name.c_str()); }
+  } cleanup{name};
+  apm44::MmapShmRing producer(name), consumer(name);
+  REQUIRE(producer.create(capacity));
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
+  std::deque<float> expected;
+  std::mt19937 random(44);
+  float next = 1;
+  constexpr float sentinel = -999999;
+  for (int operation = 0; operation < 300; ++operation) {
+    const std::size_t offered = random() % (capacity + 3);
+    std::vector<float> input(offered * 2);
+    for (std::size_t i = 0; i < offered; ++i) {
+      input[2 * i] = next++;
+      input[2 * i + 1] = -input[2 * i];
+    }
+    const auto accepted = std::min(offered, capacity - 1 - expected.size());
+    REQUIRE(producer.pushInterleaved(input.data(), offered) == accepted);
+    for (std::size_t i = 0; i < accepted; ++i) expected.push_back(input[2 * i]);
+
+    const std::size_t requested = random() % (capacity + 3);
+    const auto count = std::min(requested, expected.size());
+    std::vector<float> output(2 * requested + 4, sentinel);
+    const bool planar = operation % 2 == 0;
+    float* channels[2] = {output.data() + 1, output.data() + requested + 3};
+    const auto read = planar ? consumer.popToPlanar(channels, requested)
+                             : consumer.popInterleaved(output.data() + 1, requested);
+    REQUIRE(read == count);
+    for (std::size_t i = 0; i < count; ++i) {
+      REQUIRE(output[planar ? 1 + i : 1 + 2 * i] == expected.front());
+      REQUIRE(output[planar ? requested + 3 + i : 2 + 2 * i] == -expected.front());
+      expected.pop_front();
+    }
+    REQUIRE(output.front() == sentinel);
+    REQUIRE(output.back() == sentinel);
+    if (planar) {
+      REQUIRE(output[1 + count] == sentinel);
+      REQUIRE(output[requested + 3 + count] == sentinel);
+    } else {
+      REQUIRE(output[1 + 2 * count] == sentinel);
+    }
+    REQUIRE(consumer.header()->write_index.load() - consumer.header()->read_index.load()
+            == expected.size());
+  }
+}
 
 TEST_CASE("MmapShmRing producer consumer round trip", "[mmap_shm_ring]") {
   const std::string ringName = TestRingName('r');

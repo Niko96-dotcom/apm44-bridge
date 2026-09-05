@@ -72,6 +72,12 @@ bash scripts/verify-menu-bar.sh
 bash scripts/ci-soak.sh
 ```
 
+For a local UI instance with separate preferences that leaves the installed
+app running, use `bash scripts/rebuild-and-open-app.sh --isolated`.
+See [local verification and performance](docs/development-verification.md) for
+its audio-device limits, repeatable measurements, worktree setup, and the
+Xcode compiler-probe workaround if a build stalls during discovery.
+
 Hardware pre-flight checks:
 
 ```bash

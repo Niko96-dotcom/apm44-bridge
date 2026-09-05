@@ -437,10 +437,15 @@ std::size_t MmapShmRing::pushInterleaved(const float* interleaved, std::size_t f
   uint64_t w = header_->write_index.load(std::memory_order_relaxed);
   float* dst = samples();
 
-  for (std::size_t i = 0; i < canWrite; ++i) {
-    const std::size_t idx = static_cast<std::size_t>((w + i) % cap);
-    dst[idx * kShmChannels + 0] = interleaved[i * kShmChannels + 0];
-    dst[idx * kShmChannels + 1] = interleaved[i * kShmChannels + 1];
+  // A bounded transfer spans at most the tail and the head of the ring.
+  // Compute wraparound once, then copy contiguous stereo frames.
+  const std::size_t start = static_cast<std::size_t>(w % cap);
+  const std::size_t first = std::min(canWrite, cap - start);
+  std::memcpy(dst + start * kShmChannels, interleaved,
+              first * kShmChannels * sizeof(float));
+  if (first < canWrite) {
+    std::memcpy(dst, interleaved + first * kShmChannels,
+                (canWrite - first) * kShmChannels * sizeof(float));
   }
   w += canWrite;
   header_->write_index.store(w, std::memory_order_release);
@@ -460,10 +465,13 @@ std::size_t MmapShmRing::popInterleaved(float* interleaved, std::size_t frameCou
   uint64_t r = header_->read_index.load(std::memory_order_relaxed);
   const float* src = samples();
 
-  for (std::size_t i = 0; i < canRead; ++i) {
-    const std::size_t idx = static_cast<std::size_t>((r + i) % cap);
-    interleaved[i * kShmChannels + 0] = src[idx * kShmChannels + 0];
-    interleaved[i * kShmChannels + 1] = src[idx * kShmChannels + 1];
+  const std::size_t start = static_cast<std::size_t>(r % cap);
+  const std::size_t first = std::min(canRead, cap - start);
+  std::memcpy(interleaved, src + start * kShmChannels,
+              first * kShmChannels * sizeof(float));
+  if (first < canRead) {
+    std::memcpy(interleaved + first * kShmChannels, src,
+                (canRead - first) * kShmChannels * sizeof(float));
   }
   r += canRead;
   header_->read_index.store(r, std::memory_order_release);
@@ -484,10 +492,16 @@ std::size_t MmapShmRing::popToPlanar(float* const channelData[2], std::size_t fr
   uint64_t r = header_->read_index.load(std::memory_order_relaxed);
   const float* src = samples();
 
-  for (std::size_t i = 0; i < canRead; ++i) {
-    const std::size_t idx = static_cast<std::size_t>((r + i) % cap);
-    channelData[0][i] = src[idx * kShmChannels + 0];
-    channelData[1][i] = src[idx * kShmChannels + 1];
+  const std::size_t start = static_cast<std::size_t>(r % cap);
+  const std::size_t first = std::min(canRead, cap - start);
+  const float* tail = src + start * kShmChannels;
+  for (std::size_t i = 0; i < first; ++i) {
+    channelData[0][i] = tail[i * kShmChannels + 0];
+    channelData[1][i] = tail[i * kShmChannels + 1];
+  }
+  for (std::size_t i = 0; i < canRead - first; ++i) {
+    channelData[0][first + i] = src[i * kShmChannels + 0];
+    channelData[1][first + i] = src[i * kShmChannels + 1];
   }
   r += canRead;
   header_->read_index.store(r, std::memory_order_release);

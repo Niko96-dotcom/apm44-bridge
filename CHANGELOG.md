@@ -2,6 +2,18 @@
 
 All notable user-facing changes will be documented here.
 
+## 0.12.7 - 2026-09-05
+
+- Reduced shared-memory audio transfer overhead by copying contiguous ring
+  spans instead of calculating wraparound for every frame. Audio quality,
+  buffering settings, and validation are unchanged.
+- Added repeatable transfer benchmarks and stronger tests for stereo ordering,
+  wraparound, and partial transfers.
+- Added an isolated development app launch and fixed verification with custom
+  build directories and fresh worktrees.
+- Added an opt-in workaround for Xcode 26.6 compiler discovery stalls, preserving
+  compiler diagnostics and failure reporting.
+
 ## 0.12.6 - 2026-09-05
 
 - Fixed discovery of USB AirPods Max that macOS lists before activating their

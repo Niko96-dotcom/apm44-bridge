@@ -36,7 +36,7 @@ if [[ -n "$APP_OUTPUT_DIR" ]]; then
   echo "App output: $APP_OUTPUT_DIR"
 fi
 rm -rf "$APP" "$APP.dSYM"
-xcodebuild "${XCODEBUILD_ARGS[@]}"
+bash scripts/run-xcodebuild.sh "${XCODEBUILD_ARGS[@]}"
 
 if [[ ! -x "$EXECUTABLE" ]]; then
   echo "error: built app executable missing at $EXECUTABLE" >&2

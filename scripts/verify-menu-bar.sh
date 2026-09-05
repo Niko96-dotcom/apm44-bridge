@@ -9,7 +9,7 @@ bash scripts/verify-app-build.sh
 echo "== Daemon tests =="
 if [[ -d build ]]; then
   cmake --build build
-  ctest --test-dir build -R 'bridge_metrics|test_bridge_metrics' --output-on-failure || true
+  ctest --test-dir build -R 'bridge_metrics|test_bridge_metrics' --output-on-failure
 else
   echo "warn: no build/ — run cmake -B build first" >&2
 fi
@@ -25,7 +25,7 @@ rg -n "return 15" App/APM44Bridge/LatencyPreset.swift >/dev/null
 rg -n "return 30" App/APM44Bridge/LatencyPreset.swift >/dev/null
 
 echo "== Swift unit tests =="
-xcodebuild -project App/APM44Bridge.xcodeproj \
+bash scripts/run-xcodebuild.sh -project App/APM44Bridge.xcodeproj \
   -scheme APM44Bridge \
   -destination 'platform=macOS' \
   -derivedDataPath build/app \

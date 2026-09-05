@@ -44,6 +44,10 @@ set_target_properties(apm44-soak PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/BridgeDaemon"
 )
 
+# Opt-in measurement tool; no performance thresholds in correctness CI.
+add_executable(apm44-ring-bench EXCLUDE_FROM_ALL src/tools/apm44_ring_bench_main.cpp)
+target_link_libraries(apm44-ring-bench PRIVATE apm44_shared)
+
 add_executable(apm44-hal-smoke
   src/tools/apm44_hal_smoke_main.cpp
   src/hal/DeviceEnumerator.cpp

@@ -27,7 +27,12 @@ bash scripts/ci.sh
 
 The CI script configures CMake, builds the daemon, driver, shared code, and
 tests, runs `ctest`, runs the repo secret check, and verifies the Swift menu
-bar app when XcodeGen is available.
+bar app. XcodeGen is required unless `APM44_SKIP_APP=1` explicitly requests
+native-only verification.
+
+See [Local verification and performance](docs/development-verification.md)
+for isolated UI launch, fresh worktrees, benchmarks, sanitizer commands, and
+the opt-in Xcode 26.6 compiler-probe workaround exercised on the development Mac.
 
 ## Real-Time Audio Rules
 

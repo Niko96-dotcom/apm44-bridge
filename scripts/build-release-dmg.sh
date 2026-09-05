@@ -56,7 +56,8 @@ if [[ "$PACKAGE_ONLY" != "1" ]]; then
   # untracked or stale nested executable.
   rm -rf "$ROOT/build/$CONFIG/APM44 Bridge.app" \
     "$ROOT/build/$CONFIG/APM44 Bridge.app.dSYM"
-  xcodebuild -project "$ROOT/App/APM44Bridge.xcodeproj" -scheme APM44Bridge \
+  bash "$ROOT/scripts/run-xcodebuild.sh" -project "$ROOT/App/APM44Bridge.xcodeproj" -scheme APM44Bridge \
+    -derivedDataPath "${APM44_APP_DERIVED_DATA:-$ROOT/build/app}" \
     -configuration "$CONFIG" build \
     CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
     CONFIGURATION_BUILD_DIR="$ROOT/build/$CONFIG"
