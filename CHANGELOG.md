@@ -2,6 +2,12 @@
 
 All notable user-facing changes will be documented here.
 
+## Unreleased
+
+- Tightened menu-bar and setup copy: dropped title-echo subtitles and helper
+  tours, and kept only scope, constraint, consequence, or status the title
+  cannot hold.
+
 ## 0.12.7 - 2026-09-05
 
 - Reduced shared-memory audio transfer overhead by copying contiguous ring

@@ -19,6 +19,7 @@ if rg -n "zero latency|0 ms monitoring" App/ 2>/dev/null; then
   echo "error: prohibited latency copy in App/" >&2
   exit 1
 fi
+bash "$ROOT/tests/test_ui_chrome.sh"
 rg -n "metrics-json" App/APM44Bridge/BridgeProcessManager.swift >/dev/null
 rg -n "return 8" App/APM44Bridge/LatencyPreset.swift >/dev/null
 rg -n "return 15" App/APM44Bridge/LatencyPreset.swift >/dev/null

@@ -11,10 +11,7 @@ enum AppStrings {
     static var chooseOutput: String { t("choose_output", "Choose output…") }
     static var noOutputDevices: String { t("no_output_devices", "No output devices") }
     static var noOutputDevicesHint: String {
-        t(
-            "no_output_devices_hint",
-            "Connect headphones or an audio interface, then choose an output here."
-        )
+        t("no_output_devices_hint", "Connect headphones or an audio interface")
     }
     static var unavailableSuffix: String { t("unavailable_suffix", "Unavailable") }
     static var unsupportedPrefix: String { t("unsupported_prefix", "Unsupported") }
@@ -50,12 +47,6 @@ enum AppStrings {
     static var selectedOutputGone: String {
         t("selected_output_gone", "Selected output is no longer available")
     }
-    static var selectedOutputGoneHint: String {
-        t(
-            "selected_output_gone_hint",
-            "Selected output is no longer available — choose another device"
-        )
-    }
     static var bridgeDidNotStop: String { t("bridge_did_not_stop", "Bridge did not stop") }
     static var waitingForDevicesAfterWake: String {
         t("waiting_for_devices_after_wake", "Waiting for audio devices after wake…")
@@ -81,13 +72,13 @@ enum AppStrings {
     static var cubaseControlRoomHint: String {
         t(
             "cubase_control_room_hint",
-            "Assign Monitor 1 device ports to APM44 Bridge left and right (German UI: Geräteanschlüsse). For click-free monitoring, use Safe buffering and USB-C AirPods."
+            "Assign Monitor 1 device ports to APM44 Bridge left and right"
         )
     }
     static var downloadInstaller: String { t("download_installer", "Download the installer") }
     static var reloadAudioDriver: String { t("reload_audio_driver", "Reload audio driver") }
     static var enterAdminPassword: String {
-        t("enter_admin_password", "Enter your admin password when asked.")
+        t("enter_admin_password", "Requires an admin password")
     }
     static var halDriver: String { t("hal_driver", "Audio driver") }
     static var halRateTitle: String { t("hal_rate_title", "APM44 Bridge @ 44.1 kHz") }
@@ -96,22 +87,13 @@ enum AppStrings {
         t("driver_ready_detail", "APM44 Bridge visible in Audio MIDI Setup")
     }
     static var driverReloadHint: String {
-        t(
-            "driver_reload_hint",
-            "Installed but not loaded yet. Reload Core Audio to finish (usually no restart needed)."
-        )
+        t("driver_reload_hint", "Installed, not loaded")
     }
     static var driverRestartHint: String {
-        t(
-            "driver_restart_hint",
-            "Installed. If it is still not detected, restart your Mac once — only needed the first time."
-        )
+        t("driver_restart_hint", "Restart the Mac once if it is still missing")
     }
     static var driverMissingDetail: String {
-        t(
-            "driver_missing_detail",
-            "Driver not installed. Open the APM44 Bridge installer (.pkg) to install it."
-        )
+        t("driver_missing_detail", "Not installed")
     }
     static var driverNotDetected: String { t("driver_not_detected", "Driver not detected") }
     static var connectAirPods: String {
@@ -162,7 +144,11 @@ enum AppStrings {
     }
 
     static func previousOutputUnavailable(name: String) -> String {
-        format("previous_output_unavailable %@", "The previous output %@ is unavailable. Choose another device.", name)
+        format(
+            "previous_output_unavailable %@",
+            "Previous output %@ is unavailable — choose another device",
+            name
+        )
     }
 
     static func selectedOutputIncompatible(issue: String) -> String {
@@ -180,7 +166,7 @@ enum AppStrings {
     static func reconnectingAttempt(current: Int, max: Int) -> String {
         format(
             "reconnecting_attempt %lld %lld",
-            "Reconnecting… (attempt %lld of %lld; launch not yet stable)",
+            "Reconnecting… (attempt %lld of %lld)",
             Int64(current),
             Int64(max)
         )
@@ -207,19 +193,15 @@ enum AppStrings {
     }
 
     static func bufferTarget(_ ms: Int) -> String {
-        format("buffer_target %lld", "~%lld ms buffer target", Int64(ms))
+        format("buffer_target %lld", "~%lld ms", Int64(ms))
     }
 
     static func bufferTargetMinimum(_ ms: Int) -> String {
-        format("buffer_target_minimum %lld", "~%lld ms buffer target (path minimum)", Int64(ms))
+        format("buffer_target_minimum %lld", "~%lld ms (path minimum)", Int64(ms))
     }
 
-    static func stoppedLatencyHint(_ ms: Int) -> String {
-        format(
-            "stopped_latency_hint %lld",
-            "~%lld ms bridge buffer target; device, DAW, and hardware latency are additional.",
-            Int64(ms)
-        )
+    static var stoppedLatencyHint: String {
+        t("stopped_latency_hint", "Device, DAW, and hardware latency are additional")
     }
 
     static func nominalRateHint(_ rate: Int) -> String {

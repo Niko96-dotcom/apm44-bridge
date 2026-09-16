@@ -32,6 +32,9 @@ cmake --build "$BUILD_DIR" --parallel
 echo "== Native tests =="
 ctest --test-dir "$BUILD_DIR" --output-on-failure
 
+echo "== UI chrome copy tests =="
+bash tests/test_ui_chrome.sh
+
 echo "== Release script tests =="
 bash tests/test_release_scripts.sh
 

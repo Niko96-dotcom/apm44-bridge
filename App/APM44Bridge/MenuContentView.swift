@@ -423,15 +423,10 @@ struct MenuContentView: View {
                     Image(systemName: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(AppStrings.buffering)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                        Text(settings.latencyPreset.stoppedLatencyHint(halMode: manager.routingMode == .halVirtualDevice))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Text(settings.latencyPreset.stoppedLatencyHint)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

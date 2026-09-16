@@ -246,7 +246,6 @@ final class BridgeProcessManager: ObservableObject {
         }
         guard let selectedOutput = devices.first(where: { $0.uid == uid }) else {
             state = .error(AppStrings.selectedOutputGone)
-            bannerMessage = AppStrings.selectedOutputGoneHint
             return
         }
         guard selectedOutput.isMonitoringCompatible else {
@@ -432,7 +431,6 @@ final class BridgeProcessManager: ObservableObject {
             let stopped = await terminateProcessWithEscalation(reason: reason)
             if !stopped {
                 state = .error(AppStrings.bridgeDidNotStop)
-                bannerMessage = AppStrings.bridgeDidNotStop
                 return
             }
         }
