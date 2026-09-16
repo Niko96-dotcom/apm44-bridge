@@ -14,11 +14,12 @@ Map each step to requirements and record pass/fail in the release or QA notes.
 
 | Step | Pass? |
 |------|-------|
-| Menu bar icon appears (headphones) | |
+| Menu bar extra is a template image (follows menu-bar tint) | |
 | Status shows Running / Stopped | |
-| Output picker shows device name | |
-| Start / Stop toggles bridge | |
-| Icon tint: gray stopped, green running, red on error | |
+| Running uses a waveform glyph; stopped uses headphones | |
+| Output picker shows a name, “Choose output…”, or “Unavailable” — never a blank closed value | |
+| Start / Stop / Restart / Quit have unique names | |
+| Start is bordered (not prominent fill) when disabled, with the reason next to it | |
 
 ## APP-02 — Latency presets
 
@@ -57,6 +58,17 @@ Map each step to requirements and record pass/fail in the release or QA notes.
 | Running label identifies `~N ms bridge buffering` with N > 0 | |
 | Copy states device, DAW, and hardware latency are additional | |
 | No "zero latency" copy anywhere | |
+| Driver / converter counters stay inside **Details** | |
+
+## APP-06 — First run, help, and language
+
+| Step | Pass? |
+|------|-------|
+| Incomplete setup offers **Skip Setup**, not Continue/Done | |
+| Footer **Setup** reopens the sheet after skip | |
+| **Cubase setup guide** is a named control | |
+| German system language shows German chrome (Start, Ausgabe, Beenden) | |
+| Open at login is a regular checkbox, not a switch | |
 
 ## Automated gate
 

@@ -38,9 +38,13 @@ Or open `App/APM44Bridge.xcodeproj` in Xcode and run the **APM44 Bridge** scheme
 The menu bar panel owns normal bridge lifecycle actions:
 
 - **Start** launches the bridge against the selected output device.
-- **Stop** stops app-owned bridge work.
+- **Stop** stops app-owned bridge work. It is a normal primary action, not a destructive control.
 - **Restart** restarts the app-owned bridge path.
 - **Quit APM44 Bridge** stops app-owned bridge work, then exits the app.
+- **Setup** reopens first-run checks. Incomplete first-run uses **Skip Setup**; completed checks use **Done**.
+- **Cubase setup guide** and **Help → APM44 Bridge Setup** are named help entries.
+
+The menu-bar extra is a template image: headphones when stopped, waveform when running. Color is not the only running/stopped signal.
 
 Quit is intentionally an app lifecycle action only. It does not install,
 uninstall, reload, or otherwise mutate the HAL driver.

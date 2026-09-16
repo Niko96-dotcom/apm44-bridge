@@ -4,6 +4,10 @@ options:
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
+  knownRegions:
+    - en
+    - Base
+    - de
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle

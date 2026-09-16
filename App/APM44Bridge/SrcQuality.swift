@@ -11,9 +11,9 @@ enum SrcQuality: String, CaseIterable, Identifiable {
 
     var menuTitle: String {
         switch self {
-        case .medium: return "Standard"
-        case .high: return "High"
-        case .best: return "Best (higher CPU)"
+        case .medium: return AppStrings.qualityStandard
+        case .high: return AppStrings.qualityHigh
+        case .best: return AppStrings.qualityBest
         }
     }
 }

@@ -18,8 +18,8 @@ final class MetricsParserTests: XCTestCase {
 
     func testBridgeBufferingLabelFormat() {
         let snapshot = MetricsParser.parse(line: fixtureLine)!
+        XCTAssertEqual(snapshot.bridgeBufferingLabel, AppStrings.bridgeBuffering(Int(max(0.1, snapshot.estimatedRtMs.rounded()))))
         XCTAssertTrue(snapshot.bridgeBufferingLabel.hasPrefix("~"))
-        XCTAssertTrue(snapshot.bridgeBufferingLabel.contains("bridge buffering"))
         XCTAssertFalse(snapshot.bridgeBufferingLabel.contains("monitoring latency"))
         XCTAssertFalse(snapshot.bridgeBufferingLabel.contains("0 ms"))
     }

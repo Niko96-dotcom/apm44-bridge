@@ -27,7 +27,14 @@ final class LatencyPresetTests: XCTestCase {
     }
 
     func testHalTargetDescription() {
-        XCTAssertTrue(LatencyPreset.low.targetDescription(halMode: true).contains("20"))
-        XCTAssertTrue(LatencyPreset.low.targetDescription(halMode: true).contains("HAL minimum"))
+        XCTAssertEqual(
+            LatencyPreset.low.targetDescription(halMode: true),
+            AppStrings.bufferTargetMinimum(20)
+        )
+        XCTAssertFalse(LatencyPreset.low.targetDescription(halMode: true).localizedCaseInsensitiveContains("HAL"))
+        XCTAssertEqual(
+            LatencyPreset.safe.targetDescription(halMode: true),
+            AppStrings.bufferTarget(100)
+        )
     }
 }

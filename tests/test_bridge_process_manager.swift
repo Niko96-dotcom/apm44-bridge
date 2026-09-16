@@ -91,6 +91,16 @@ final class BridgeProcessManagerTests: XCTestCase {
         return (manager, settings, mockLauncher)
     }
 
+    private func assertStoppedAfterUnstableLaunches(_ message: String, launches: Int = 4, lastExit: Int) {
+        let marker = "__DETAIL__"
+        let parts = AppStrings.stoppedAfterUnstableLaunches(launches, detail: marker)
+            .components(separatedBy: marker)
+        XCTAssertEqual(parts.count, 2, message)
+        XCTAssertTrue(message.hasPrefix(parts[0]), message)
+        XCTAssertTrue(message.hasSuffix(parts[1]), message)
+        XCTAssertTrue(message.contains(AppStrings.lastExit(lastExit)), message)
+    }
+
     private func sampleMetrics() -> BridgeMetricsSnapshot {
         BridgeMetricsSnapshot(
             fillMs: 15,
@@ -254,7 +264,10 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         if case .reconnecting = manager.state {
             XCTAssertGreaterThan(manager.retryGeneration, generationBefore)
-            XCTAssertTrue(manager.bannerMessage?.localizedCaseInsensitiveContains("attempt") == true)
+            XCTAssertEqual(
+                manager.bannerMessage,
+                AppStrings.reconnectingAttempt(current: manager.retryAttemptForTesting, max: 4)
+            )
         } else {
             XCTFail("Expected reconnecting state after unexpected exit, got \(manager.state)")
         }
@@ -456,7 +469,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         manager.start()
 
-        XCTAssertEqual(manager.state, .error("Selected output is no longer available"))
+        XCTAssertEqual(manager.state, .error(AppStrings.selectedOutputGone))
         XCTAssertEqual(launcher.makeCount, 0)
     }
 
@@ -500,7 +513,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             XCTFail("Expected reconnecting after disconnect, got \(manager.state)")
         }
         XCTAssertEqual(launcher.makeCount, 1)
-        XCTAssertTrue(manager.bannerMessage?.localizedCaseInsensitiveContains("waiting for") == true)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForOutput(manager.deviceDisplayName))
     }
 
     func testReconnectAfterDisconnectAutoStarts() async {
@@ -570,7 +583,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         manager.applyRefreshedDeviceListForTesting([airpods])
 
         XCTAssertNil(settings.outputDeviceUid)
-        XCTAssertEqual(manager.bannerMessage, "Previous output unavailable — select a device")
+        XCTAssertEqual(manager.bannerMessage, AppStrings.previousOutputSelect)
     }
 
     func testUnexpectedExitSchedulesRetry() async {
@@ -584,7 +597,10 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         if case .reconnecting = manager.state {
-            XCTAssertTrue(manager.bannerMessage?.localizedCaseInsensitiveContains("attempt") == true)
+            XCTAssertEqual(
+                manager.bannerMessage,
+                AppStrings.reconnectingAttempt(current: manager.retryAttemptForTesting, max: 4)
+            )
         } else {
             XCTFail("Expected reconnecting with retry banner, got \(manager.state)")
         }
@@ -637,7 +653,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         if case .error(let message) = manager.state {
-            XCTAssertTrue(message.localizedCaseInsensitiveContains("unstable launches"))
+            assertStoppedAfterUnstableLaunches(message, lastExit: 1)
         } else {
             XCTFail("Expected final error after retries, got \(manager.state)")
         }
@@ -663,7 +679,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         if case .error(let message) = manager.state {
-            XCTAssertTrue(message.localizedCaseInsensitiveContains("unstable launches"))
+            assertStoppedAfterUnstableLaunches(message, lastExit: 1)
         } else {
             XCTFail("Expected final error after retries from zero, got \(manager.state)")
         }
@@ -693,8 +709,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         if case .error(let message) = manager.state {
-            XCTAssertTrue(message.contains("4 unstable launches"))
-            XCTAssertTrue(message.contains("last exit 17"))
+            assertStoppedAfterUnstableLaunches(message, lastExit: 17)
         } else {
             XCTFail("Expected bounded crash-loop error, got \(manager.state)")
         }
@@ -718,7 +733,10 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 2)
         XCTAssertEqual(manager.processHealthForTesting, .spawning)
         XCTAssertEqual(manager.retryAttemptForTesting, 1)
-        XCTAssertTrue(manager.bannerMessage?.contains("Reconnecting") == true)
+        XCTAssertEqual(
+            manager.bannerMessage,
+            AppStrings.reconnectingAttempt(current: 1, max: 4)
+        )
 
         manager.applyMetricsForTesting(sampleMetrics())
         for _ in 0..<100 where manager.processHealthForTesting != .stable {
@@ -807,7 +825,10 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         if case .reconnecting = manager.state {
-            XCTAssertTrue(manager.bannerMessage?.localizedCaseInsensitiveContains("attempt") == true)
+            XCTAssertEqual(
+                manager.bannerMessage,
+                AppStrings.reconnectingAttempt(current: manager.retryAttemptForTesting, max: 4)
+            )
         } else {
             XCTFail("Expected reconnecting after recoverable stale ring exit, got \(manager.state)")
         }
@@ -834,8 +855,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         let (manager, _, _) = makeManager()
         manager.appendStderrForTesting("stale shm ring: invalid shm ring header")
         let message = manager.bridgeFailureMessageForTesting(defaultMessage: "Lost connection to bridge.")
-        XCTAssertTrue(message.localizedCaseInsensitiveContains("reinstall"))
-        XCTAssertTrue(message.localizedCaseInsensitiveContains("driver"))
+        XCTAssertEqual(message, AppStrings.ipcFailed())
     }
 
     func testSettingsRestartWaitsForTermination() async {

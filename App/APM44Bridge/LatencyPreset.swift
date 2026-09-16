@@ -34,9 +34,8 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
     func menuTitle(halMode: Bool) -> String {
         let ms = Int(effectiveTargetFillMs(halMode: halMode))
         switch self {
-        case .low: return halMode ? "Low (~\(ms) ms HAL min)" : "Low (~8 ms)"
-        case .balanced: return halMode ? "Balanced (~\(ms) ms)" : "Balanced (~15 ms)"
-        case .safe: return "Safe (~\(ms) ms)"
+        case .low, .balanced, .safe:
+            return "\(shortTitle) (~\(ms) ms)"
         }
     }
 
@@ -46,9 +45,9 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
     /// separately beneath the picker so the segments don't clip.
     var shortTitle: String {
         switch self {
-        case .low: return "Low"
-        case .balanced: return "Balanced"
-        case .safe: return "Safe"
+        case .low: return AppStrings.low
+        case .balanced: return AppStrings.balanced
+        case .safe: return AppStrings.safe
         }
     }
 
@@ -56,16 +55,16 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
     func targetDescription(halMode: Bool) -> String {
         let ms = Int(effectiveTargetFillMs(halMode: halMode))
         if halMode, targetFillMs < Self.halMinimumTargetFillMs {
-            return "~\(ms) ms buffer target (HAL minimum)"
+            return AppStrings.bufferTargetMinimum(ms)
         }
-        return "~\(ms) ms buffer target"
+        return AppStrings.bufferTarget(ms)
     }
 
     var targetDescription: String { targetDescription(halMode: false) }
 
     func stoppedLatencyHint(halMode: Bool) -> String {
         let ms = Int(effectiveTargetFillMs(halMode: halMode))
-        return "~\(ms) ms bridge buffer target; device, DAW, and hardware latency are additional."
+        return AppStrings.stoppedLatencyHint(ms)
     }
 
     var stoppedLatencyHint: String { stoppedLatencyHint(halMode: false) }

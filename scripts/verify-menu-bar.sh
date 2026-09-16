@@ -22,7 +22,7 @@ fi
 rg -n "metrics-json" App/APM44Bridge/BridgeProcessManager.swift >/dev/null
 rg -n "return 8" App/APM44Bridge/LatencyPreset.swift >/dev/null
 rg -n "return 15" App/APM44Bridge/LatencyPreset.swift >/dev/null
-rg -n "return 30" App/APM44Bridge/LatencyPreset.swift >/dev/null
+rg -n "return 100" App/APM44Bridge/LatencyPreset.swift >/dev/null
 
 echo "== Swift unit tests =="
 bash scripts/run-xcodebuild.sh -project App/APM44Bridge.xcodeproj \

@@ -178,18 +178,18 @@ enum RoutingMode: Equatable {
 
     var menuLabel: String {
         switch self {
-        case .halVirtualDevice: return "APM44 Bridge (driver)"
-        case .blackHoleFallback: return "BlackHole"
+        case .halVirtualDevice: return AppStrings.routingHal
+        case .blackHoleFallback: return AppStrings.routingBlackHole
         }
     }
 
     func detail(outputName: String?) -> String {
-        let output = outputName.map { "\($0) @ 48 kHz" } ?? "Choose output…"
+        let output = outputName.map { AppStrings.outputAt48k($0) } ?? AppStrings.chooseOutput
         switch self {
         case .halVirtualDevice:
-            return "DAW → APM44 Bridge @ 44.1 kHz → \(output)"
+            return AppStrings.pathHal(output: output)
         case .blackHoleFallback:
-            return "DAW → BlackHole @ 44.1 kHz → \(output)"
+            return AppStrings.pathBlackHole(output: output)
         }
     }
 }
@@ -202,10 +202,10 @@ enum BridgeConnectionPhase: Equatable {
 
     var label: String {
         switch self {
-        case .stopped: return "Stopped"
-        case .waitingForDAW: return "Waiting for DAW"
-        case .connected: return "Connected"
-        case .running: return "Running"
+        case .stopped: return AppStrings.stopped
+        case .waitingForDAW: return AppStrings.waitingForDAW
+        case .connected: return AppStrings.connected
+        case .running: return AppStrings.running
         }
     }
 }

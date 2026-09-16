@@ -7,6 +7,8 @@ struct MenuContentView: View {
     @EnvironmentObject private var updater: SparkleUpdateController
     @StateObject private var launchAtLogin = LaunchAtLoginController()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showFirstRun = false
+    @State private var showMonitoringDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -15,6 +17,14 @@ struct MenuContentView: View {
             controlCard
             updateSection
             primaryButtons
+            if let reason = startBlockedReason, showsStartButton {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("start-blocked-reason")
+                    .accessibilityLabel(reason)
+            }
             Divider()
             statusDetail
             if let banner = manager.bannerMessage {
@@ -25,20 +35,25 @@ struct MenuContentView: View {
         }
         .padding(16)
         .frame(width: 340)
-        .onAppear { launchAtLogin.refresh() }
+        .onAppear {
+            launchAtLogin.refresh()
+            if !UserDefaults.standard.bool(forKey: FirstRunKeys.completed) {
+                showFirstRun = true
+            }
+        }
         .task {
-            // The menu-bar popover may not be opened during launch, and the
-            // fallback controls window can appear after a transient Core Audio
-            // refresh. Always reconcile the device list when either surface
-            // becomes visible instead of leaving Output permanently empty.
             _ = await manager.refreshDevices()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchAtLogin.refresh()
         }
+        .sheet(isPresented: $showFirstRun) {
+            FirstRunPreflightView(manager: manager, isPresented: $showFirstRun)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showAPM44Setup)) { _ in
+            showFirstRun = true
+        }
     }
-
-    // MARK: - Status hero
 
     private var statusHero: some View {
         HStack(spacing: 12) {
@@ -67,12 +82,12 @@ struct MenuContentView: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Bridge status")
-        .accessibilityValue(statusText)
+        .accessibilityLabel(AppStrings.bridgeStatus)
+        .accessibilityValue("\(statusText), \(manager.routingMode.menuLabel)")
     }
 
     private func latencyBadge(_ metrics: BridgeMetricsSnapshot) -> some View {
-        Text(shortLatency(metrics))
+        Text(AppStrings.latencyBadge(Int(max(1, metrics.estimatedRtMs.rounded()))))
             .font(.caption.weight(.semibold))
             .monospacedDigit()
             .padding(.horizontal, 8)
@@ -100,11 +115,9 @@ struct MenuContentView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
         )
-        .accessibilityLabel("Signal path")
+        .accessibilityLabel(AppStrings.signalPath)
         .accessibilityValue(detail)
     }
-
-    // MARK: - Controls
 
     private var controlCard: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -137,30 +150,33 @@ struct MenuContentView: View {
 
     private var outputControl: some View {
         VStack(alignment: .leading, spacing: 6) {
-            controlHeader("hifispeaker.fill", "Output")
-            if manager.devices.isEmpty {
+            controlHeader("hifispeaker.fill", AppStrings.output)
+            if manager.devices.isEmpty, settings.outputDeviceUid == nil {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "speaker.slash")
                         .foregroundStyle(.secondary)
                         .font(.callout)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("No output devices")
+                        Text(AppStrings.noOutputDevices)
                             .font(.caption)
                             .fontWeight(.medium)
-                        Text("Connect headphones or an audio interface, then choose an output here.")
+                        Text(AppStrings.noOutputDevicesHint)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             } else {
-                Picker("Output", selection: outputSelection) {
-                    if settings.outputDeviceUid == nil {
-                        Text("Choose output…").tag(String?.none)
+                Picker(AppStrings.output, selection: outputSelection) {
+                    Text(AppStrings.chooseOutput).tag("")
+                    if let uid = settings.outputDeviceUid,
+                       !manager.devices.contains(where: { $0.uid == uid }) {
+                        Text("\(manager.deviceDisplayName) — \(AppStrings.unavailableSuffix)")
+                            .tag(uid)
                     }
                     ForEach(manager.devices) { device in
                         Text(device.pickerLabel)
-                            .tag(Optional(device.uid))
+                            .tag(device.uid)
                             .disabled(!device.isMonitoringCompatible)
                     }
                 }
@@ -179,8 +195,8 @@ struct MenuContentView: View {
 
     private var latencyControl: some View {
         VStack(alignment: .leading, spacing: 6) {
-            controlHeader("speedometer", "Bridge buffering")
-            Picker("Bridge buffering", selection: $settings.latencyPreset) {
+            controlHeader("speedometer", AppStrings.buffering)
+            Picker(AppStrings.buffering, selection: $settings.latencyPreset) {
                 ForEach(LatencyPreset.allCases) { preset in
                     Text(preset.shortTitle).tag(preset)
                 }
@@ -198,8 +214,8 @@ struct MenuContentView: View {
 
     private var qualityControl: some View {
         VStack(alignment: .leading, spacing: 6) {
-            controlHeader("waveform.path", "Quality")
-            Picker("SRC quality", selection: srcQualityBinding) {
+            controlHeader("waveform.path", AppStrings.quality)
+            Picker(AppStrings.quality, selection: srcQualityBinding) {
                 ForEach(SrcQuality.allCases) { quality in
                     Text(quality.menuTitle).tag(quality)
                 }
@@ -213,26 +229,18 @@ struct MenuContentView: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 if showsStartButton {
-                    Button {
-                        manager.start()
-                    } label: {
-                        Label("Start Bridge", systemImage: "play.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canStart || manager.isTransitioning)
+                    startButton
                 }
 
                 if showsStopButton {
-                    Button(role: .destructive) {
+                    Button(AppStrings.stopBridge) {
                         manager.stop()
-                    } label: {
-                        Label("Stop Bridge", systemImage: "stop.fill")
-                            .frame(maxWidth: .infinity)
                     }
+                    .frame(maxWidth: .infinity)
                     .buttonStyle(.borderedProminent)
-                    .tint(.red)
                     .disabled(manager.isTransitioning)
+                    .accessibilityLabel(AppStrings.stopBridge)
+                    .accessibilityIdentifier("stop-bridge")
                 }
             }
 
@@ -240,24 +248,49 @@ struct MenuContentView: View {
                 Button {
                     Task { await manager.restart(reason: .user) }
                 } label: {
-                    Label("Restart", systemImage: "arrow.clockwise")
+                    Label(AppStrings.restart, systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(manager.isTransitioning || !canStart)
+                .disabled(manager.isTransitioning || startBlockedReason != nil)
+                .accessibilityLabel(AppStrings.restart)
+                .accessibilityIdentifier("restart-bridge")
             }
 
-            Button {
+            Button(AppStrings.quitApp) {
                 Task { await manager.quitApplication() }
-            } label: {
-                Label("Quit APM44 Bridge", systemImage: "power")
-                    .frame(maxWidth: .infinity)
             }
+            .frame(maxWidth: .infinity)
             .buttonStyle(.bordered)
             .disabled(manager.isTransitioning)
+            .accessibilityLabel(AppStrings.quitApp)
+            .accessibilityIdentifier("quit-app")
         }
         .controlSize(.large)
-        .accessibilityHint("Controls bridge process lifecycle")
+    }
+
+    @ViewBuilder
+    private var startButton: some View {
+        let enabled = startBlockedReason == nil && !manager.isTransitioning
+        if enabled {
+            Button(AppStrings.startBridge) {
+                manager.start()
+            }
+            .frame(maxWidth: .infinity)
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel(AppStrings.startBridge)
+            .accessibilityIdentifier("start-bridge")
+        } else {
+            Button(AppStrings.startBridge) {
+                manager.start()
+            }
+            .frame(maxWidth: .infinity)
+            .buttonStyle(.bordered)
+            .disabled(true)
+            .accessibilityLabel(AppStrings.startBridge)
+            .accessibilityHint(startBlockedReason ?? "")
+            .accessibilityIdentifier("start-bridge")
+        }
     }
 
     private var updateSection: some View {
@@ -266,23 +299,23 @@ struct MenuContentView: View {
             case .idle:
                 EmptyView()
             case .checking:
-                updateStatus("Checking for updates…", systemImage: "arrow.triangle.2.circlepath", tint: .secondary)
+                updateStatus(AppStrings.checkingUpdates, systemImage: "arrow.triangle.2.circlepath", tint: .secondary)
             case let .available(version):
                 Button {
                     updater.checkForUpdates()
                 } label: {
-                    Label("Update available — APM44 Bridge \(version)", systemImage: "arrow.down.circle.fill")
+                    Text(AppStrings.updateAvailable(version))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .accessibilityHint("Opens Sparkle release notes and the secure administrator-authorized installer")
+                .accessibilityLabel(AppStrings.updateAvailable(version))
             case let .readyToInstall(version):
-                updateStatus("APM44 Bridge \(version) is ready to install — Sparkle will ask for administrator authorization.", systemImage: "checkmark.circle", tint: .green)
+                updateStatus(AppStrings.updateReady(version), systemImage: "checkmark.circle", tint: .green)
             case let .installing(version):
-                updateStatus("Installing APM44 Bridge \(version)…", systemImage: "gearshape", tint: .accentColor)
+                updateStatus(AppStrings.installingUpdate(version), systemImage: "gearshape", tint: .accentColor)
             case .cancelled:
-                updateStatus("Update cancelled.", systemImage: "xmark.circle", tint: .secondary)
+                updateStatus(AppStrings.updateCancelled, systemImage: "xmark.circle", tint: .secondary)
             case let .failed(message):
                 updateStatus(message, systemImage: "exclamationmark.triangle", tint: .orange)
             }
@@ -309,25 +342,23 @@ struct MenuContentView: View {
     private var showsStartButton: Bool {
         switch manager.state {
         case .idle, .error: return true
-        default: return false
+        case .starting, .running, .stopping, .reconnecting: return false
         }
     }
 
     private var showsStopButton: Bool {
         switch manager.state {
         case .running, .reconnecting: return true
-        default: return false
+        case .idle, .starting, .stopping, .error: return false
         }
     }
 
     private var showsRestartButton: Bool {
         switch manager.state {
         case .running, .error: return true
-        default: return false
+        case .idle, .starting, .stopping, .reconnecting: return false
         }
     }
-
-    // MARK: - Running metrics / idle hint
 
     private var statusDetail: some View {
         Group {
@@ -335,7 +366,7 @@ struct MenuContentView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
-                            Text("Buffer fill")
+                            Text(AppStrings.bufferFill)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -344,35 +375,45 @@ struct MenuContentView: View {
                                 .monospacedDigit()
                         }
                         ProgressView(value: metrics.fillProgress)
-                            .accessibilityLabel("Buffer fill")
-                            .accessibilityValue("\(String(format: "%.1f", metrics.fillMs)) milliseconds")
+                            .accessibilityLabel(AppStrings.bufferFill)
+                            .accessibilityValue(AppStrings.fillMilliseconds(String(format: "%.1f", metrics.fillMs)))
                     }
 
-                    HStack(alignment: .top) {
-                        metricStat("Known lost frames", "\(metrics.knownFrameLoss)", flashing: manager.glitchFlash)
-                        Spacer()
-                        metricStat("Recoveries", "\(metrics.underruns)", alignment: .trailing)
-                    }
+                    DisclosureGroup(AppStrings.details, isExpanded: $showMonitoringDetails) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top) {
+                                metricStat(AppStrings.knownLostFrames, "\(metrics.knownFrameLoss)", flashing: manager.glitchFlash)
+                                Spacer()
+                                metricStat(AppStrings.recoveries, "\(metrics.underruns)", alignment: .trailing)
+                            }
 
-                    HStack(alignment: .top) {
-                        metricStat("HAL drops", "\(metrics.producerDroppedFrames)")
-                        Spacer()
-                        metricStat("Output starved", "\(metrics.outputStarvationFrames)", alignment: .trailing)
-                    }
+                            HStack(alignment: .top) {
+                                metricStat(AppStrings.halDrops, "\(metrics.producerDroppedFrames)")
+                                Spacer()
+                                metricStat(AppStrings.outputStarved, "\(metrics.outputStarvationFrames)", alignment: .trailing)
+                            }
 
-                    HStack(alignment: .top) {
-                        metricStat("Partial shortages", "\(metrics.partialShortageEvents)")
-                        Spacer()
-                        metricStat("Rebuffers / SRC resets", "\(metrics.rebufferEvents) / \(metrics.converterResetEvents)", alignment: .trailing)
-                    }
+                            HStack(alignment: .top) {
+                                metricStat(AppStrings.partialShortages, "\(metrics.partialShortageEvents)")
+                                Spacer()
+                                metricStat(
+                                    AppStrings.rebuffersSrcResets,
+                                    "\(metrics.rebufferEvents) / \(metrics.converterResetEvents)",
+                                    alignment: .trailing
+                                )
+                            }
 
-                    HStack(alignment: .top) {
-                        metricStat("Drift ratio", String(format: "%.4f", metrics.ratio))
-                        Spacer()
+                            HStack(alignment: .top) {
+                                metricStat(AppStrings.driftRatio, String(format: "%.4f", metrics.ratio))
+                                Spacer()
+                            }
+                        }
+                        .padding(.top, 6)
                     }
+                    .font(.caption)
 
                     if manager.metricsStale {
-                        Label("Metrics stale", systemImage: "clock")
+                        Label(AppStrings.metricsStale, systemImage: "clock")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -383,7 +424,7 @@ struct MenuContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Bridge buffering")
+                        Text(AppStrings.buffering)
                             .font(.caption)
                             .fontWeight(.medium)
                         Text(settings.latencyPreset.stoppedLatencyHint(halMode: manager.routingMode == .halVirtualDevice))
@@ -422,42 +463,53 @@ struct MenuContentView: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - Footer
-
     private var footerSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle("Open at login", isOn: openAtLoginBinding)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .font(.caption)
+            Toggle(AppStrings.openAtLogin, isOn: openAtLoginBinding)
+                .toggleStyle(.checkbox)
+                .controlSize(.regular)
+                .font(.body)
+                .accessibilityLabel(AppStrings.openAtLogin)
+                .accessibilityIdentifier("open-at-login")
             if launchAtLogin.requiresApproval {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Label("Approval required in Login Items", systemImage: "exclamationmark.triangle")
+                    Label(AppStrings.loginItemsApproval, systemImage: "exclamationmark.triangle")
                         .font(.caption2)
                         .foregroundStyle(.orange)
                     Spacer(minLength: 4)
-                    Button("Open Settings") {
+                    Button(AppStrings.openSettings) {
                         launchAtLogin.openApprovalSettings()
                     }
                     .font(.caption2)
                     .buttonStyle(.link)
+                    .accessibilityLabel(AppStrings.openSettings)
                 }
             }
             HStack {
-                Text("APM44 Bridge \(Bundle.main.shortVersion)")
+                Text(AppStrings.versionLabel(Bundle.main.shortVersion))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Link("Cubase setup", destination: URL(string: "https://github.com/Niko96-dotcom/apm44-bridge/blob/master/docs/first-run-cubase.md")!)
-                    .font(.caption2)
+                Button(AppStrings.setup) {
+                    showFirstRun = true
+                }
+                .font(.caption2)
+                .buttonStyle(.link)
+                .accessibilityLabel(AppStrings.setup)
             }
+            Link(AppStrings.cubaseSetupGuide, destination: HelpLinks.cubaseSetup)
+                .font(.caption2)
+                .accessibilityLabel(AppStrings.cubaseSetupGuide)
         }
     }
 
     private func bannerView(_ message: String) -> some View {
-        let isReconnecting = message.localizedCaseInsensitiveContains("reconnecting")
-            || message.localizedCaseInsensitiveContains("attempt")
-            || message.localizedCaseInsensitiveContains("waiting for")
+        let isReconnecting: Bool = {
+            switch manager.state {
+            case .reconnecting, .starting: return true
+            default: return false
+            }
+        }()
         let tint: Color = isReconnecting ? .orange : .red
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -477,8 +529,6 @@ struct MenuContentView: View {
         .transition(.opacity)
     }
 
-    // MARK: - Bindings
-
     private var openAtLoginBinding: Binding<Bool> {
         Binding(
             get: { launchAtLogin.isEnabled },
@@ -486,27 +536,27 @@ struct MenuContentView: View {
                 do {
                     try launchAtLogin.setEnabled(enabled)
                 } catch {
-                    manager.bannerMessage = "Could not update Open at login"
+                    manager.bannerMessage = AppStrings.couldNotUpdateOpenAtLogin
                     launchAtLogin.refresh()
                 }
             }
         )
     }
 
-    private var canStart: Bool {
-        guard manager.binaryURL != nil, let selectedUid = settings.outputDeviceUid else {
-            return false
-        }
-        return manager.devices.contains(where: {
-            $0.uid == selectedUid && $0.isMonitoringCompatible
-        })
+    private var startBlockedReason: String? {
+        BridgeStartReadiness.blockedReason(
+            binaryMissing: manager.binaryURL == nil,
+            selectedUid: settings.outputDeviceUid,
+            devices: manager.devices,
+            lastKnownName: manager.deviceDisplayName
+        )
     }
 
-    private var outputSelection: Binding<String?> {
+    private var outputSelection: Binding<String> {
         Binding(
-            get: { settings.outputDeviceUid },
+            get: { settings.outputDeviceUid ?? "" },
             set: { newValue in
-                settings.outputDeviceUid = newValue
+                settings.outputDeviceUid = newValue.isEmpty ? nil : newValue
                 Task { await manager.restartForSettingsChange() }
             }
         )
@@ -522,23 +572,20 @@ struct MenuContentView: View {
         )
     }
 
-    // MARK: - Derived presentation
-
     private var statusText: String {
         if manager.isRunning {
             return manager.connectionPhase.label
         }
         switch manager.state {
-        case .idle: return "Stopped"
-        case .starting: return "Starting…"
+        case .idle: return AppStrings.stopped
+        case .starting: return AppStrings.starting
         case .running: return manager.connectionPhase.label
-        case .stopping: return "Stopping…"
+        case .stopping: return AppStrings.stopping
         case .reconnecting:
-            if let banner = manager.bannerMessage,
-               banner.localizedCaseInsensitiveContains("attempt") {
+            if let banner = manager.bannerMessage {
                 return banner
             }
-            return "Reconnecting…"
+            return AppStrings.reconnecting
         case .error(let message):
             if message.count > 60 {
                 return String(message.prefix(57)) + "…"
@@ -552,24 +599,24 @@ struct MenuContentView: View {
         case .error: return "exclamationmark.triangle.fill"
         case .reconnecting: return "arrow.triangle.2.circlepath"
         case .running: return "waveform"
-        default: return "headphones"
+        case .idle, .starting, .stopping: return "headphones"
         }
     }
 
     private var statusTint: Color {
         switch manager.state {
         case .error: return .red
-        case .reconnecting: return .orange
+        case .reconnecting, .starting: return .orange
         case .running:
             return manager.metricsStale || manager.connectionPhase == .waitingForDAW ? .orange : .green
-        case .starting: return .orange
-        default: return .secondary
+        case .idle, .stopping: return .secondary
         }
     }
+}
 
-    private func shortLatency(_ metrics: BridgeMetricsSnapshot) -> String {
-        "~\(Int(max(1, metrics.estimatedRtMs.rounded()))) ms"
-    }
+enum HelpLinks {
+    static let cubaseSetup = URL(string: "https://github.com/Niko96-dotcom/apm44-bridge/blob/master/docs/first-run-cubase.md")!
+    static let releases = URL(string: "https://github.com/Niko96-dotcom/apm44-bridge/releases/latest")!
 }
 
 private extension Bundle {

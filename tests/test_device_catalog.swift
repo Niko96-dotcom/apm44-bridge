@@ -76,7 +76,7 @@ final class DeviceCatalogTests: XCTestCase {
 
         XCTAssertEqual(DeviceCatalog.filterMonitoringOutputs([unsupported]), [unsupported])
         XCTAssertFalse(unsupported.isMonitoringCompatible)
-        XCTAssertTrue(unsupported.pickerLabel.contains("Unsupported"))
+        XCTAssertTrue(unsupported.pickerLabel.contains(AppStrings.unsupportedPrefix))
         XCTAssertNil(DeviceCatalog.preferredDefault(from: [unsupported]))
     }
 

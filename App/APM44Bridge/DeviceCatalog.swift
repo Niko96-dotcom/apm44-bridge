@@ -88,15 +88,21 @@ struct AudioDeviceRow: Identifiable, Equatable {
 
     var pickerLabel: String {
         if let issue = compatibilityIssue {
-            return "\(name) — Unsupported: \(issue)"
+            return "\(name) — \(AppStrings.unsupportedPrefix): \(AppStrings.compatibility(issue))"
         }
         return "\(name) — \(transportLabel)"
     }
 
     var detailLabel: String {
-        let supportedRate = supports48000 ? "48 kHz supported" : "48 kHz unsupported"
-        let buffer = bufferFrameSize > 0 ? "\(bufferFrameSize)-frame buffer" : "buffer unknown"
-        return "\(transportLabel) • \(Int(nominalRate)) Hz current • \(supportedRate) • \(outputChannels) ch • \(buffer)"
+        let supportedRate = supports48000 ? AppStrings.rateSupported48 : AppStrings.rateUnsupported48
+        let buffer = bufferFrameSize > 0 ? AppStrings.frameBuffer(bufferFrameSize) : AppStrings.bufferUnknown
+        return AppStrings.deviceDetail(
+            transport: transportLabel,
+            rate: Int(nominalRate),
+            rateSupport: supportedRate,
+            channels: outputChannels,
+            buffer: buffer
+        )
     }
 
     private var fourCCTransport: String {

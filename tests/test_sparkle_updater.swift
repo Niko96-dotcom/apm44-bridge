@@ -21,14 +21,14 @@ final class SparkleUpdaterTests: XCTestCase {
                                       userInfo: [NSLocalizedDescriptionKey: "invalid EdDSA signature"])
         XCTAssertEqual(
             SparkleUpdateController.userFacingErrorMessage(signatureError),
-            "Update check blocked: the signed update feed could not be verified."
+            AppStrings.updateFeedUnverified
         )
 
         let unreachableError = NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotFindHost,
                                        userInfo: [NSLocalizedDescriptionKey: "The server could not be reached"])
         XCTAssertEqual(
             SparkleUpdateController.userFacingErrorMessage(unreachableError),
-            "Update check failed: The server could not be reached"
+            AppStrings.updateCheckFailed(detail: "The server could not be reached")
         )
     }
 
@@ -38,7 +38,7 @@ final class SparkleUpdaterTests: XCTestCase {
         XCTAssertTrue(SparkleUpdateController.isNoUpdateError(noUpdateError))
         XCTAssertEqual(
             SparkleUpdateController.userFacingErrorMessage(noUpdateError),
-            "No update is available."
+            AppStrings.noUpdateAvailable
         )
     }
 

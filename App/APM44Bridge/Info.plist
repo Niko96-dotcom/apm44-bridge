@@ -16,6 +16,13 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>de</string>
+	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>APM44 Bridge</string>
 	<key>APM44BuildID</key>

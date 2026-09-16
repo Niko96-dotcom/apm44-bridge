@@ -129,7 +129,7 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
 
     var bridgeBufferingLabel: String {
         let ms = max(0.1, estimatedRtMs.rounded())
-        return "~\(Int(ms)) ms bridge buffering"
+        return AppStrings.bridgeBuffering(Int(ms))
     }
 
     var fillProgress: Double {

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// First-run checks: HAL loaded, rates, Cubase Control Room ports.
+/// First-run checks: driver loaded, rates, Cubase Control Room ports.
 struct FirstRunPreflightView: View {
     @ObservedObject var manager: BridgeProcessManager
     @Binding var isPresented: Bool
@@ -9,40 +9,46 @@ struct FirstRunPreflightView: View {
     @State private var isReloading = false
     @State private var didAttemptReload = false
 
-    private let releasesURL = URL(string: "https://github.com/Niko96-dotcom/apm44-bridge/releases/latest")!
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("APM44 Bridge setup")
+            Text(AppStrings.setupTitle)
                 .font(.title3.weight(.semibold))
 
             driverCheckRow
 
             checkRow(
-                title: "APM44 Bridge @ 44.1 kHz",
+                title: AppStrings.halRateTitle,
                 ok: halRateOk,
                 detail: halRateDetail
             )
             checkRow(
-                title: "AirPods USB @ 48 kHz",
+                title: AppStrings.airPodsRateTitle,
                 ok: airPodsRateOk,
                 detail: airPodsRateDetail
             )
 
-            Text("Cubase Control Room")
+            Text(AppStrings.cubaseControlRoom)
                 .font(.headline)
-            Text("Assign Monitor 1 device ports to APM44 Bridge left and right (German UI: Geräteanschlüsse). For click-free monitoring, use Safe latency and USB-C AirPods.")
+            Text(AppStrings.cubaseControlRoomHint)
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
-                Link("Cubase setup guide", destination: URL(string: "https://github.com/Niko96-dotcom/apm44-bridge/blob/master/docs/first-run-cubase.md")!)
+                Link(AppStrings.cubaseSetupGuide, destination: HelpLinks.cubaseSetup)
+                    .accessibilityLabel(AppStrings.cubaseSetupGuide)
                 Spacer()
-                Button("Continue") {
-                    UserDefaults.standard.set(true, forKey: FirstRunKeys.completed)
-                    isPresented = false
+                if setupComplete {
+                    Button(AppStrings.done) {
+                        finishSetup()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .accessibilityLabel(AppStrings.done)
+                } else {
+                    Button(AppStrings.skipSetup) {
+                        finishSetup()
+                    }
+                    .accessibilityLabel(AppStrings.skipSetup)
                 }
-                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
@@ -50,14 +56,14 @@ struct FirstRunPreflightView: View {
         .onAppear { refreshDriverStatus() }
     }
 
-    // MARK: - Driver check row
+    private var setupComplete: Bool {
+        driverStatus == .ready && halRateOk && airPodsRateOk
+    }
 
-    /// The HAL driver row plus the state-specific recovery action. Unlike the
-    /// other rows, this one can act on the problem instead of only describing it.
     @ViewBuilder
     private var driverCheckRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            checkRow(title: "HAL driver", ok: driverStatus == .ready, detail: driverDetail)
+            checkRow(title: AppStrings.halDriver, ok: driverStatus == .ready, detail: driverDetail)
 
             switch driverStatus {
             case .ready:
@@ -68,19 +74,21 @@ struct FirstRunPreflightView: View {
                         if isReloading {
                             ProgressView().controlSize(.small)
                         } else {
-                            Text("Reload audio driver")
+                            Text(AppStrings.reloadAudioDriver)
                         }
                     }
                     .disabled(isReloading)
-                    Text("Enter your admin password when asked.")
+                    .accessibilityLabel(AppStrings.reloadAudioDriver)
+                    Text(AppStrings.enterAdminPassword)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.leading, 24)
             case .notInstalled:
-                Link("Download the installer", destination: releasesURL)
+                Link(AppStrings.downloadInstaller, destination: HelpLinks.releases)
                     .font(.caption)
                     .padding(.leading, 24)
+                    .accessibilityLabel(AppStrings.downloadInstaller)
             }
         }
     }
@@ -88,18 +96,14 @@ struct FirstRunPreflightView: View {
     private var driverDetail: String {
         switch driverStatus {
         case .ready:
-            return "APM44 Bridge visible in Audio MIDI Setup"
+            return AppStrings.driverReadyDetail
         case .installedNotLoaded:
-            return didAttemptReload
-                ? "Installed. If it is still not detected, restart your Mac once — only needed the first time."
-                : "Installed but not loaded yet. Reload Core Audio to finish (usually no restart needed)."
+            return didAttemptReload ? AppStrings.driverRestartHint : AppStrings.driverReloadHint
         case .notInstalled:
-            return "Driver not installed. Open the APM44 Bridge installer (.pkg) to install it."
+            return AppStrings.driverMissingDetail
         }
     }
 
-    /// Reload Core Audio via an admin prompt, then re-check whether the device
-    /// enumerated. The blocking privileged call runs off the main thread.
     private func reloadDriver() {
         isReloading = true
         didAttemptReload = true
@@ -108,7 +112,6 @@ struct FirstRunPreflightView: View {
                 DriverMaintenance.reloadCoreAudioWithPrivileges()
             }.value
             if reloaded {
-                // Give coreaudiod time to respawn and enumerate the device.
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
             }
             await manager.refreshDevices()
@@ -121,7 +124,10 @@ struct FirstRunPreflightView: View {
         driverStatus = HalDriverDetector.status()
     }
 
-    // MARK: - Rate checks
+    private func finishSetup() {
+        UserDefaults.standard.set(true, forKey: FirstRunKeys.completed)
+        isPresented = false
+    }
 
     private var halRateOk: Bool {
         guard let rate = HalDriverDetector.halNominalRate() else { return false }
@@ -130,9 +136,9 @@ struct FirstRunPreflightView: View {
 
     private var halRateDetail: String {
         if let rate = HalDriverDetector.halNominalRate() {
-            return "Nominal \(Int(rate)) Hz — set 44100 in Audio MIDI Setup"
+            return AppStrings.nominalRateHint(Int(rate))
         }
-        return "Driver not detected"
+        return AppStrings.driverNotDetected
     }
 
     private var airPodsRow: AudioDeviceRow? {
@@ -146,9 +152,9 @@ struct FirstRunPreflightView: View {
 
     private var airPodsRateDetail: String {
         if let row = airPodsRow {
-            return "\(row.name) @ \(Int(row.nominalRate)) Hz"
+            return AppStrings.deviceRate(row.name, rate: Int(row.nominalRate))
         }
-        return "Connect AirPods Max with USB-C cable"
+        return AppStrings.connectAirPods
     }
 
     private func checkRow(title: String, ok: Bool, detail: String) -> some View {
@@ -165,4 +171,8 @@ struct FirstRunPreflightView: View {
 
 enum FirstRunKeys {
     static let completed = "apm44.firstRunCompleted"
+}
+
+extension Notification.Name {
+    static let showAPM44Setup = Notification.Name("com.niko.apm44.showSetup")
 }

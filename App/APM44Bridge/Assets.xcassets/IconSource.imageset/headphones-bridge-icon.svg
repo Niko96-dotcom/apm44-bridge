@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Square master. macOS applies the Dock/app-icon mask; do not bake a squircle or type. -->
+  <rect width="1024" height="1024" fill="#D6DAD5"/>
+  <path d="M245 390 A267 267 0 0 1 779 390" fill="none" stroke="#1A1C1B" stroke-width="100" stroke-linecap="round"/>
+  <rect x="120" y="390" width="250" height="360" rx="90" fill="#1A1C1B"/>
+  <rect x="654" y="390" width="250" height="360" rx="90" fill="#1A1C1B"/>
+  <rect x="175" y="455" width="140" height="230" rx="56" fill="#1DB954"/>
+  <rect x="709" y="455" width="140" height="230" rx="56" fill="#1DB954"/>
+</svg>

@@ -46,7 +46,7 @@ final class BridgeProcessManager: ObservableObject {
             default: break
             }
             if retryAttempt >= maxUnhealthyLaunches { return exhaustedRetryMessage() }
-            return "Reconnecting… (attempt \(retryAttempt) of \(maxUnhealthyLaunches); launch not yet stable)"
+            return AppStrings.reconnectingAttempt(current: retryAttempt, max: maxUnhealthyLaunches)
         }
         set { noticeMessage = newValue }
     }
@@ -120,7 +120,7 @@ final class BridgeProcessManager: ObservableObject {
 
     var deviceDisplayName: String {
         guard let uid = settings.outputDeviceUid else {
-            return "Not selected"
+            return AppStrings.outputNotSelected
         }
         if let row = devices.first(where: { $0.uid == uid }) {
             return row.name
@@ -130,7 +130,7 @@ final class BridgeProcessManager: ObservableObject {
         if lastKnownDeviceUid == uid, let name = lastKnownDeviceName {
             return name
         }
-        return "device"
+        return AppStrings.selectedOutput
     }
 
     var isRunning: Bool {
@@ -166,7 +166,7 @@ final class BridgeProcessManager: ObservableObject {
             return true
         }
         guard let url = binaryURL else {
-            bannerMessage = "Bridge not found — build or install apm44-bridge"
+            bannerMessage = AppStrings.bridgeNotFound
             return false
         }
         do {
@@ -180,7 +180,7 @@ final class BridgeProcessManager: ObservableObject {
             return true
         } catch {
             if refreshGeneration == hotplugRefreshGeneration {
-                bannerMessage = "Could not list audio devices"
+                bannerMessage = AppStrings.couldNotListDevices
             }
             return false
         }
@@ -196,7 +196,7 @@ final class BridgeProcessManager: ObservableObject {
            !list.contains(where: { $0.uid == uid }),
            DeviceCatalog.isDeniedMonitoringDevice(uid: uid, name: lastKnownDeviceName ?? uid) {
             settings.outputDeviceUid = nil
-            bannerMessage = "Previous output unavailable — select a device"
+            bannerMessage = AppStrings.previousOutputSelect
         } else if settings.outputDeviceUid == nil,
                   let preferred = DeviceCatalog.preferredDefault(from: list) {
             settings.outputDeviceUid = preferred.uid
@@ -204,7 +204,7 @@ final class BridgeProcessManager: ObservableObject {
                 lastKnownDeviceName = row.name
                 lastKnownDeviceUid = row.uid
             }
-            if bannerMessage == "Previous output unavailable — select a device" {
+            if bannerMessage == AppStrings.previousOutputSelect {
                 // keep stale-selection banner until user picks a device
             } else {
                 bannerMessage = nil
@@ -213,7 +213,7 @@ final class BridgeProcessManager: ObservableObject {
                   let row = list.first(where: { $0.uid == uid }) {
             lastKnownDeviceName = row.name
             lastKnownDeviceUid = uid
-            if bannerMessage != "Output disconnected — waiting for \(row.name)…" {
+            if bannerMessage != AppStrings.waitingForOutput(row.name) {
                 bannerMessage = nil
             }
         }
@@ -237,22 +237,22 @@ final class BridgeProcessManager: ObservableObject {
             lastUnexpectedStderr = nil
         }
         guard let url = binaryURL else {
-            state = .error("Bridge not found — build or install apm44-bridge")
+            state = .error(AppStrings.bridgeNotFound)
             return
         }
         guard let uid = settings.outputDeviceUid, !uid.isEmpty else {
-            state = .error("Select an output device")
+            state = .error(AppStrings.selectOutputDevice)
             return
         }
         guard let selectedOutput = devices.first(where: { $0.uid == uid }) else {
-            state = .error("Selected output is no longer available")
-            bannerMessage = "Selected output is no longer available — choose another device"
+            state = .error(AppStrings.selectedOutputGone)
+            bannerMessage = AppStrings.selectedOutputGoneHint
             return
         }
         guard selectedOutput.isMonitoringCompatible else {
-            let issue = selectedOutput.compatibilityIssue ?? "Unsupported output format"
-            state = .error("Selected output is not compatible: \(issue)")
-            bannerMessage = "\(selectedOutput.name): \(issue)"
+            let issue = selectedOutput.compatibilityIssue ?? AppStrings.unsupportedPrefix
+            state = .error(AppStrings.selectedOutputIncompatible(issue: AppStrings.compatibility(issue)))
+            bannerMessage = AppStrings.namedIssue(selectedOutput.name, issue: AppStrings.compatibility(issue))
             return
         }
 
@@ -327,7 +327,7 @@ final class BridgeProcessManager: ObservableObject {
                 lastUnexpectedStderr = detail
                 scheduleAutoRetry()
             } else {
-                state = .error("Bridge could not start: \(detail)")
+                state = .error(AppStrings.bridgeCouldNotStart(detail: detail))
             }
         }
     }
@@ -431,8 +431,8 @@ final class BridgeProcessManager: ObservableObject {
         if process != nil {
             let stopped = await terminateProcessWithEscalation(reason: reason)
             if !stopped {
-                state = .error("Bridge did not stop")
-                bannerMessage = "Bridge did not stop"
+                state = .error(AppStrings.bridgeDidNotStop)
+                bannerMessage = AppStrings.bridgeDidNotStop
                 return
             }
         }
@@ -467,7 +467,7 @@ final class BridgeProcessManager: ObservableObject {
         guard await refreshDevices() else {
             if shouldResume {
                 state = .reconnecting
-                bannerMessage = "Waiting for audio devices after wake…"
+                bannerMessage = AppStrings.waitingForDevicesAfterWake
             }
             return
         }
@@ -479,7 +479,7 @@ final class BridgeProcessManager: ObservableObject {
             wasRunningBeforeDisconnect = true
             state = .reconnecting
             connectionPhase = .stopped
-            bannerMessage = "Output unavailable after wake — waiting for \(deviceDisplayName)…"
+            bannerMessage = AppStrings.outputUnavailableAfterWake(deviceDisplayName)
             return
         }
         start()
@@ -492,9 +492,9 @@ final class BridgeProcessManager: ObservableObject {
         guard let uid = settings.outputDeviceUid else {
             if isRunning {
                 wasRunningBeforeDisconnect = false
-                bannerMessage = "Output disconnected — select a device"
+                bannerMessage = AppStrings.outputDisconnectedSelect
                 _ = await terminateProcessWithEscalation(reason: .hotplug)
-                state = .error("Output device disconnected")
+                state = .error(AppStrings.outputDeviceDisconnected)
             }
             return
         }
@@ -509,20 +509,20 @@ final class BridgeProcessManager: ObservableObject {
                     // endpoint; the selected output is unchanged.
                     return
                 }
-                bannerMessage = "Reconnecting to \(deviceDisplayName)…"
+                bannerMessage = AppStrings.reconnectingTo(deviceDisplayName)
                 await restart(reason: .hotplug)
             } else {
                 wasRunningBeforeDisconnect = true
                 _ = await terminateProcessWithEscalation(reason: .hotplug)
                 state = .reconnecting
-                bannerMessage = "Output disconnected — waiting for \(deviceDisplayName)…"
+                bannerMessage = AppStrings.waitingForOutput(deviceDisplayName)
             }
             return
         }
 
         if case .reconnecting = state {
             if devicePresent, wasRunningBeforeDisconnect {
-                bannerMessage = "Reconnecting to \(deviceDisplayName)…"
+                bannerMessage = AppStrings.reconnectingTo(deviceDisplayName)
                 await restart(reason: .hotplug)
                 if isRunning {
                     wasRunningBeforeDisconnect = false
@@ -696,7 +696,7 @@ final class BridgeProcessManager: ObservableObject {
     private func bridgeFailureMessage(defaultMessage: String) -> String {
         let stderr = stderrLines.joined(separator: "\n")
         if stderr.localizedCaseInsensitiveContains("shm") {
-            return "APM44 driver IPC failed. Reinstall the matching driver and reload Core Audio."
+            return AppStrings.ipcFailed()
         }
         if let last = stderrLines.last, !last.isEmpty {
             return last
@@ -723,7 +723,7 @@ final class BridgeProcessManager: ObservableObject {
         }
         let singleLine = String(String.UnicodeScalarView(printableScalars))
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if singleLine.isEmpty { return "no diagnostic available" }
+        if singleLine.isEmpty { return AppStrings.noDiagnostic }
         return String(singleLine.prefix(240))
     }
 
@@ -826,12 +826,12 @@ final class BridgeProcessManager: ObservableObject {
     private func exhaustedRetryMessage() -> String {
         var detail = ""
         if let status = lastUnexpectedExitStatus {
-            detail = " (last exit \(status))"
+            detail = AppStrings.lastExit(Int(status))
         }
         if let stderr = lastUnexpectedStderr, !stderr.isEmpty {
             detail += ": \(stderr)"
         }
-        return "Bridge stopped after \(maxUnhealthyLaunches) unstable launches\(detail) — click Start to try again"
+        return AppStrings.stoppedAfterUnstableLaunches(maxUnhealthyLaunches, detail: detail)
     }
 
     private func scheduleAutoRetry() {
@@ -890,7 +890,7 @@ final class BridgeProcessManager: ObservableObject {
                 scheduleAutoRetry()
             } else {
                 lastStopReason = nil
-                let message = bridgeFailureMessage(defaultMessage: "Lost connection to bridge.")
+                let message = bridgeFailureMessage(defaultMessage: AppStrings.couldNotStart)
                 state = .error(message)
                 bannerMessage = message
             }
@@ -905,7 +905,7 @@ final class BridgeProcessManager: ObservableObject {
                 scheduleAutoRetry()
             } else {
                 lastStopReason = nil
-                state = .error(bridgeFailureMessage(defaultMessage: "Bridge could not start."))
+                state = .error(bridgeFailureMessage(defaultMessage: AppStrings.couldNotStart))
             }
         }
         connectionPhase = .stopped

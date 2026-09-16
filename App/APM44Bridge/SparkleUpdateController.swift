@@ -206,17 +206,17 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     nonisolated static func userFacingErrorMessage(_ error: Error) -> String {
         if isNoUpdateError(error) {
-            return "No update is available."
+            return AppStrings.noUpdateAvailable
         }
         let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = description.lowercased()
         if lowered.contains("signature") || lowered.contains("appcast") || lowered.contains("secure") {
-            return "Update check blocked: the signed update feed could not be verified."
+            return AppStrings.updateFeedUnverified
         }
         if lowered.contains("cancel") || lowered.contains("authorization") || lowered.contains("password") {
-            return "Update installation was cancelled before APM44 Bridge could be replaced."
+            return AppStrings.updateCancelledBeforeReplace
         }
-        if description.isEmpty { return "Update check failed. Try again later." }
-        return "Update check failed: \(description)"
+        if description.isEmpty { return AppStrings.updateCheckFailedRetry }
+        return AppStrings.updateCheckFailed(detail: description)
     }
 }
