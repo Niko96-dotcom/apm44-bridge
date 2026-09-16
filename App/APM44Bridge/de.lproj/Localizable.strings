@@ -27,8 +27,6 @@
 "rebuffers_src_resets" = "Pufferungen / Konverter-Resets";
 "drift_ratio" = "Driftverhältnis";
 "metrics_stale" = "Messwerte veraltet";
-"routing_hal" = "Nutzt APM44 Bridge";
-"routing_blackhole" = "Nutzt BlackHole";
 "output_not_selected" = "Nicht gewählt";
 "selected_output" = "gewählte Ausgabe";
 "choose_output_to_start" = "Zum Starten eine Ausgabe wählen.";

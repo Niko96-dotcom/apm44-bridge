@@ -67,13 +67,8 @@ struct MenuContentView: View {
             }
             .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(statusText)
-                    .font(.headline)
-                Text(manager.routingMode.menuLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(statusText)
+                .font(.headline)
 
             Spacer(minLength: 8)
 
@@ -83,7 +78,7 @@ struct MenuContentView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(AppStrings.bridgeStatus)
-        .accessibilityValue("\(statusText), \(manager.routingMode.menuLabel)")
+        .accessibilityValue(statusText)
     }
 
     private func latencyBadge(_ metrics: BridgeMetricsSnapshot) -> some View {

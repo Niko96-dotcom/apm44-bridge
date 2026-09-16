@@ -101,6 +101,13 @@ if re.search(
 ):
     failures.append("stopped metrics still title the extra latency line as Buffering")
 
+if "routingMode.menuLabel" in menu or "AppStrings.routingHal" in menu:
+    failures.append("status hero still shows Using APM44 Bridge under Stopped")
+if 't("routing_hal"' in strings or '"routing_hal"' in german:
+    failures.append("Using APM44 Bridge / Nutzt APM44 Bridge strings are still defined")
+if "var menuLabel" in Path(sys.argv[1]).parent.joinpath("HalDriverDetector.swift").read_text():
+    failures.append("RoutingMode.menuLabel still supplies the Stopped subtitle")
+
 stopped = english_default("stopped_latency_hint")
 if "buffer" in stopped.lower() or "~%lld" in stopped:
     failures.append(f"stopped latency hint still restates the buffer target: {stopped!r}")

@@ -61,4 +61,10 @@ final class AppStringsChromeTests: XCTestCase {
         XCTAssertTrue(text.contains("Studio Speakers"))
         XCTAssertEqual(text.filter { $0 == "." }.count, 0)
     }
+
+    func testStoppedStatusOmitsRoutingEcho() {
+        XCTAssertFalse(AppStrings.stopped.isEmpty)
+        XCTAssertTrue(AppStrings.pathHal(output: "AirPods").contains("AirPods"))
+        XCTAssertTrue(AppStrings.pathBlackHole(output: "AirPods").contains("AirPods"))
+    }
 }

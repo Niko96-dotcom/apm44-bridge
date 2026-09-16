@@ -31,8 +31,6 @@ enum AppStrings {
     static var rebuffersSrcResets: String { t("rebuffers_src_resets", "Rebuffers / converter resets") }
     static var driftRatio: String { t("drift_ratio", "Drift ratio") }
     static var metricsStale: String { t("metrics_stale", "Metrics stale") }
-    static var routingHal: String { t("routing_hal", "Using APM44 Bridge") }
-    static var routingBlackHole: String { t("routing_blackhole", "Using BlackHole") }
     static var outputNotSelected: String { t("output_not_selected", "Not selected") }
     static var selectedOutput: String { t("selected_output", "selected output") }
     static var chooseOutputToStart: String { t("choose_output_to_start", "Choose an output to start.") }
