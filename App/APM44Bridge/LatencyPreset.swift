@@ -62,10 +62,5 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
 
     var targetDescription: String { targetDescription(halMode: false) }
 
-    func stoppedLatencyHint(halMode: Bool) -> String {
-        let ms = Int(effectiveTargetFillMs(halMode: halMode))
-        return AppStrings.stoppedLatencyHint(ms)
-    }
-
-    var stoppedLatencyHint: String { stoppedLatencyHint(halMode: false) }
+    var stoppedLatencyHint: String { AppStrings.stoppedLatencyHint }
 }

@@ -470,6 +470,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         manager.start()
 
         XCTAssertEqual(manager.state, .error(AppStrings.selectedOutputGone))
+        XCTAssertNil(manager.bannerMessage)
         XCTAssertEqual(launcher.makeCount, 0)
     }
 

@@ -136,6 +136,9 @@ struct FirstRunPreflightView: View {
 
     private var halRateDetail: String {
         if let rate = HalDriverDetector.halNominalRate() {
+            if abs(rate - 44100) < 1 {
+                return ""
+            }
             return AppStrings.nominalRateHint(Int(rate))
         }
         return AppStrings.driverNotDetected
@@ -163,7 +166,9 @@ struct FirstRunPreflightView: View {
                 .foregroundStyle(ok ? .green : .orange)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.medium))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                if !detail.isEmpty {
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
     }

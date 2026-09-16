@@ -48,6 +48,10 @@ jobs:
         timeout-minutes: 10
         run: ctest --test-dir build --output-on-failure
 
+      - name: UI chrome copy tests
+        timeout-minutes: 5
+        run: bash tests/test_ui_chrome.sh
+
       - name: Release script tests
         timeout-minutes: 5
         run: bash tests/test_release_scripts.sh

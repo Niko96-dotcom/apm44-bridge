@@ -67,13 +67,8 @@ struct MenuContentView: View {
             }
             .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(statusText)
-                    .font(.headline)
-                Text(manager.routingMode.menuLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(statusText)
+                .font(.headline)
 
             Spacer(minLength: 8)
 
@@ -83,7 +78,7 @@ struct MenuContentView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(AppStrings.bridgeStatus)
-        .accessibilityValue("\(statusText), \(manager.routingMode.menuLabel)")
+        .accessibilityValue(statusText)
     }
 
     private func latencyBadge(_ metrics: BridgeMetricsSnapshot) -> some View {
@@ -423,15 +418,10 @@ struct MenuContentView: View {
                     Image(systemName: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(AppStrings.buffering)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                        Text(settings.latencyPreset.stoppedLatencyHint(halMode: manager.routingMode == .halVirtualDevice))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Text(settings.latencyPreset.stoppedLatencyHint)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

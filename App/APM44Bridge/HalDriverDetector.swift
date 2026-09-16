@@ -176,13 +176,6 @@ enum RoutingMode: Equatable {
     case halVirtualDevice
     case blackHoleFallback
 
-    var menuLabel: String {
-        switch self {
-        case .halVirtualDevice: return AppStrings.routingHal
-        case .blackHoleFallback: return AppStrings.routingBlackHole
-        }
-    }
-
     func detail(outputName: String?) -> String {
         let output = outputName.map { AppStrings.outputAt48k($0) } ?? AppStrings.chooseOutput
         switch self {
