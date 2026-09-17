@@ -223,15 +223,16 @@ struct MenuContentView: View {
                        !selected {
                         Rectangle()
                             .fill(Color.primary.opacity(0.18))
-                            .frame(width: 1, height: 16)
+                            .frame(width: 1, height: 14)
                     }
                     Button {
                         settings.latencyPreset = preset
                         Task { await manager.restartForSettingsChange() }
                     } label: {
                         Text(preset.shortTitle)
+                            .font(.system(size: 13))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 5)
+                            .padding(.vertical, 2)
                             .background(
                                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                                     .fill(selected ? Color.accentColor : Color.clear)
@@ -326,7 +327,7 @@ struct MenuContentView: View {
             .accessibilityLabel(AppStrings.quitApp)
             .accessibilityIdentifier("quit-app")
         }
-        .controlSize(.large)
+        .controlSize(.regular)
     }
 
     @ViewBuilder
