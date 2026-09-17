@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 protocol ControlsPresenting: AnyObject {
     func showControls()
+    func showSetup()
 }
 
 /// AppKit supplies the lifecycle hook SwiftUI's MenuBarExtra does not expose:
@@ -32,7 +33,12 @@ final class ControlsWindowPresenter: NSObject, ControlsPresenting, NSWindowDeleg
         if let window {
             controlsWindow = window
         } else {
-            let rootView = MenuContentView(manager: manager, settings: settings)
+            // F3: only this hosted instance owns global Setup presentation.
+            let rootView = MenuContentView(
+                manager: manager,
+                settings: settings,
+                presentsGlobalSetup: true
+            )
                 .environmentObject(updater ?? .shared)
             let hostingController = NSHostingController(rootView: rootView)
             let created = NSWindow(contentViewController: hostingController)
@@ -49,5 +55,14 @@ final class ControlsWindowPresenter: NSObject, ControlsPresenting, NSWindowDeleg
 
         NSApp.activate(ignoringOtherApps: true)
         controlsWindow.makeKeyAndOrderFront(nil)
+    }
+
+    /// F3: single presentation owner for Setup. Ensures the Controls window
+    /// exists, records a persistent request (survives view creation race),
+    /// then broadcasts for any already-subscribed Controls view.
+    func showSetup() {
+        showControls()
+        SetupCoordinator.shared.requestSetup()
+        NotificationCenter.default.post(name: .showAPM44Setup, object: nil)
     }
 }

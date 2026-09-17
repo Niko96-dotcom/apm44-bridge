@@ -31,18 +31,9 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
         halMode ? max(targetFillMs, Self.halMinimumTargetFillMs) : targetFillMs
     }
 
-    func menuTitle(halMode: Bool) -> String {
-        let ms = Int(effectiveTargetFillMs(halMode: halMode))
-        switch self {
-        case .low, .balanced, .safe:
-            return "\(shortTitle) (~\(ms) ms)"
-        }
-    }
-
-    var menuTitle: String { menuTitle(halMode: false) }
-
-    /// Short label for the segmented control — the "~N ms" detail is shown
-    /// separately beneath the picker so the segments don't clip.
+    /// Short label for the segmented control. The static "~N ms" targets are
+    /// intentionally not shown: musicians choose clicks-vs-delay, and the
+    /// live measured badge while running is the only honest number.
     var shortTitle: String {
         switch self {
         case .low: return AppStrings.low

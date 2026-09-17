@@ -26,15 +26,8 @@ final class LatencyPresetTests: XCTestCase {
         XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: false), 8)
     }
 
-    func testHalTargetDescription() {
-        XCTAssertEqual(
-            LatencyPreset.low.targetDescription(halMode: true),
-            AppStrings.bufferTargetMinimum(20)
-        )
-        XCTAssertFalse(LatencyPreset.low.targetDescription(halMode: true).localizedCaseInsensitiveContains("HAL"))
-        XCTAssertEqual(
-            LatencyPreset.safe.targetDescription(halMode: true),
-            AppStrings.bufferTarget(100)
-        )
+    func testHalFloorStaysInModel() {
+        // The ms floor lives in the daemon arguments, not in UI copy.
+        XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: true), 20)
     }
 }

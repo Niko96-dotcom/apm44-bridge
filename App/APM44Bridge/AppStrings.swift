@@ -56,6 +56,19 @@ enum AppStrings {
         t("output_device_disconnected", "Output device disconnected")
     }
     static var couldNotStart: String { t("could_not_start", "Bridge could not start.") }
+    static var genericFailureRecovery: String {
+        t(
+            "generic_failure_recovery",
+            "Check that the selected output is connected, then try Start again. If it keeps failing, open Details for the full diagnostic."
+        )
+    }
+    static var incompatibleOutputRecovery: String {
+        t(
+            "incompatible_output_recovery",
+            "Choose a compatible stereo output that supports 48 kHz."
+        )
+    }
+    static var errorDetails: String { t("error_details", "Details") }
     static var noDiagnostic: String { t("no_diagnostic", "no diagnostic available") }
     static var loginItemsApproval: String {
         t("login_items_approval", "Approval required in Login Items")

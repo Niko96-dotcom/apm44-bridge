@@ -9,11 +9,26 @@ struct MenuContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showFirstRun = false
     @State private var showMonitoringDetails = false
+    @State private var showErrorDetails = false
+    /// Fixed layout geometry (see body `.padding(outerPadding)` +
+    /// `.frame(width: contentWidth)`): menu pop-up bezels hug their label
+    /// and segmented controls hug in window-hosted views, so equal
+    /// full-width rows need an explicit shared width.
+    private let contentWidth: CGFloat = 340
+    private let outerPadding: CGFloat = 16
+    private let cardPadding: CGFloat = 12
+    private var controlRowWidth: CGFloat {
+        contentWidth - outerPadding * 2 - cardPadding * 2
+    }
+    /// Only the Controls window owns global Setup presentation (F3).
+    /// Menu-bar popover and Settings use `false` so one Help command
+    /// cannot open duplicate sheets. Footer buttons still work locally.
+    var presentsGlobalSetup: Bool = false
+    @ObservedObject var setupCoordinator: SetupCoordinator = .shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             statusHero
-            routingChain
             controlCard
             updateSection
             primaryButtons
@@ -25,19 +40,29 @@ struct MenuContentView: View {
                     .accessibilityIdentifier("start-blocked-reason")
                     .accessibilityLabel(reason)
             }
-            Divider()
-            statusDetail
-            if let banner = manager.bannerMessage {
+            if showsStatusDetail {
+                Divider()
+                statusDetail
+            }
+            if let banner = visibleBanner {
                 bannerView(banner)
             }
             Divider()
             footerSection
         }
-        .padding(16)
-        .frame(width: 340)
+        .padding(outerPadding)
+        .frame(width: contentWidth)
         .onAppear {
             launchAtLogin.refresh()
-            if !UserDefaults.standard.bool(forKey: FirstRunKeys.completed) {
+            // F3: global Help requests are owned solely by Controls.
+            // First-run auto-presentation is first-come-wins so the initial
+            // Setup still appears once even when several windows exist.
+            // Footer buttons always work locally in every host.
+            if presentsGlobalSetup, setupCoordinator.isSetupRequested {
+                showFirstRun = true
+                setupCoordinator.consumeSetupRequest()
+            } else if !UserDefaults.standard.bool(forKey: FirstRunKeys.completed),
+                      setupCoordinator.claimFirstRunAuto() {
                 showFirstRun = true
             }
         }
@@ -51,7 +76,13 @@ struct MenuContentView: View {
             FirstRunPreflightView(manager: manager, isPresented: $showFirstRun)
         }
         .onReceive(NotificationCenter.default.publisher(for: .showAPM44Setup)) { _ in
+            guard presentsGlobalSetup else { return }
             showFirstRun = true
+        }
+        .onReceive(setupCoordinator.$isSetupRequested) { requested in
+            guard presentsGlobalSetup, requested else { return }
+            showFirstRun = true
+            setupCoordinator.consumeSetupRequest()
         }
     }
 
@@ -92,35 +123,13 @@ struct MenuContentView: View {
             .accessibilityLabel(metrics.bridgeBufferingLabel)
     }
 
-    private var routingChain: some View {
-        let detail = manager.routingMode.detail(
-            outputName: settings.outputDeviceUid == nil ? nil : manager.deviceDisplayName
-        )
-        return HStack(alignment: .center, spacing: 8) {
-            Text(detail)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
-        )
-        .accessibilityLabel(AppStrings.signalPath)
-        .accessibilityValue(detail)
-    }
-
     private var controlCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             outputControl
             latencyControl
             qualityControl
         }
-        .padding(12)
+        .padding(cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -162,62 +171,114 @@ struct MenuContentView: View {
                     }
                 }
             } else {
-                Picker(AppStrings.output, selection: outputSelection) {
-                    Text(AppStrings.chooseOutput).tag("")
-                    if let uid = settings.outputDeviceUid,
-                       !manager.devices.contains(where: { $0.uid == uid }) {
-                        Text("\(manager.deviceDisplayName) — \(AppStrings.unavailableSuffix)")
-                            .tag(uid)
-                    }
-                    ForEach(manager.devices) { device in
-                        Text(device.pickerLabel)
-                            .tag(device.uid)
-                            .disabled(!device.isMonitoringCompatible)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if let selectedUid = settings.outputDeviceUid,
-                   let selected = manager.devices.first(where: { $0.uid == selectedUid }) {
-                    Text(selected.detailLabel)
-                        .font(.caption2)
-                        .foregroundStyle(selected.isMonitoringCompatible ? Color.secondary : Color.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                FullWidthPopUpButton(
+                    width: controlRowWidth,
+                    options: outputOptions,
+                    selectedId: settings.outputDeviceUid ?? "",
+                    accessibilityLabelText: AppStrings.output
+                ) { selectOutput($0.isEmpty ? nil : $0) }
+                .accessibilityIdentifier("output-picker")
             }
         }
+    }
+
+    private var outputOptions: [FullWidthPopUpButton.Option] {
+        var options = [FullWidthPopUpButton.Option(
+            id: "",
+            title: AppStrings.chooseOutput,
+            isEnabled: true
+        )]
+        if let uid = settings.outputDeviceUid,
+           !manager.devices.contains(where: { $0.uid == uid }) {
+            options.append(FullWidthPopUpButton.Option(
+                id: uid,
+                title: "\(manager.deviceDisplayName) — \(AppStrings.unavailableSuffix)",
+                isEnabled: true
+            ))
+        }
+        options += manager.devices.map { device in
+            FullWidthPopUpButton.Option(
+                id: device.uid,
+                title: device.pickerLabel,
+                isEnabled: device.isMonitoringCompatible
+            )
+        }
+        return options
+    }
+
+    private func selectOutput(_ uid: String?) {
+        guard settings.outputDeviceUid != uid else { return }
+        settings.outputDeviceUid = uid
+        Task { await manager.restartForSettingsChange() }
     }
 
     private var latencyControl: some View {
         VStack(alignment: .leading, spacing: 6) {
             controlHeader("speedometer", AppStrings.buffering)
-            Picker(AppStrings.buffering, selection: $settings.latencyPreset) {
-                ForEach(LatencyPreset.allCases) { preset in
-                    Text(preset.shortTitle).tag(preset)
+            HStack(spacing: 0) {
+                ForEach(Array(LatencyPreset.allCases.enumerated()), id: \.element) { index, preset in
+                    let selected = preset == settings.latencyPreset
+                    if index > 0,
+                       LatencyPreset.allCases[index - 1] != settings.latencyPreset,
+                       !selected {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.18))
+                            .frame(width: 1, height: 16)
+                    }
+                    Button {
+                        settings.latencyPreset = preset
+                        Task { await manager.restartForSettingsChange() }
+                    } label: {
+                        Text(preset.shortTitle)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(selected ? Color.accentColor : Color.clear)
+                            )
+                            .foregroundStyle(selected ? .white : .primary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(preset.shortTitle)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .onChange(of: settings.latencyPreset) { _, _ in
-                Task { await manager.restartForSettingsChange() }
-            }
-            Text(settings.latencyPreset.targetDescription(halMode: manager.routingMode == .halVirtualDevice))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            .frame(width: controlRowWidth)
+            .padding(2)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color(nsColor: .controlColor))
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(AppStrings.buffering)
         }
     }
 
     private var qualityControl: some View {
         VStack(alignment: .leading, spacing: 6) {
             controlHeader("waveform.path", AppStrings.quality)
-            Picker(AppStrings.quality, selection: srcQualityBinding) {
-                ForEach(SrcQuality.allCases) { quality in
-                    Text(quality.menuTitle).tag(quality)
-                }
+            FullWidthPopUpButton(
+                width: controlRowWidth,
+                options: SrcQuality.allCases.map { quality in
+                    FullWidthPopUpButton.Option(
+                        id: quality.rawValue,
+                        title: quality.menuTitle,
+                        isEnabled: true
+                    )
+                },
+                selectedId: settings.effectiveSrcQuality.rawValue,
+                accessibilityLabelText: AppStrings.quality
+            ) {
+                if let quality = SrcQuality(rawValue: $0) { selectQuality(quality) }
             }
-            .labelsHidden()
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("quality-picker")
         }
+    }
+
+    private func selectQuality(_ quality: SrcQuality) {
+        guard settings.effectiveSrcQuality != quality else { return }
+        settings.srcQualityOverride = quality
+        Task { await manager.restartForSettingsChange() }
     }
 
     private var primaryButtons: some View {
@@ -228,10 +289,12 @@ struct MenuContentView: View {
                 }
 
                 if showsStopButton {
-                    Button(AppStrings.stopBridge) {
+                    Button {
                         manager.stop()
+                    } label: {
+                        Label(AppStrings.stopBridge, systemImage: "stop.fill")
+                            .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: .infinity)
                     .buttonStyle(.borderedProminent)
                     .disabled(manager.isTransitioning)
                     .accessibilityLabel(AppStrings.stopBridge)
@@ -252,10 +315,12 @@ struct MenuContentView: View {
                 .accessibilityIdentifier("restart-bridge")
             }
 
-            Button(AppStrings.quitApp) {
+            Button {
                 Task { await manager.quitApplication() }
+            } label: {
+                Label(AppStrings.quitApp, systemImage: "power")
+                    .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
             .buttonStyle(.bordered)
             .disabled(manager.isTransitioning)
             .accessibilityLabel(AppStrings.quitApp)
@@ -268,18 +333,22 @@ struct MenuContentView: View {
     private var startButton: some View {
         let enabled = startBlockedReason == nil && !manager.isTransitioning
         if enabled {
-            Button(AppStrings.startBridge) {
+            Button {
                 manager.start()
+            } label: {
+                Label(AppStrings.startBridge, systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
             .buttonStyle(.borderedProminent)
             .accessibilityLabel(AppStrings.startBridge)
             .accessibilityIdentifier("start-bridge")
         } else {
-            Button(AppStrings.startBridge) {
+            Button {
                 manager.start()
+            } label: {
+                Label(AppStrings.startBridge, systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
             .buttonStyle(.bordered)
             .disabled(true)
             .accessibilityLabel(AppStrings.startBridge)
@@ -413,19 +482,66 @@ struct MenuContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-            } else {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(settings.latencyPreset.stoppedLatencyHint)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            } else if case .error(let message) = manager.state,
+                      errorHasContent(message) {
+                errorDetailView(message: message)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: errorIdentity) { _, _ in
+            showErrorDetails = false
+        }
+    }
+
+    private var errorIdentity: String {
+        if case .error(let message) = manager.state { return message }
+        return ""
+    }
+
+    /// The details section only exists when it holds content: live metrics,
+    /// or an error with recovery guidance/a diagnostic. No empty chrome.
+    private var showsStatusDetail: Bool {
+        if manager.isRunning, manager.latestMetrics != nil { return true }
+        if case .error(let message) = manager.state { return errorHasContent(message) }
+        return false
+    }
+
+    private func errorHasContent(_ message: String) -> Bool {
+        let presentation = BridgeErrorPresentation.presentation(for: message)
+        return presentation.recovery != nil || presentation.diagnostic != nil
+    }
+
+    @ViewBuilder
+    private func errorDetailView(message: String) -> some View {
+        let presentation = BridgeErrorPresentation.presentation(for: message)
+        VStack(alignment: .leading, spacing: 6) {
+            if let recovery = presentation.recovery {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(recovery)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("error-recovery")
+                }
+            }
+            if let diagnostic = presentation.diagnostic {
+                DisclosureGroup(AppStrings.errorDetails, isExpanded: $showErrorDetails) {
+                    Text(diagnostic)
+                        .font(.caption2)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("error-diagnostic")
+                        .accessibilityLabel(diagnostic)
+                }
+                .font(.caption)
+                .accessibilityIdentifier("error-details-disclosure")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
     }
 
     private func metricStat(
@@ -542,26 +658,6 @@ struct MenuContentView: View {
         )
     }
 
-    private var outputSelection: Binding<String> {
-        Binding(
-            get: { settings.outputDeviceUid ?? "" },
-            set: { newValue in
-                settings.outputDeviceUid = newValue.isEmpty ? nil : newValue
-                Task { await manager.restartForSettingsChange() }
-            }
-        )
-    }
-
-    private var srcQualityBinding: Binding<SrcQuality> {
-        Binding(
-            get: { settings.effectiveSrcQuality },
-            set: { newValue in
-                settings.srcQualityOverride = newValue
-                Task { await manager.restartForSettingsChange() }
-            }
-        )
-    }
-
     private var statusText: String {
         if manager.isRunning {
             return manager.connectionPhase.label
@@ -577,11 +673,23 @@ struct MenuContentView: View {
             }
             return AppStrings.reconnecting
         case .error(let message):
-            if message.count > 60 {
-                return String(message.prefix(57)) + "…"
-            }
-            return message
+            // F2: never truncate helper jargon into the headline. Use a
+            // short localized headline; the full diagnostic lives under
+            // Details with mapped recovery text.
+            return BridgeErrorPresentation.headline(for: message)
         }
+    }
+
+    /// F2: banner that duplicates the raw error diagnostic is suppressed —
+    /// the error section already shows headline + recovery + Details.
+    private var visibleBanner: String? {
+        guard let banner = manager.bannerMessage else { return nil }
+        if case .error(let message) = manager.state,
+           banner == message,
+           BridgeErrorPresentation.presentation(for: message).diagnostic != nil {
+            return nil
+        }
+        return banner
     }
 
     private var statusSymbol: String {

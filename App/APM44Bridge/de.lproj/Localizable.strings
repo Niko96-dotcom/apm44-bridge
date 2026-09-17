@@ -110,6 +110,9 @@
 "update_check_failed_retry" = "Update-Prüfung fehlgeschlagen. Später erneut versuchen.";
 "update_check_failed %@" = "Update-Prüfung fehlgeschlagen: %@";
 "ipc_failed" = "APM44-Treiber-IPC fehlgeschlagen. Passenden Treiber neu installieren und Core Audio neu laden.";
+"generic_failure_recovery" = "Prüfen, ob die gewählte Ausgabe verbunden ist, dann erneut starten. Bei wiederholtem Fehler Details öffnen und die Diagnose angeben.";
+"incompatible_output_recovery" = "Kompatible Stereoausgabe wählen, die 48 kHz unterstützt.";
+"error_details" = "Details";
 "error_status" = "Fehler";
 "48 kHz supported" = "48 kHz unterstützt";
 "48 kHz unsupported" = "48 kHz nicht unterstützt";

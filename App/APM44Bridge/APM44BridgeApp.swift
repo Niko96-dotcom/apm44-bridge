@@ -97,8 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc
     private func showSetup() {
-        controlsPresenter.showControls()
-        NotificationCenter.default.post(name: .showAPM44Setup, object: nil)
+        controlsPresenter.showSetup()
     }
 
     @objc
@@ -171,8 +170,7 @@ struct APM44BridgeApp: App {
         .commands {
             CommandGroup(replacing: .help) {
                 Button(AppStrings.helpMenuSetup) {
-                    ControlsWindowPresenter.shared.showControls()
-                    NotificationCenter.default.post(name: .showAPM44Setup, object: nil)
+                    ControlsWindowPresenter.shared.showSetup()
                 }
                 Button(AppStrings.cubaseSetupGuide) {
                     NSWorkspace.shared.open(HelpLinks.cubaseSetup)
