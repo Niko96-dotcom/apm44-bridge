@@ -93,18 +93,6 @@ struct AudioDeviceRow: Identifiable, Equatable {
         return "\(name) — \(transportLabel)"
     }
 
-    var detailLabel: String {
-        let supportedRate = supports48000 ? AppStrings.rateSupported48 : AppStrings.rateUnsupported48
-        let buffer = bufferFrameSize > 0 ? AppStrings.frameBuffer(bufferFrameSize) : AppStrings.bufferUnknown
-        return AppStrings.deviceDetail(
-            transport: transportLabel,
-            rate: Int(nominalRate),
-            rateSupport: supportedRate,
-            channels: outputChannels,
-            buffer: buffer
-        )
-    }
-
     private var fourCCTransport: String {
         let scalars = [24, 16, 8, 0].compactMap { shift -> UnicodeScalar? in
             let value = UInt8((transportType >> UInt32(shift)) & 0xff)

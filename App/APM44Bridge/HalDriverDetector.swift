@@ -175,16 +175,6 @@ enum DriverStatus: Equatable {
 enum RoutingMode: Equatable {
     case halVirtualDevice
     case blackHoleFallback
-
-    func detail(outputName: String?) -> String {
-        let output = outputName.map { AppStrings.outputAt48k($0) } ?? AppStrings.chooseOutput
-        switch self {
-        case .halVirtualDevice:
-            return AppStrings.pathHal(output: output)
-        case .blackHoleFallback:
-            return AppStrings.pathBlackHole(output: output)
-        }
-    }
 }
 
 enum BridgeConnectionPhase: Equatable {

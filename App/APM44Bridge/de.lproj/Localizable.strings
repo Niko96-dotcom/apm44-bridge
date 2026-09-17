@@ -61,7 +61,6 @@
 "driver_not_detected" = "Treiber nicht erkannt";
 "connect_airpods" = "AirPods Max per USB-C-Kabel anschließen";
 "bridge_status" = "Brückenstatus";
-"signal_path" = "Signalweg";
 "stopped" = "Gestoppt";
 "starting" = "Startet …";
 "stopping" = "Stoppt …";
@@ -93,7 +92,6 @@
 "stopped_latency_hint" = "Geräte-, DAW- und Hardware-Latenz kommen hinzu";
 "nominal_rate_hint %lld" = "Nennwert %lld Hz — in Audio-MIDI-Konfiguration 44100 einstellen";
 "device_rate %@ %lld" = "%@ @ %lld Hz";
-"output_at_48k %@" = "%@ @ 48 kHz";
 "latency_badge %lld" = "~%lld ms";
 "bridge_buffering %lld" = "~%lld ms Brückenpufferung";
 "fill_milliseconds %@" = "%@ Millisekunden";
@@ -114,11 +112,6 @@
 "incompatible_output_recovery" = "Kompatible Stereoausgabe wählen, die 48 kHz unterstützt.";
 "error_details" = "Details";
 "error_status" = "Fehler";
-"48 kHz supported" = "48 kHz unterstützt";
-"48 kHz unsupported" = "48 kHz nicht unterstützt";
-"buffer unknown" = "Puffer unbekannt";
-"%lld-frame buffer" = "%lld-Frame-Puffer";
-"device_detail %@ %lld %@ %lld %@" = "%@ • %lld Hz aktuell • %@ • %lld ch • %@";
 
 /* Device compatibility issues (English keys, German values) */
 "Disconnected" = "Getrennt";

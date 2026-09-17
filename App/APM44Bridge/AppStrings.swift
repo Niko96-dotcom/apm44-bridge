@@ -111,7 +111,6 @@ enum AppStrings {
         t("connect_airpods", "Connect AirPods Max with USB-C cable")
     }
     static var bridgeStatus: String { t("bridge_status", "Bridge status") }
-    static var signalPath: String { t("signal_path", "Signal path") }
     static var stopped: String { t("stopped", "Stopped") }
     static var starting: String { t("starting", "Starting…") }
     static var stopping: String { t("stopping", "Stopping…") }
@@ -129,9 +128,6 @@ enum AppStrings {
     static var settingsMenu: String { t("settings_menu", "APM44 Bridge Settings…") }
     static var milliseconds: String { t("milliseconds", "milliseconds") }
     static var errorStatus: String { t("error_status", "Error") }
-    static var rateSupported48: String { t("48 kHz supported", "48 kHz supported") }
-    static var rateUnsupported48: String { t("48 kHz unsupported", "48 kHz unsupported") }
-    static var bufferUnknown: String { t("buffer unknown", "buffer unknown") }
 
     static var noUpdateAvailable: String { t("no_update_available", "No update is available.") }
     static var updateFeedUnverified: String {
@@ -223,10 +219,6 @@ enum AppStrings {
         format("device_rate %@ %lld", "%@ @ %lld Hz", name, Int64(rate))
     }
 
-    static func outputAt48k(_ name: String) -> String {
-        format("output_at_48k %@", "%@ @ 48 kHz", name)
-    }
-
     static func latencyBadge(_ ms: Int) -> String {
         format("latency_badge %lld", "~%lld ms", Int64(ms))
     }
@@ -253,28 +245,6 @@ enum AppStrings {
 
     static func installingUpdate(_ version: String) -> String {
         format("installing_update %@", "Installing APM44 Bridge %@…", version)
-    }
-
-    static func frameBuffer(_ frames: Int) -> String {
-        format("%lld-frame buffer", "%lld-frame buffer", Int64(frames))
-    }
-
-    static func deviceDetail(
-        transport: String,
-        rate: Int,
-        rateSupport: String,
-        channels: Int,
-        buffer: String
-    ) -> String {
-        format(
-            "device_detail %@ %lld %@ %lld %@",
-            "%@ • %lld Hz current • %@ • %lld ch • %@",
-            transport,
-            Int64(rate),
-            rateSupport,
-            Int64(channels),
-            buffer
-        )
     }
 
     static func versionLabel(_ version: String) -> String {
