@@ -64,10 +64,12 @@ sign_one() {
   echo "Signing: $path"
   local sign_args=(--force --sign "$SIGN_ID" --timestamp --options runtime)
   if [[ "$deep" == "1" ]]; then
-    # Sparkle embeds signed executables, nested XPC services, and Updater.app.
-    # Re-sign the complete code tree so every nested object has the same
-    # Developer ID identity and secure timestamp before sealing the app.
-    sign_args+=(--deep)
+    # Sparkle embeds XPC services, Updater.app, and Autoupdate. Re-sign that
+    # tree with this Developer ID and a secure timestamp, but keep each nested
+    # helper's own entitlements. Passing the host app's empty entitlements with
+    # --deep strips Sparkle Autoupdate's application-identifier.
+    codesign "${sign_args[@]}" --deep --preserve-metadata=entitlements "$path"
+    sign_args=(--force --sign "$SIGN_ID" --timestamp --options runtime)
   fi
   if [[ -n "$entitlements" && -f "$entitlements" ]]; then
     codesign "${sign_args[@]}" --entitlements "$entitlements" "$path"

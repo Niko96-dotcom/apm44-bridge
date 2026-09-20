@@ -56,6 +56,42 @@ check() {
     echo "FAIL: $label — not Developer ID Application"
     FAIL=1
   fi
+
+  check_release_entitlements "$label" "$path"
+}
+
+check_release_entitlements() {
+  local label="$1"
+  local target="$2"
+  local tmp
+  tmp="$(mktemp)"
+  # codesign writes this file only when an entitlements blob is present.
+  codesign -d --entitlements "$tmp" --xml "$target" >/dev/null 2>&1 || true
+  if [[ ! -s "$tmp" ]]; then
+    echo "OK: $label unsandboxed (no entitlements blob)"
+    rm -f "$tmp"
+    return
+  fi
+
+  local sandbox task_allow
+  # PlistBuddy treats dotted entitlement names as a single key; plutil -extract
+  # would split them on '.' and miss App Sandbox / get-task-allow.
+  sandbox="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$tmp" 2>/dev/null || true)"
+  task_allow="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.get-task-allow' "$tmp" 2>/dev/null || true)"
+  rm -f "$tmp"
+
+  if [[ "$sandbox" == "true" ]]; then
+    echo "FAIL: $label enables App Sandbox"
+    FAIL=1
+  else
+    echo "OK: $label App Sandbox not enabled"
+  fi
+  if [[ "$task_allow" == "true" ]]; then
+    echo "FAIL: $label has get-task-allow (not a release signature)"
+    FAIL=1
+  else
+    echo "OK: $label has no get-task-allow"
+  fi
 }
 
 echo "APM44 release codesign verification (SHIP-01)"

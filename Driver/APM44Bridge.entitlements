@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- HAL Audio Server Plug-in: minimal entitlements for hardened runtime.
-	     Driver runs inside coreaudiod; do not enable app sandbox here. -->
+	<!-- Empty entitlements. HAL plug-in runs inside coreaudiod; do not enable App Sandbox.
+	     Hardened Runtime is applied at codesign time, not by keys in this file. -->
 </dict>
 </plist>

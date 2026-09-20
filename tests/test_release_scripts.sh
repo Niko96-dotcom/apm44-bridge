@@ -15,10 +15,12 @@ trap cleanup EXIT
 # Run the current scripts in a disposable repository layout. Builders may
 # replace bundles and staging directories freely without touching local builds.
 ROOT="$TMP/repo"
-mkdir -p "$FAKE_BIN" "$ROOT/App"
+mkdir -p "$FAKE_BIN" "$ROOT/App/APM44Bridge" "$ROOT/Driver"
 cp -R "$SOURCE_ROOT/scripts" "$SOURCE_ROOT/.github" "$ROOT/"
 cp "$SOURCE_ROOT/VERSION" "$ROOT/"
 cp "$SOURCE_ROOT/App/project.yml" "$ROOT/App/"
+cp "$SOURCE_ROOT/App/APM44Bridge/APM44Bridge.entitlements" "$ROOT/App/APM44Bridge/"
+cp "$SOURCE_ROOT/Driver/APM44Bridge.entitlements" "$ROOT/Driver/"
 
 cat >"$FAKE_BIN/xcrun" <<'EOF'
 #!/bin/bash
@@ -122,11 +124,62 @@ cat >"$FAKE_BIN/codesign" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
-if [[ "${1:-}" == "--verify" ]]; then
+if [[ -n "${APM44_FAKE_XCRUN_LOG:-}" ]]; then
+  printf '%s\n' "codesign $*" >>"$APM44_FAKE_XCRUN_LOG"
+fi
+
+write_fake_entitlements() {
+  local out="$1"
+  mkdir -p "$(dirname "$out")"
+  case "${APM44_FAKE_ENTITLEMENTS:-empty}" in
+    empty)
+      cat >"$out" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict/></plist>
+PLIST
+      ;;
+    sandbox)
+      cat >"$out" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/></dict></plist>
+PLIST
+      ;;
+    get-task-allow)
+      cat >"$out" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>
+PLIST
+      ;;
+    *)
+      echo "unsupported fake entitlements mode: ${APM44_FAKE_ENTITLEMENTS}" >&2
+      exit 64
+      ;;
+  esac
+}
+
+entitlement_out=""
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "--entitlements" && "$arg" != "-" && "$arg" != ":-" ]]; then
+    entitlement_out="$arg"
+  fi
+  prev="$arg"
+done
+
+if [[ "${1:-}" == "--verify" || "${1:-}" == "--force" ]]; then
   exit 0
 fi
 
-if [[ "${1:-}" == "-dv" ]]; then
+if [[ "${1:-}" == "-d" || "${1:-}" == "-dv" || "${1:-}" == "-dvv" || "${1:-}" == "-dvvv" ]]; then
+  if [[ -n "$entitlement_out" ]]; then
+    write_fake_entitlements "$entitlement_out"
+  fi
+  if [[ "${1:-}" == "-d" && -n "$entitlement_out" ]]; then
+    exit 0
+  fi
   case "${APM44_FAKE_CODESIGN_INFO:-strict-ok}" in
     strict-ok)
       echo "Authority=Developer ID Application: APM44 Test Org (LOCALTEAM)" >&2
@@ -974,11 +1027,66 @@ run_public_release_hygiene_check() {
   assert_contains "$out" ".planning/private.md"
 }
 
+assert_empty_entitlements_plist() {
+  local file="$1"
+  python3 -c '
+import plistlib, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+data = plistlib.loads(path.read_bytes())
+if not isinstance(data, dict) or data:
+    raise SystemExit(f"{path} must be an empty entitlements dict, got {data!r}")
+' "$file"
+}
+
+run_sign_release_nested_entitlements_case() {
+  reset_log
+  local app="$TMP/sign-app/APM44 Bridge.app"
+  local driver="$TMP/sign-driver/APM44Bridge.driver"
+  local daemon="$TMP/sign-bin/apm44-bridge"
+  mkdir -p "$app/Contents/MacOS" "$driver" "$(dirname "$daemon")"
+  touch "$app/Contents/MacOS/apm44-bridge" "$daemon"
+  chmod +x "$app/Contents/MacOS/apm44-bridge" "$daemon"
+
+  env PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    SIGN_ID="Developer ID Application: APM44 Test Org (LOCALTEAM)" \
+    APM44_DAEMON_PATH="$daemon" \
+    APM44_APP_PATH="$app" \
+    APM44_DRIVER_PATH="$driver" \
+    /bin/bash "$ROOT/scripts/sign-release.sh" >/dev/null
+
+  local force_lines
+  force_lines="$(grep -F 'codesign --force' "$LOG" || true)"
+  if [[ -z "$force_lines" ]]; then
+    echo "sign-release did not invoke codesign --force" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+  while IFS= read -r line; do
+    if [[ "$line" != *"--options runtime"* ]]; then
+      echo "sign-release missing hardened runtime: $line" >&2
+      cat "$LOG" >&2
+      exit 1
+    fi
+    if [[ "$line" == *"--deep"* && "$line" == *"--entitlements"* ]]; then
+      echo "sign-release combined --deep with --entitlements: $line" >&2
+      cat "$LOG" >&2
+      exit 1
+    fi
+  done <<<"$force_lines"
+
+  assert_contains "$LOG" "--deep --preserve-metadata=entitlements"
+  assert_contains "$LOG" "--entitlements $ROOT/App/APM44Bridge/APM44Bridge.entitlements"
+  assert_contains "$LOG" "--entitlements $ROOT/Driver/APM44Bridge.entitlements"
+}
+
 run_codesign_verify_case() {
   local mode="$1"
   local override="$2"
   local expected="$3"
   local label="$4"
+  local entitlements_mode="${5:-empty}"
   local out="$TMP/$label.out"
   local root="$TMP/$label"
   local status=0
@@ -990,6 +1098,7 @@ run_codesign_verify_case() {
   local env_args=(
     PATH="$FAKE_BIN:$PATH"
     APM44_FAKE_CODESIGN_INFO="$mode"
+    APM44_FAKE_ENTITLEMENTS="$entitlements_mode"
     APM44_DAEMON_PATH="$root/bin/apm44-bridge"
     APM44_APP_PATH="$root/app/APM44 Bridge.app"
     APM44_DRIVER_PATH="$root/driver/APM44Bridge.driver"
@@ -1104,10 +1213,16 @@ run_workflow_action_trust_check
 
 run_public_release_hygiene_check
 
+assert_empty_entitlements_plist "$SOURCE_ROOT/App/APM44Bridge/APM44Bridge.entitlements"
+assert_empty_entitlements_plist "$SOURCE_ROOT/Driver/APM44Bridge.entitlements"
+run_sign_release_nested_entitlements_case
+
 run_codesign_verify_case strict-ok 0 success "codesign-strict-ok"
 run_codesign_verify_case runtime-flag 0 success "codesign-runtime-flag"  # [REL-01]
 run_codesign_verify_case no-runtime 0 failure "codesign-no-runtime"        # [REL-01]
 run_codesign_verify_case no-developer-id 0 failure "codesign-no-dev-id"    # [REL-02]
 run_codesign_verify_case ad-hoc 1 success "codesign-local-override"        # [REL-01][REL-02]
+run_codesign_verify_case strict-ok 0 failure "codesign-sandbox-forbidden" sandbox
+run_codesign_verify_case strict-ok 0 failure "codesign-get-task-allow-forbidden" get-task-allow
 
 echo "release script tests: OK"
