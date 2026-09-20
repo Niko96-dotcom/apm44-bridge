@@ -26,6 +26,7 @@ Environment:
   APM44_DMG_PACKAGE_ONLY=1  package the validated PKG without rebuilding or re-signing
   APM44_DMG_SKIP_IMAGE=1    build and sign only; do not write a DMG
   APM44_DMG_PATH            override output path
+  APM44_DMG_PRINT_PATH=1    print the resolved DMG path and exit
 
 Output:
   public PKG-in-DMG: build/signing/APM44Bridge-<version>.dmg (PACKAGE_ONLY=1)
@@ -48,6 +49,11 @@ elif [[ "$PACKAGE_ONLY" == "1" ]]; then
   OUT="$ROOT/build/signing/APM44Bridge-${VERSION}.dmg"
 else
   OUT="$ROOT/build/signing/APM44Bridge-${VERSION}-bundles.dmg"
+fi
+
+if [[ "${APM44_DMG_PRINT_PATH:-0}" == "1" ]]; then
+  printf '%s\n' "$OUT"
+  exit 0
 fi
 
 resolve_sign_id() {

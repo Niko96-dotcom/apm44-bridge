@@ -12,6 +12,7 @@ APP_NAME="APM44 Bridge"
 DAEMON_NAME="apm44-bridge"
 APP="$DERIVED_DATA_PATH/Build/Products/$CONFIG/$APP_NAME.app"
 EXECUTABLE="$APP/Contents/MacOS/$APP_NAME"
+OPEN_BIN="${APM44_OPEN_BIN:-/usr/bin/open}"
 
 usage() {
   cat >&2 <<USAGE
@@ -47,8 +48,9 @@ esac
 cd "$ROOT"
 
 # Match the rebuilt executable path, including processes launched with extra args.
+# -ww keeps BSD ps from truncating the command before the prefix match.
 local_app_pids() {
-  ps -axo pid=,command= | awk -v target="$EXECUTABLE" '
+  ps -axww -o pid=,command= | awk -v target="$EXECUTABLE" '
     {
       pid=$1
       sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "")
@@ -140,7 +142,7 @@ if [[ "$MODE" == "--isolated" ]]; then
   APM44_APP_PATH="$APP" APM44_DAEMON_PATH="$ROOT/build/isolated-native/BridgeDaemon/apm44-bridge" \
     bash scripts/embed-daemon-in-app.sh
   echo "Isolated preferences: $local_id"
-  /usr/bin/open -n "$APP" --args -SUEnableAutomaticChecks NO -SUAutomaticallyUpdate NO
+  "$OPEN_BIN" -n "$APP" --args -SUEnableAutomaticChecks NO -SUAutomaticallyUpdate NO
   for _ in {1..40}; do
     pid="$(local_app_pids)"
     if [[ -n "$pid" ]]; then
@@ -164,7 +166,7 @@ if [[ "$MODE" == "--no-launch" ]]; then
 fi
 
 echo "== Open rebuilt app =="
-/usr/bin/open -n "$APP"
+"$OPEN_BIN" -n "$APP"
 
 for _ in {1..40}; do
   pid="$(pgrep -x "$APP_NAME" | head -1 || true)"

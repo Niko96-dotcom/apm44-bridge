@@ -94,6 +94,10 @@ cat >"$FAKE_BIN/pgrep" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 printf '%s\n' "pgrep $*" >>"${APM44_FAKE_KILL_LOG:?}"
+if [[ -f "${APM44_FAKE_STARTED:-}" ]]; then
+  echo 4242
+  exit 0
+fi
 exit 1
 EOF
 
@@ -102,7 +106,30 @@ cat >"$FAKE_BIN/sleep" <<'EOF'
 exit 0
 EOF
 
-chmod +x "$FAKE_BIN/ps" "$FAKE_BIN/kill" "$FAKE_BIN/pkill" "$FAKE_BIN/pgrep" "$FAKE_BIN/sleep"
+cat >"$FAKE_BIN/bash" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+script="${1:-}"
+if [[ "$script" == scripts/verify-app-build.sh ]]; then
+  printf '%s\n' "BUILD $script" >>"${APM44_FAKE_KILL_LOG:?}"
+  dest="${PWD}/build/app/Build/Products/Debug/APM44 Bridge.app/Contents/MacOS"
+  mkdir -p "$dest"
+  printf 'fake app\n' >"$dest/APM44 Bridge"
+  chmod +x "$dest/APM44 Bridge"
+  exit 0
+fi
+exec /bin/bash "$@"
+EOF
+
+cat >"$FAKE_BIN/open" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+printf '%s\n' "open $*" >>"${APM44_FAKE_KILL_LOG:?}"
+: >"${APM44_FAKE_STARTED:?}"
+exit 0
+EOF
+
+chmod +x "$FAKE_BIN/ps" "$FAKE_BIN/kill" "$FAKE_BIN/pkill" "$FAKE_BIN/pgrep" "$FAKE_BIN/sleep" "$FAKE_BIN/bash" "$FAKE_BIN/open"
 
 run_isolated_stop_leaves_installed_app() {
   : >"$KILL_LOG"
@@ -159,6 +186,7 @@ run_source_contracts() {
   }
   assert_contains "$SOURCE_ROOT/.codex/environments/environment.toml" \
     "bash scripts/rebuild-and-open-app.sh --isolated"
+  assert_contains "$SOURCE_ROOT/scripts/rebuild-and-open-app.sh" "ps -axww -o pid=,command="
 
   local stop_line build_line isolated_exit
   stop_line="$(grep -n '^  stop_named_processes$' "$SOURCE_ROOT/scripts/rebuild-and-open-app.sh" | head -1 | cut -d: -f1)"
@@ -178,9 +206,66 @@ run_source_contracts() {
   fi
 }
 
+run_stubbed_default_run_stops_before_build() {
+  local out="$TMP/default-run.out"
+  local started="$TMP/started"
+  local exe="$ROOT/build/app/Build/Products/Debug/APM44 Bridge.app/Contents/MacOS/APM44 Bridge"
+  : >"$KILL_LOG"
+  rm -f "$started"
+  printf ' 4242 %s\n' "$exe" >"$PS_TABLE"
+
+  env \
+    PATH="$FAKE_BIN:/usr/bin:/bin" \
+    APM44_FAKE_PS_TABLE="$PS_TABLE" \
+    APM44_FAKE_KILL_LOG="$KILL_LOG" \
+    APM44_FAKE_STARTED="$started" \
+    APM44_OPEN_BIN="$FAKE_BIN/open" \
+    /bin/bash "$SCRIPT" run >"$out" 2>&1
+
+  assert_contains "$KILL_LOG" "pkill -TERM -x APM44 Bridge"
+  assert_contains "$KILL_LOG" "BUILD scripts/verify-app-build.sh"
+  assert_contains "$KILL_LOG" "open -n"
+  assert_contains "$out" "Running: 4242"
+
+  local pkill_line build_line open_line
+  pkill_line="$(grep -n 'pkill -TERM -x APM44 Bridge' "$KILL_LOG" | head -1 | cut -d: -f1)"
+  build_line="$(grep -n 'BUILD scripts/verify-app-build.sh' "$KILL_LOG" | head -1 | cut -d: -f1)"
+  open_line="$(grep -n 'open -n' "$KILL_LOG" | head -1 | cut -d: -f1)"
+  if [[ -z "$pkill_line" || -z "$build_line" || -z "$open_line" ]]; then
+    echo "stubbed default run: missing pkill/build/open" >&2
+    cat "$KILL_LOG" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  if [[ "$pkill_line" -ge "$build_line" || "$build_line" -ge "$open_line" ]]; then
+    echo "stubbed default run order must be stop, build, launch" >&2
+    cat "$KILL_LOG" >&2
+    exit 1
+  fi
+}
+
+run_stubbed_no_launch_skips_stop() {
+  local out="$TMP/no-launch.out"
+  : >"$KILL_LOG"
+
+  env \
+    PATH="$FAKE_BIN:/usr/bin:/bin" \
+    APM44_FAKE_PS_TABLE="$PS_TABLE" \
+    APM44_FAKE_KILL_LOG="$KILL_LOG" \
+    APM44_FAKE_STARTED="$TMP/started-no-launch" \
+    APM44_OPEN_BIN="$FAKE_BIN/open" \
+    /bin/bash "$SCRIPT" --no-launch >"$out" 2>&1
+
+  assert_contains "$KILL_LOG" "BUILD scripts/verify-app-build.sh"
+  assert_not_contains "$KILL_LOG" "pkill"
+  assert_not_contains "$KILL_LOG" "open -n"
+}
+
 run_help_and_usage
 run_source_contracts
 run_local_pid_matcher
 run_isolated_stop_leaves_installed_app
+run_stubbed_default_run_stops_before_build
+run_stubbed_no_launch_skips_stop
 
 echo "rebuild-and-open-app tests: OK"

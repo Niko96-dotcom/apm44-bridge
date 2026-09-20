@@ -1113,6 +1113,33 @@ run_sign_release_nested_entitlements_case() {
   assert_contains "$LOG" "Updater.app"
   assert_contains "$LOG" "--entitlements $ROOT/App/APM44Bridge/APM44Bridge.entitlements"
   assert_contains "$LOG" "--entitlements $ROOT/Driver/APM44Bridge.entitlements"
+
+  while IFS= read -r line; do
+    if [[ "$line" == *"--preserve-metadata=entitlements"* && "$line" == *"--entitlements "* ]]; then
+      echo "nested Sparkle signed with host entitlements: $line" >&2
+      cat "$LOG" >&2
+      exit 1
+    fi
+  done <<<"$force_lines"
+
+  local downloader_line installer_line autoupdate_line updater_line sparkle_bin_line framework_line app_ent_line
+  downloader_line="$(grep -n 'Downloader.xpc' "$LOG" | head -1 | cut -d: -f1)"
+  installer_line="$(grep -n 'Installer.xpc' "$LOG" | head -1 | cut -d: -f1)"
+  autoupdate_line="$(grep -n '/Autoupdate' "$LOG" | head -1 | cut -d: -f1)"
+  updater_line="$(grep -n 'Updater.app' "$LOG" | head -1 | cut -d: -f1)"
+  sparkle_bin_line="$(grep -n '/Versions/Current/Sparkle' "$LOG" | head -1 | cut -d: -f1)"
+  framework_line="$(grep -n 'Sparkle.framework$' "$LOG" | head -1 | cut -d: -f1)"
+  app_ent_line="$(grep -nF -- "--entitlements $ROOT/App/APM44Bridge/APM44Bridge.entitlements" "$LOG" | head -1 | cut -d: -f1)"
+  if [[ -z "$downloader_line" || -z "$installer_line" || -z "$autoupdate_line" || -z "$updater_line" || -z "$sparkle_bin_line" || -z "$framework_line" || -z "$app_ent_line" ]]; then
+    echo "sign-release nested order: expected codesign lines missing" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+  if [[ "$downloader_line" -ge "$installer_line" || "$installer_line" -ge "$autoupdate_line" || "$autoupdate_line" -ge "$updater_line" || "$updater_line" -ge "$sparkle_bin_line" || "$sparkle_bin_line" -ge "$framework_line" || "$framework_line" -ge "$app_ent_line" ]]; then
+    echo "sign-release nested order is not inside-out" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
 }
 
 run_sign_release_missing_sparkle_helper_case() {
@@ -1152,6 +1179,23 @@ run_dmg_skip_image_rejects_package_only() {
     exit 1
   fi
   assert_contains "$out" "cannot be combined"
+}
+
+run_dmg_default_bundles_name_check() {
+  local version
+  version="$(/bin/bash "$ROOT/scripts/read-version.sh")"
+  local bundles
+  local public_name
+  bundles="$(env APM44_DMG_PRINT_PATH=1 /bin/bash "$ROOT/scripts/build-release-dmg.sh")"
+  public_name="$(env APM44_DMG_PRINT_PATH=1 APM44_DMG_PACKAGE_ONLY=1 /bin/bash "$ROOT/scripts/build-release-dmg.sh")"
+  [[ "$bundles" == "$ROOT/build/signing/APM44Bridge-${version}-bundles.dmg" ]] || {
+    echo "non-PKG default DMG should be -bundles.dmg, got $bundles" >&2
+    exit 1
+  }
+  [[ "$public_name" == "$ROOT/build/signing/APM44Bridge-${version}.dmg" ]] || {
+    echo "PACKAGE_ONLY DMG should use the public name, got $public_name" >&2
+    exit 1
+  }
 }
 
 run_notary_dry_run_cases() {
@@ -1361,6 +1405,8 @@ run_dmg_checksum_artifact_check        # [DOC-04]
 run_dmg_pkg_first_layout_check
 
 run_dmg_skip_image_rejects_package_only
+
+run_dmg_default_bundles_name_check
 
 run_notary_dry_run_cases
 
