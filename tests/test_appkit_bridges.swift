@@ -102,4 +102,64 @@ final class FullWidthPopUpButtonBridgeTests: XCTestCase {
         XCTAssertNil(popUp.action)
         XCTAssertNil(coordinator.onSelect)
     }
+
+    func testInPlaceTitleChangeReselectsSoBezelMatchesPickerLabel() {
+        let popUp = SelectTrackingPopUp()
+        let uid = "uid-1"
+        makeButton(
+            options: [
+                FullWidthPopUpButton.Option(id: "", title: "Choose output", isEnabled: true),
+                FullWidthPopUpButton.Option(id: uid, title: "Studio Speakers — USB", isEnabled: true),
+            ],
+            selectedId: uid
+        ).apply(to: popUp)
+        XCTAssertEqual(popUp.selectedItem?.representedObject as? String, uid)
+        XCTAssertEqual(popUp.title, "Studio Speakers — USB")
+        let selectsAfterInitial = popUp.selectCalls
+
+        makeButton(
+            options: [
+                FullWidthPopUpButton.Option(id: "", title: "Choose output", isEnabled: true),
+                FullWidthPopUpButton.Option(id: uid, title: "Studio Speakers — USB", isEnabled: true),
+            ],
+            selectedId: uid
+        ).apply(to: popUp)
+        XCTAssertEqual(popUp.selectCalls, selectsAfterInitial)
+
+        let incompatible = "Studio Speakers — Unsupported: Stereo output unavailable"
+        makeButton(
+            options: [
+                FullWidthPopUpButton.Option(id: "", title: "Choose output", isEnabled: true),
+                FullWidthPopUpButton.Option(id: uid, title: incompatible, isEnabled: false),
+            ],
+            selectedId: uid
+        ).apply(to: popUp)
+        XCTAssertGreaterThan(popUp.selectCalls, selectsAfterInitial)
+        XCTAssertEqual(popUp.selectedItem?.representedObject as? String, uid)
+        XCTAssertEqual(popUp.selectedItem?.title, incompatible)
+        XCTAssertEqual(popUp.title, incompatible)
+        XCTAssertFalse(popUp.selectedItem?.isEnabled ?? true)
+    }
+
+    private func makeButton(
+        options: [FullWidthPopUpButton.Option],
+        selectedId: String
+    ) -> FullWidthPopUpButton {
+        FullWidthPopUpButton(
+            width: 200,
+            options: options,
+            selectedId: selectedId,
+            accessibilityLabelText: "Output",
+            onSelect: { _ in }
+        )
+    }
+}
+
+private final class SelectTrackingPopUp: FixedWidthPopUpButton {
+    private(set) var selectCalls = 0
+
+    override func select(_ item: NSMenuItem?) {
+        selectCalls += 1
+        super.select(item)
+    }
 }
