@@ -1,4 +1,10 @@
 import Foundation
+import OSLog
+
+private let logger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.niko.apm44.menu",
+    category: "Driver"
+)
 
 /// Privileged maintenance actions for the installed HAL driver.
 ///
@@ -26,8 +32,14 @@ enum DriverMaintenance {
         do {
             try process.run()
             process.waitUntilExit()
-            return process.terminationStatus == 0
+            if process.terminationStatus == 0 {
+                logger.info("Core Audio reload succeeded")
+                return true
+            }
+            logger.error("Core Audio reload failed status=\(process.terminationStatus)")
+            return false
         } catch {
+            logger.error("Core Audio reload failed to start")
             return false
         }
     }

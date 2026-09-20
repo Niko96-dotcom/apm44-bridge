@@ -1,6 +1,12 @@
 import AppKit
 import Foundation
 import Darwin
+import OSLog
+
+private let logger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.niko.apm44.menu",
+    category: "Bridge"
+)
 
 enum BridgeRunState: Equatable {
     case idle
@@ -166,6 +172,7 @@ final class BridgeProcessManager: ObservableObject {
             return true
         }
         guard let url = binaryURL else {
+            logger.error("Device list refresh blocked: missing binary")
             bannerMessage = AppStrings.bridgeNotFound
             return false
         }
@@ -180,6 +187,7 @@ final class BridgeProcessManager: ObservableObject {
             return true
         } catch {
             if refreshGeneration == hotplugRefreshGeneration {
+                logger.error("Device list refresh failed")
                 bannerMessage = AppStrings.couldNotListDevices
             }
             return false
@@ -237,24 +245,33 @@ final class BridgeProcessManager: ObservableObject {
             lastUnexpectedStderr = nil
         }
         guard let url = binaryURL else {
+            logger.error("Bridge start blocked: missing binary")
             state = .error(AppStrings.bridgeNotFound)
             return
         }
         guard let uid = settings.outputDeviceUid, !uid.isEmpty else {
+            logger.error("Bridge start blocked: no output selected")
             state = .error(AppStrings.selectOutputDevice)
             return
         }
         guard let selectedOutput = devices.first(where: { $0.uid == uid }) else {
+            logger.error("Bridge start blocked: selected output gone")
             state = .error(AppStrings.selectedOutputGone)
             return
         }
         guard selectedOutput.isMonitoringCompatible else {
+            logger.error("Bridge start blocked: incompatible output")
             let issue = selectedOutput.compatibilityIssue ?? AppStrings.unsupportedPrefix
             state = .error(AppStrings.selectedOutputIncompatible(issue: AppStrings.compatibility(issue)))
             bannerMessage = AppStrings.namedIssue(selectedOutput.name, issue: AppStrings.compatibility(issue))
             return
         }
 
+        if resetRetryAttempt {
+            logger.info("Bridge starting")
+        } else {
+            logger.info("Bridge starting retry=\(self.retryAttempt)")
+        }
         state = .starting
         processHealth = .spawning
         connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
@@ -310,6 +327,7 @@ final class BridgeProcessManager: ObservableObject {
             parentPipe.fileHandleForReading.closeFile()
             runningOutputFingerprint = selectedOutput
             state = .running
+            logger.info("Bridge running")
             wasRunningBeforeDisconnect = false
             updateConnectionPhase()
             scheduleStaleWatch()
@@ -321,6 +339,8 @@ final class BridgeProcessManager: ObservableObject {
             }
             processHealth = .stopped
             clearPipeHandlers()
+            let nsError = error as NSError
+            logger.error("Bridge launch failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code)")
             let detail = sanitizedDiagnostic(error.localizedDescription)
             if !resetRetryAttempt {
                 lastUnexpectedStderr = detail
@@ -352,6 +372,7 @@ final class BridgeProcessManager: ObservableObject {
             initiateStop(reason: .user)
             return true
         } else if case .reconnecting = state {
+            logger.info("Bridge stopping reason=\(self.stopReasonLabel(.user), privacy: .public)")
             state = .idle
             bannerMessage = nil
             lastStopReason = nil
@@ -367,6 +388,7 @@ final class BridgeProcessManager: ObservableObject {
 
     private func initiateStop(reason: StopReason) {
         lastStopReason = reason
+        logger.info("Bridge stopping reason=\(self.stopReasonLabel(reason), privacy: .public)")
         guard let proc = process else {
             transitionToIdle()
             return
@@ -449,6 +471,7 @@ final class BridgeProcessManager: ObservableObject {
         resumeAfterSystemWake = shouldResume
         guard shouldResume else { return }
 
+        logger.info("Bridge pausing for sleep")
         wasRunningBeforeDisconnect = false
         cancelRetryTask()
         cancelStabilityTask()
@@ -464,6 +487,7 @@ final class BridgeProcessManager: ObservableObject {
         resumeAfterSystemWake = false
         guard await refreshDevices() else {
             if shouldResume {
+                logger.info("Bridge waiting for devices after wake")
                 state = .reconnecting
                 bannerMessage = AppStrings.waitingForDevicesAfterWake
             }
@@ -474,12 +498,14 @@ final class BridgeProcessManager: ObservableObject {
               let selected = devices.first(where: { $0.uid == uid }),
               selected.isAlive,
               selected.isMonitoringCompatible else {
+            logger.info("Bridge output unavailable after wake")
             wasRunningBeforeDisconnect = true
             state = .reconnecting
             connectionPhase = .stopped
             bannerMessage = AppStrings.outputUnavailableAfterWake(deviceDisplayName)
             return
         }
+        logger.info("Bridge resuming after wake")
         start()
     }
 
@@ -489,6 +515,7 @@ final class BridgeProcessManager: ObservableObject {
 
         guard let uid = settings.outputDeviceUid else {
             if isRunning {
+                logger.info("Bridge output disconnected")
                 wasRunningBeforeDisconnect = false
                 bannerMessage = AppStrings.outputDisconnectedSelect
                 _ = await terminateProcessWithEscalation(reason: .hotplug)
@@ -510,6 +537,7 @@ final class BridgeProcessManager: ObservableObject {
                 bannerMessage = AppStrings.reconnectingTo(deviceDisplayName)
                 await restart(reason: .hotplug)
             } else {
+                logger.info("Bridge waiting for output after hotplug")
                 wasRunningBeforeDisconnect = true
                 _ = await terminateProcessWithEscalation(reason: .hotplug)
                 state = .reconnecting
@@ -742,6 +770,7 @@ final class BridgeProcessManager: ObservableObject {
             return true
         } catch {
             if let proc = process, processLauncher.isProcessRunning(proc), proc.isRunning {
+                logger.error("Bridge stop timed out; sending SIGKILL")
                 kill(proc.processIdentifier, SIGKILL)
             }
             do {
@@ -752,6 +781,7 @@ final class BridgeProcessManager: ObservableObject {
                 // unblocks with a final result instead of hanging. Clear
                 // pipe handlers and resume every queued continuation so
                 // the caller gets a deterministic `false`.
+                logger.error("Bridge stop failed after SIGKILL")
                 clearPipeHandlers()
                 resumeTerminationWaiters()
                 return false
@@ -838,6 +868,7 @@ final class BridgeProcessManager: ObservableObject {
         retryGeneration += 1
         retryAttempt += 1
         if retryAttempt >= maxUnhealthyLaunches {
+            logger.error("Bridge retries exhausted")
             let message = exhaustedRetryMessage()
             state = .error(message)
             return
@@ -857,6 +888,19 @@ final class BridgeProcessManager: ObservableObject {
             guard case .reconnecting = self.state else { return }
             self.retryTask = nil
             self.start(resetRetryAttempt: false)
+        }
+    }
+
+    private func stopReasonLabel(_ reason: StopReason) -> String {
+        switch reason {
+        case .user:
+            return "user"
+        case .settingsChange:
+            return "settingsChange"
+        case .hotplug:
+            return "hotplug"
+        case .internal:
+            return "internal"
         }
     }
 
@@ -881,6 +925,7 @@ final class BridgeProcessManager: ObservableObject {
         if exitStatus != 0 {
             lastUnexpectedExitStatus = exitStatus
             lastUnexpectedStderr = sanitizedDiagnostic(stderr)
+            logger.error("Bridge unexpected exit status=\(exitStatus)")
         }
 
         if exitStatus != 0, case .running = state {
