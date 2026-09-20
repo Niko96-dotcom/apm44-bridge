@@ -50,9 +50,16 @@ struct FullWidthPopUpButton: NSViewRepresentable {
                 popUp.item(at: index)?.title = option.title
             }
         }
-        if let item = popUp.itemArray.first(where: { ($0.representedObject as? String) == selectedId }) {
+        if let item = popUp.itemArray.first(where: { ($0.representedObject as? String) == selectedId }),
+           popUp.selectedItem != item {
             popUp.select(item)
         }
+    }
+
+    static func dismantleNSView(_ popUp: FixedWidthPopUpButton, coordinator: Coordinator) {
+        popUp.target = nil
+        popUp.action = nil
+        coordinator.onSelect = nil
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
