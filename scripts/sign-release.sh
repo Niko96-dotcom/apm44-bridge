@@ -54,33 +54,58 @@ resolve_sign_id() {
 SIGN_ID="$(resolve_sign_id)"
 
 sign_one() {
-  local path="$1"
+  local target="$1"
   local entitlements="${2:-}"
-  local deep="${3:-0}"
-  if [[ ! -e "$path" ]]; then
-    echo "error: missing artifact: $path" >&2
+  if [[ ! -e "$target" ]]; then
+    echo "error: missing artifact: $target" >&2
     exit 1
   fi
-  echo "Signing: $path"
+  echo "Signing: $target"
   local sign_args=(--force --sign "$SIGN_ID" --timestamp --options runtime)
-  if [[ "$deep" == "1" ]]; then
-    # Sparkle embeds XPC services, Updater.app, and Autoupdate. Re-sign that
-    # tree with this Developer ID and a secure timestamp, but keep each nested
-    # helper's own entitlements. Passing the host app's empty entitlements with
-    # --deep strips Sparkle Autoupdate's application-identifier.
-    codesign "${sign_args[@]}" --deep --preserve-metadata=entitlements "$path"
-    sign_args=(--force --sign "$SIGN_ID" --timestamp --options runtime)
-  fi
   if [[ -n "$entitlements" && -f "$entitlements" ]]; then
-    codesign "${sign_args[@]}" --entitlements "$entitlements" "$path"
+    codesign "${sign_args[@]}" --entitlements "$entitlements" "$target"
   else
-    codesign "${sign_args[@]}" "$path"
+    codesign "${sign_args[@]}" "$target"
   fi
-  codesign --verify --verbose "$path"
+  codesign --verify --verbose "$target"
+}
+
+# Re-sign Sparkle helpers inside-out with this Developer ID. Preserve each
+# helper's own entitlements (Downloader.xpc in particular; Autoupdate also
+# carries com.apple.application-identifier). Do not use --deep: it is
+# deprecated for signing and would re-apply host options onto nested code.
+sign_sparkle_nested() {
+  local app="$1"
+  local sparkle="$app/Contents/Frameworks/Sparkle.framework"
+  local sparkle_ver="$sparkle/Versions/Current"
+  [[ -d "$sparkle" ]] || return 0
+  if [[ ! -d "$sparkle_ver" ]]; then
+    echo "error: Sparkle.framework missing Versions/Current in $app" >&2
+    exit 1
+  fi
+  local nested
+  for nested in \
+    "$sparkle_ver/XPCServices/Downloader.xpc" \
+    "$sparkle_ver/XPCServices/Installer.xpc" \
+    "$sparkle_ver/Autoupdate" \
+    "$sparkle_ver/Updater.app" \
+    "$sparkle_ver/Sparkle" \
+    "$sparkle"
+  do
+    if [[ ! -e "$nested" ]]; then
+      echo "error: missing Sparkle nested code: $nested" >&2
+      exit 1
+    fi
+    echo "Signing nested: $nested"
+    codesign --force --sign "$SIGN_ID" --timestamp --options runtime \
+      --preserve-metadata=entitlements "$nested"
+    codesign --verify --verbose "$nested"
+  done
 }
 
 # Inner binaries before outer bundle (app may embed daemon).
 if [[ -d "$APP" ]]; then
+  sign_sparkle_nested "$APP"
   AUX="$APP/Contents/MacOS/apm44-bridge"
   if [[ -f "$AUX" ]]; then
     sign_one "$AUX"
@@ -88,7 +113,7 @@ if [[ -d "$APP" ]]; then
 fi
 
 sign_one "$DAEMON"
-sign_one "$APP" "$ROOT/App/APM44Bridge/APM44Bridge.entitlements" 1
+sign_one "$APP" "$ROOT/App/APM44Bridge/APM44Bridge.entitlements"
 sign_one "$DRIVER" "$ROOT/Driver/APM44Bridge.entitlements"
 
 echo ""
