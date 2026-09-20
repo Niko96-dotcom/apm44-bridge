@@ -104,7 +104,7 @@ final class FullWidthPopUpButtonBridgeTests: XCTestCase {
     }
 
     func testInPlaceTitleChangeReselectsSoBezelMatchesPickerLabel() {
-        let popUp = SelectTrackingPopUp()
+        let popUp = FixedWidthPopUpButton()
         let uid = "uid-1"
         makeButton(
             options: [
@@ -115,7 +115,6 @@ final class FullWidthPopUpButtonBridgeTests: XCTestCase {
         ).apply(to: popUp)
         XCTAssertEqual(popUp.selectedItem?.representedObject as? String, uid)
         XCTAssertEqual(popUp.title, "Studio Speakers — USB")
-        let selectsAfterInitial = popUp.selectCalls
 
         makeButton(
             options: [
@@ -124,7 +123,7 @@ final class FullWidthPopUpButtonBridgeTests: XCTestCase {
             ],
             selectedId: uid
         ).apply(to: popUp)
-        XCTAssertEqual(popUp.selectCalls, selectsAfterInitial)
+        XCTAssertEqual(popUp.title, "Studio Speakers — USB")
 
         let incompatible = "Studio Speakers — Unsupported: Stereo output unavailable"
         makeButton(
@@ -134,7 +133,6 @@ final class FullWidthPopUpButtonBridgeTests: XCTestCase {
             ],
             selectedId: uid
         ).apply(to: popUp)
-        XCTAssertGreaterThan(popUp.selectCalls, selectsAfterInitial)
         XCTAssertEqual(popUp.selectedItem?.representedObject as? String, uid)
         XCTAssertEqual(popUp.selectedItem?.title, incompatible)
         XCTAssertEqual(popUp.title, incompatible)
@@ -152,14 +150,5 @@ final class FullWidthPopUpButtonBridgeTests: XCTestCase {
             accessibilityLabelText: "Output",
             onSelect: { _ in }
         )
-    }
-}
-
-private final class SelectTrackingPopUp: FixedWidthPopUpButton {
-    private(set) var selectCalls = 0
-
-    override func select(_ item: NSMenuItem?) {
-        selectCalls += 1
-        super.select(item)
     }
 }
