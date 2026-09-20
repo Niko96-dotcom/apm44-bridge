@@ -44,6 +44,9 @@ bash tests/test_appcast.sh
 echo "== Compiler probe tests =="
 bash tests/test_compiler_probe.sh
 
+echo "== Rebuild-and-open script tests =="
+bash tests/test_rebuild_and_open_app.sh
+
 if [[ "${APM44_RUN_SOAK:-0}" == "1" ]]; then
   echo "== Offline soak =="
   "$BUILD_DIR/BridgeDaemon/apm44-soak" --duration-sec "${APM44_SOAK_SECONDS:-60}"

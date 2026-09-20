@@ -64,6 +64,10 @@ jobs:
         timeout-minutes: 5
         run: bash tests/test_compiler_probe.sh
 
+      - name: Rebuild-and-open script tests
+        timeout-minutes: 5
+        run: bash tests/test_rebuild_and_open_app.sh
+
       - name: Swift app build
         timeout-minutes: 15
         run: bash scripts/verify-app-build.sh
