@@ -655,7 +655,10 @@ struct MenuContentView: View {
             binaryMissing: manager.binaryURL == nil,
             selectedUid: settings.outputDeviceUid,
             devices: manager.devices,
-            lastKnownName: manager.deviceDisplayName
+            lastKnownName: manager.deviceDisplayName,
+            halDevicePresent: HalDriverDetector.isHalInstalled(),
+            appBuildID: HalDriverDetector.appBuildID(),
+            driverBuildID: HalDriverDetector.driverBuildID()
         )
     }
 

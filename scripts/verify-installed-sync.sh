@@ -61,6 +61,33 @@ parse_shm_helper_id() {
   return 1
 }
 
+parse_shm_driver_id() {
+  local out="$1"
+  if [[ "$out" =~ driver_build_id=([^[:space:]]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+parse_shm_status() {
+  local out="$1"
+  if [[ "$out" =~ shm_status=([^[:space:]]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+parse_shm_error_code() {
+  local out="$1"
+  if [[ "$out" =~ error_code=([^[:space:]]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
 sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 
 capture_with_timeout() {
@@ -157,8 +184,10 @@ if [[ -d "$DRIVER" ]]; then
   else
     fail "installed driver Info.plist missing at $DRIVER_PLIST"
   fi
-elif [[ "$DRY_RUN" != "1" ]]; then
-  note "WARN: installed HAL driver not present; live driver identity check skipped"
+elif [[ "$DRY_RUN" == "1" ]]; then
+  note "WARN: installed HAL driver not present; install the signed release before live identity verification"
+else
+  fail "installed HAL driver missing at $DRIVER — install the signed driver bundle before live verification"
 fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -166,21 +195,58 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
-SHM_OUT="$("$BRIDGE" --shm-status 2>/dev/null || true)"
-if [[ -z "$SHM_OUT" ]]; then
-  note "WARN: --shm-status produced no output (HAL ring may be inactive)"
-  note "OK: repo/helper sync verified; run with bridge active for shm ID check"
-  exit 0
+SHM_TMP="$(mktemp)"
+SHM_STATUS=0
+if "$BRIDGE" --shm-status >"$SHM_TMP" 2>&1; then
+  SHM_STATUS=0
+else
+  SHM_STATUS=$?
+fi
+SHM_OUT="$(cat "$SHM_TMP")"
+rm -f "$SHM_TMP"
+
+if [[ -n "$SHM_OUT" ]]; then
+  printf '%s\n' "$SHM_OUT"
 fi
 
-if SHM_ID="$(parse_shm_helper_id "$SHM_OUT")"; then
-  note "shm_helper_build_id=$SHM_ID"
-  if [[ "$SHM_ID" != "$HELPER_ID" ]]; then
-    fail "shm-status mismatch: helper=$HELPER_ID shm=$SHM_ID repo=$REPO_ID"
+if [[ "$SHM_STATUS" -ne 0 ]]; then
+  if SHM_ERR="$(parse_shm_error_code "$SHM_OUT")"; then
+    fail "live --shm-status failed (exit=$SHM_STATUS error_code=$SHM_ERR helper=$HELPER_ID repo=$REPO_ID); output: $SHM_OUT"
+  else
+    fail "live --shm-status failed (exit=$SHM_STATUS helper=$HELPER_ID repo=$REPO_ID); output: $SHM_OUT"
   fi
-  note "OK: shm-status helper_build_id matches embedded helper"
-else
-  note "WARN: could not parse helper_build_id from --shm-status"
 fi
+
+SHM_STATE=""
+if ! SHM_STATE="$(parse_shm_status "$SHM_OUT")"; then
+  fail "live --shm-status did not report shm_status=ok (helper=$HELPER_ID repo=$REPO_ID); output: $SHM_OUT"
+fi
+if [[ "$SHM_STATE" != "ok" ]]; then
+  if SHM_ERR="$(parse_shm_error_code "$SHM_OUT")"; then
+    if [[ "$SHM_ERR" == "open_failed" ]]; then
+      fail "live shm ring unavailable (shm_status=$SHM_STATE error_code=open_failed helper=$HELPER_ID repo=$REPO_ID); output: $SHM_OUT"
+    fi
+    fail "live --shm-status reported shm_status=$SHM_STATE (error_code=$SHM_ERR helper=$HELPER_ID repo=$REPO_ID); output: $SHM_OUT"
+  else
+    fail "live --shm-status reported shm_status=$SHM_STATE (helper=$HELPER_ID repo=$REPO_ID); output: $SHM_OUT"
+  fi
+fi
+
+if ! SHM_HELPER_ID="$(parse_shm_helper_id "$SHM_OUT")"; then
+  fail "live --shm-status missing helper_build_id (expected=$HELPER_ID); output: $SHM_OUT"
+fi
+note "shm_helper_build_id=$SHM_HELPER_ID"
+if [[ "$SHM_HELPER_ID" != "$HELPER_ID" ]]; then
+  fail "shm-status mismatch: helper=$HELPER_ID shm_helper=$SHM_HELPER_ID repo=$REPO_ID"
+fi
+
+if ! SHM_DRIVER_ID="$(parse_shm_driver_id "$SHM_OUT")"; then
+  fail "live --shm-status missing driver_build_id (expected=$HELPER_ID); output: $SHM_OUT"
+fi
+note "shm_driver_build_id=$SHM_DRIVER_ID"
+if [[ "$SHM_DRIVER_ID" != "$HELPER_ID" ]]; then
+  fail "shm-status mismatch: helper=$HELPER_ID shm_driver=$SHM_DRIVER_ID repo=$REPO_ID"
+fi
+note "OK: shm-status live sync verified (helper=$HELPER_ID driver=$SHM_DRIVER_ID)"
 
 note "verify-installed-sync: OK"

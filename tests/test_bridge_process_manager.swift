@@ -43,6 +43,7 @@ final class MockProcessLauncher: ProcessLaunching {
 
 @MainActor
 final class BridgeProcessManagerTests: XCTestCase {
+    private let fixtureBuildID = "0.12.7+test-fixture-match"
     private let testDevice = AudioDeviceRow(
         uid: "test-output-uid",
         name: "Test Output",
@@ -86,6 +87,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
             applicationTerminator: applicationTerminator
         )
+        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
         manager.setDevicesForTesting([testDevice])
         manager.testDeviceListOverride = [testDevice]
         return (manager, settings, mockLauncher)
@@ -124,6 +126,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             processLauncher: launcher,
             binaryURLOverride: URL(fileURLWithPath: "/usr/bin/sleep")
         )
+        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
         manager.setDevicesForTesting([testDevice])
         manager.setStateForTesting(.error("previous failure"))
 
@@ -147,6 +150,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             processLauncher: launcher,
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge")
         )
+        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
         manager.setDevicesForTesting([testDevice])
 
         manager.start()

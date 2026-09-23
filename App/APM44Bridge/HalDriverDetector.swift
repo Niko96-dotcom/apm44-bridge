@@ -9,6 +9,52 @@ enum HalDriverDetector {
     /// Absolute path where the HAL driver bundle is installed on disk.
     static let installedBundlePath = "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 
+    /// Info.plist inside the installed HAL driver bundle.
+    static var installedDriverPlistPath: String {
+        (installedBundlePath as NSString).appendingPathComponent("Contents/Info.plist")
+    }
+
+    /// The app/helper build fingerprint from this bundle's Info.plist.
+    /// Returns the raw value (may be nil when missing); use
+    /// `normalizedBuildID(_:)` / `buildIDsMatch` for fail-closed comparison.
+    static func appBuildID(bundle: Bundle = .main) -> String? {
+        bundle.object(forInfoDictionaryKey: "APM44BuildID") as? String
+    }
+
+    /// The installed HAL driver's build fingerprint from its Info.plist.
+    /// `plistURL` is injectable for deterministic tests; defaults to the
+    /// installed driver plist. Reading two small plists is fine on any thread.
+    static func driverBuildID(plistURL: URL? = nil) -> String? {
+        let url = plistURL ?? URL(fileURLWithPath: installedDriverPlistPath)
+        guard let dict = NSDictionary(contentsOf: url) as? [String: Any] else {
+            return nil
+        }
+        return dict["APM44BuildID"] as? String
+    }
+
+    /// Fail-closed normalization: trims whitespace and rejects missing,
+    /// empty, placeholder (`unknown`, unresolved `$(…)`/`${…}`) values.
+    /// Returns nil for anything that must not compare equal.
+    static func normalizedBuildID(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed != "unknown" else { return nil }
+        if trimmed.contains("$(") || trimmed.contains("${") { return nil }
+        return trimmed
+    }
+
+    /// Compares full build IDs (e.g. `0.12.7+3fc0…` vs `0.12.7+c27…`),
+    /// not just the `0.12.7` version. Missing/malformed IDs never match
+    /// (fail closed).
+    static func buildIDsMatch(appBuildID: String?, driverBuildID: String?) -> Bool {
+        guard let app = normalizedBuildID(appBuildID),
+              let driver = normalizedBuildID(driverBuildID) else {
+            return false
+        }
+        return app == driver
+    }
+
     /// True when the driver *bundle* exists on disk, whether or not Core Audio
     /// has enumerated it yet. A freshly installed HAL driver is on disk
     /// immediately but is often not loaded until coreaudiod is reloaded or the
@@ -18,9 +64,33 @@ enum HalDriverDetector {
     }
 
     /// Coarse install state that drives first-run guidance.
+    /// When the HAL device is enumerated, the installed driver build ID
+    /// must match the app's build ID or the status is `.buildMismatch`
+    /// (never a green ready). When the HAL device is absent, existing
+    /// fallback logic applies and a missing driver does not block.
     static func status() -> DriverStatus {
-        if isHalInstalled() { return .ready }
-        if isDriverBundleOnDisk() { return .installedNotLoaded }
+        status(
+            halPresent: isHalInstalled(),
+            appBuildID: appBuildID(),
+            driverBuildID: driverBuildID(),
+            driverBundleOnDisk: isDriverBundleOnDisk()
+        )
+    }
+
+    /// Testable overload with injectable presence/IDs. `driverBundleOnDisk`
+    /// defaults to the live on-disk check when nil.
+    static func status(
+        halPresent: Bool,
+        appBuildID: String?,
+        driverBuildID: String?,
+        driverBundleOnDisk: Bool? = nil
+    ) -> DriverStatus {
+        if halPresent {
+            return buildIDsMatch(appBuildID: appBuildID, driverBuildID: driverBuildID)
+                ? .ready : .buildMismatch
+        }
+        let onDisk = driverBundleOnDisk ?? isDriverBundleOnDisk()
+        if onDisk { return .installedNotLoaded }
         return .notInstalled
     }
 
@@ -161,10 +231,15 @@ enum HalDriverDetector {
 }
 
 /// Whether the APM44 HAL driver is enumerated by Core Audio, merely installed
-/// on disk, or absent entirely.
+/// on disk, absent entirely, or enumerated with a mismatched build.
 enum DriverStatus: Equatable {
-    /// Core Audio has enumerated the APM44 Bridge device — ready to use.
+    /// Core Audio has enumerated the APM44 Bridge device with a driver
+    /// build ID matching the app — ready to use.
     case ready
+    /// Core Audio has enumerated the device but the installed driver build
+    /// ID differs from (or is missing alongside) the app's build ID.
+    /// Setup must not show green; Start is blocked until repaired.
+    case buildMismatch
     /// Driver bundle is on disk but Core Audio has not loaded it yet
     /// (needs a Core Audio reload or a one-time restart).
     case installedNotLoaded

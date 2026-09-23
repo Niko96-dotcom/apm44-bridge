@@ -155,6 +155,10 @@ final class BridgeProcessManager: ObservableObject {
 
     internal var testTerminationStatus: Int32?
     internal var testDeviceListOverride: [AudioDeviceRow]?
+    /// Injectable HAL build check for deterministic tests:
+    /// `(halPresent, appID, driverID)`. When nil, `start()` reads the live
+    /// HAL enumeration and the two small Info.plists. No helper commands run.
+    internal var halBuildCheckOverride: (halPresent: Bool, appID: String?, driverID: String?)?
 
     @discardableResult
     func refreshDevices() async -> Bool {
@@ -242,6 +246,31 @@ final class BridgeProcessManager: ObservableObject {
         }
         guard let uid = settings.outputDeviceUid, !uid.isEmpty else {
             state = .error(AppStrings.selectOutputDevice)
+            return
+        }
+        // APM44 build-mismatch gate: in HAL mode the installed driver build
+        // ID must equal the app's full build ID. Fail closed on
+        // missing/malformed IDs. Never silently fall back to BlackHole here;
+        // when the HAL device is absent this gate does not block.
+        let halPresent: Bool
+        let appID: String?
+        let driverID: String?
+        if let override = halBuildCheckOverride {
+            halPresent = override.halPresent
+            appID = override.appID
+            driverID = override.driverID
+        } else {
+            halPresent = HalDriverDetector.isHalInstalled()
+            appID = HalDriverDetector.appBuildID()
+            driverID = HalDriverDetector.driverBuildID()
+        }
+        if halPresent,
+           !HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: driverID) {
+            let displayApp = HalDriverDetector.normalizedBuildID(appID)
+                ?? AppStrings.buildIDMissingPlaceholder
+            let displayDriver = HalDriverDetector.normalizedBuildID(driverID)
+                ?? AppStrings.buildIDMissingPlaceholder
+            state = .error(AppStrings.driverBuildMismatchDetail(app: displayApp, driver: displayDriver))
             return
         }
         guard let selectedOutput = devices.first(where: { $0.uid == uid }) else {

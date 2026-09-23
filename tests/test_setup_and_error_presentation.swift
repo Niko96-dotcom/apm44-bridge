@@ -112,3 +112,53 @@ final class BridgeErrorPresentationTests: XCTestCase {
         XCTAssertNotNil(presentation.recovery)
     }
 }
+
+final class BridgeBuildMismatchPresentationTests: XCTestCase {
+    private let appID = "0.12.7+3fc0b148b674"
+    private let driverID = "0.12.7+c2728cba0591"
+
+    func testMismatchSetupIsNotGreenReady() {
+        let status = HalDriverDetector.status(
+            halPresent: true,
+            appBuildID: appID,
+            driverBuildID: driverID,
+            driverBundleOnDisk: true
+        )
+        XCTAssertEqual(status, .buildMismatch)
+        XCTAssertNotEqual(status, .ready)
+    }
+
+    func testMismatchDetailCarriesBothBuildIDs() {
+        let detail = AppStrings.driverBuildMismatchDetail(app: appID, driver: driverID)
+        XCTAssertTrue(detail.contains(appID), detail)
+        XCTAssertTrue(detail.contains(driverID), detail)
+    }
+
+    func testShortMismatchMessageHasRecoveryWithoutDiagnostic() {
+        let presentation = BridgeErrorPresentation.presentation(for: AppStrings.driverBuildMismatch)
+        XCTAssertEqual(presentation.headline, AppStrings.driverBuildMismatch)
+        XCTAssertEqual(presentation.recovery, AppStrings.driverBuildMismatchRecovery)
+        XCTAssertNil(presentation.diagnostic)
+        XCTAssertFalse(AppStrings.driverBuildMismatch.isEmpty)
+        XCTAssertFalse(AppStrings.driverBuildMismatchRecovery.isEmpty)
+    }
+
+    func testDetailedMismatchKeepsFullDiagnostic() {
+        let message = AppStrings.driverBuildMismatchDetail(app: appID, driver: driverID)
+        let presentation = BridgeErrorPresentation.presentation(for: message)
+        XCTAssertEqual(presentation.headline, AppStrings.driverBuildMismatch)
+        XCTAssertEqual(presentation.recovery, AppStrings.driverBuildMismatchRecovery)
+        XCTAssertEqual(presentation.diagnostic, message)
+    }
+
+    func testMissingIDDetailStillMapsToMismatch() {
+        let message = AppStrings.driverBuildMismatchDetail(
+            app: appID,
+            driver: AppStrings.buildIDMissingPlaceholder
+        )
+        let presentation = BridgeErrorPresentation.presentation(for: message)
+        XCTAssertEqual(presentation.headline, AppStrings.driverBuildMismatch)
+        XCTAssertNotNil(presentation.recovery)
+        XCTAssertEqual(presentation.diagnostic, message)
+    }
+}

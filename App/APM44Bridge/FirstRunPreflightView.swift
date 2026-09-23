@@ -68,6 +68,11 @@ struct FirstRunPreflightView: View {
             switch driverStatus {
             case .ready:
                 EmptyView()
+            case .buildMismatch:
+                Link(AppStrings.downloadInstaller, destination: HelpLinks.releases)
+                    .font(.caption)
+                    .padding(.leading, 24)
+                    .accessibilityLabel(AppStrings.downloadInstaller)
             case .installedNotLoaded:
                 HStack(spacing: 8) {
                     Button(action: reloadDriver) {
@@ -97,11 +102,21 @@ struct FirstRunPreflightView: View {
         switch driverStatus {
         case .ready:
             return AppStrings.driverReadyDetail
+        case .buildMismatch:
+            return buildMismatchDetail
         case .installedNotLoaded:
             return didAttemptReload ? AppStrings.driverRestartHint : AppStrings.driverReloadHint
         case .notInstalled:
             return AppStrings.driverMissingDetail
         }
+    }
+
+    private var buildMismatchDetail: String {
+        let appID = HalDriverDetector.normalizedBuildID(HalDriverDetector.appBuildID())
+            ?? AppStrings.buildIDMissingPlaceholder
+        let driverID = HalDriverDetector.normalizedBuildID(HalDriverDetector.driverBuildID())
+            ?? AppStrings.buildIDMissingPlaceholder
+        return AppStrings.driverBuildMismatchDetail(app: appID, driver: driverID)
     }
 
     private func reloadDriver() {

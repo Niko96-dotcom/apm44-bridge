@@ -110,6 +110,19 @@ enum AppStrings {
     static var connectAirPods: String {
         t("connect_airpods", "Connect AirPods Max with USB-C cable")
     }
+    static var driverBuildMismatch: String {
+        t(
+            "driver_build_mismatch",
+            "Audio driver build mismatch — reinstall the matching driver to start."
+        )
+    }
+    static var driverBuildMismatchRecovery: String {
+        t(
+            "driver_build_mismatch_recovery",
+            "Reinstall the matching APM44 Bridge driver, reload Core Audio or restart the Mac, then try Start again."
+        )
+    }
+    static var buildIDMissingPlaceholder: String { t("build_id_missing", "missing") }
     static var bridgeStatus: String { t("bridge_status", "Bridge status") }
     static var stopped: String { t("stopped", "Stopped") }
     static var starting: String { t("starting", "Starting…") }
@@ -160,6 +173,15 @@ enum AppStrings {
 
     static func selectedOutputIncompatible(issue: String) -> String {
         format("selected_output_incompatible %@", "Selected output is not compatible: %@", issue)
+    }
+
+    static func driverBuildMismatchDetail(app: String, driver: String) -> String {
+        format(
+            "driver_build_mismatch_detail %@ %@",
+            "Driver build %@ does not match app build %@ — reinstall the matching driver.",
+            driver,
+            app
+        )
     }
 
     static func namedIssue(_ name: String, issue: String) -> String {

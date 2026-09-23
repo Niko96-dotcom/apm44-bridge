@@ -44,6 +44,12 @@ bash tests/test_appcast.sh
 echo "== Compiler probe tests =="
 bash tests/test_compiler_probe.sh
 
+echo "== Verify-devices tests =="
+bash tests/test_verify_devices.sh
+
+echo "== Verify-installed-sync tests =="
+bash tests/test_verify_installed_sync.sh
+
 if [[ "${APM44_RUN_SOAK:-0}" == "1" ]]; then
   echo "== Offline soak =="
   "$BUILD_DIR/BridgeDaemon/apm44-soak" --duration-sec "${APM44_SOAK_SECONDS:-60}"
