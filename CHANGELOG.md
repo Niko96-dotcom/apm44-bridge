@@ -4,6 +4,14 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+## 0.12.8 - 2026-09-24
+
+- Setup now reports mismatched app and audio-driver builds and prevents the bridge
+  from starting until a matching installer is used.
+- Corrected the hardware preflight checks for the production HAL route and the
+  optional BlackHole fallback, including checks for the current sample rate.
+- Made installed-build verification reject a missing driver, failed shared-memory
+  checks, and mismatched live driver builds.
 - Tightened menu-bar and setup copy: dropped title-echo subtitles and helper
   tours, and kept only scope, constraint, consequence, or status the title
   cannot hold. Stopped/Gestoppt no longer shows “Using APM44 Bridge” /
