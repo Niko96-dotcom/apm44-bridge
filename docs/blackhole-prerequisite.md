@@ -39,8 +39,8 @@ Checklist:
 ## Verify from terminal
 
 ```bash
-bash scripts/verify-devices.sh
+bash scripts/verify-devices.sh --fallback
 ./build/BridgeDaemon/apm44-bridge --preflight
 ```
 
-Both should report success when BlackHole is installed at 44.1 kHz.
+Both should report success when BlackHole is installed at 44.1 kHz. `verify-devices.sh` defaults to `--hal` (production); use the explicit `--fallback` flag for this legacy route.

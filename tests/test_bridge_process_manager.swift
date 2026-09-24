@@ -43,6 +43,7 @@ final class MockProcessLauncher: ProcessLaunching {
 
 @MainActor
 final class BridgeProcessManagerTests: XCTestCase {
+    private let fixtureBuildID = "0.12.7+test-fixture-match"
     private let testDevice = AudioDeviceRow(
         uid: "test-output-uid",
         name: "Test Output",
@@ -86,6 +87,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
             applicationTerminator: applicationTerminator
         )
+        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
         manager.setDevicesForTesting([testDevice])
         manager.testDeviceListOverride = [testDevice]
         return (manager, settings, mockLauncher)
@@ -124,6 +126,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             processLauncher: launcher,
             binaryURLOverride: URL(fileURLWithPath: "/usr/bin/sleep")
         )
+        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
         manager.setDevicesForTesting([testDevice])
         manager.setStateForTesting(.error("previous failure"))
 
@@ -147,6 +150,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             processLauncher: launcher,
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge")
         )
+        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
         manager.setDevicesForTesting([testDevice])
 
         manager.start()
@@ -918,5 +922,61 @@ final class BridgeProcessManagerTests: XCTestCase {
         await stop2.value
 
         XCTAssertEqual(manager.state, .idle)
+    }
+
+    // Stale-route repair: start() must derive launch args and connection
+    // phase from the same live halPresent used for the build gate, not
+    // from a stale cached routingMode. Uses halBuildCheckOverride so no
+    // real audio or HAL enumeration runs.
+    func testStartWithStaleFallbackCacheUsesLiveHalRoute() async {
+        let (manager, _, launcher) = makeManager()
+        manager.setRoutingModeForTesting(.blackHoleFallback)
+        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
+
+        manager.start()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(manager.routingMode, .halVirtualDevice)
+        XCTAssertTrue(launcher.lastProcess?.arguments?.contains("--virtual-device") == true)
+        XCTAssertEqual(manager.connectionPhase, .waitingForDAW)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testStartWithStaleHalCacheUsesLiveFallbackRoute() async {
+        let (manager, _, launcher) = makeManager()
+        manager.setRoutingModeForTesting(.halVirtualDevice)
+        manager.halBuildCheckOverride = (halPresent: false, appID: fixtureBuildID, driverID: nil)
+
+        manager.start()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(manager.routingMode, .blackHoleFallback)
+        XCTAssertFalse(launcher.lastProcess?.arguments?.contains("--virtual-device") == true)
+        XCTAssertEqual(manager.connectionPhase, .running)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testStaleHalCacheWithMismatchStillBlocksWithoutFallbackLaunch() {
+        let (manager, _, launcher) = makeManager()
+        manager.setRoutingModeForTesting(.halVirtualDevice)
+        manager.halBuildCheckOverride = (
+            halPresent: true,
+            appID: fixtureBuildID,
+            driverID: "0.12.7+other-build-mismatch"
+        )
+
+        manager.start()
+
+        XCTAssertEqual(launcher.makeCount, 0)
+        if case .error = manager.state {
+        } else {
+            XCTFail("expected .error on build mismatch, got \(manager.state)")
+        }
     }
 }

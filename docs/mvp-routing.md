@@ -36,12 +36,12 @@ ASCII overview:
 4. Run preflight:
 
 ```bash
-bash scripts/verify-devices.sh
+bash scripts/verify-devices.sh --fallback
 cmake -S . -B build && cmake --build build
 ./build/BridgeDaemon/apm44-bridge --preflight
 ```
 
-Exit code 0 means devices and nominal rates look correct.
+Exit code 0 means devices and nominal rates look correct. `verify-devices.sh` defaults to `--hal` (production); this fallback path always uses the explicit `--fallback` flag.
 
 ## Build and run the bridge
 
@@ -85,7 +85,7 @@ Leave the bridge running while the DAW plays. Stop with **Ctrl+C**; stderr print
 
 | Step | Action |
 |------|--------|
-| 1 | `bash scripts/verify-devices.sh` → PASS both lines |
+| 1 | `bash scripts/verify-devices.sh --fallback` → PASS both lines |
 | 2 | Confirm rates in Audio MIDI Setup (44100 / 48000) |
 | 3 | Run `./build/BridgeDaemon/apm44-bridge` |
 | 4 | DAW → BlackHole @ 44100, play **440 Hz** tone ~10 s |
@@ -98,7 +98,7 @@ Human verification is required for step 5 in environments with real hardware.
 
 ### Silence
 
-- Run `--preflight` and `verify-devices.sh`.
+- Run `--preflight` and `verify-devices.sh --fallback`.
 - Confirm DAW output is **BlackHole**, not AirPods or built-in speakers.
 - Confirm bridge is running and not exiting with an error.
 - Check macOS output volume / AirPods connection.
@@ -119,7 +119,7 @@ Human verification is required for step 5 in environments with real hardware.
 
 ## Related scripts
 
-- `scripts/verify-devices.sh` — machine-readable `--json` flag for automation
+- `scripts/verify-devices.sh --fallback` (`--json` works in either mode) — machine-readable `--json` flag for automation
 - `apm44-bridge --preflight` — same rate policy inside the binary
 
 ## What this fallback does not include

@@ -46,7 +46,7 @@ See **[cubase-soak.md](cubase-soak.md)** for the operator checklist.
 
 ### BlackHole fallback path (legacy)
 
-1. Run `bash scripts/verify-devices.sh` — both input (BlackHole @ 44100) and output (AirPods @ 48000) should PASS.
+1. Run `bash scripts/verify-devices.sh --fallback` — both input (BlackHole @ 44100) and output (AirPods @ 48000) should PASS.
 2. `./build/BridgeDaemon/apm44-bridge --preflight` — exit 0.
 3. Start the bridge with recommended flags:
 

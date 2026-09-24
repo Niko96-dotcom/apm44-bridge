@@ -50,7 +50,7 @@ Overall: pass/fail
 
 ```bash
 bash scripts/verify-hal-driver.sh
-bash scripts/verify-devices.sh
+bash scripts/verify-devices.sh --hal  # default; production HAL route
 bash scripts/validate-export-rate.sh --check-file /path/to/export.wav
 ```
 
