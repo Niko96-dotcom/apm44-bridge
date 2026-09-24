@@ -15,6 +15,10 @@ trap cleanup EXIT
 
 ROOT="$TMP/repo"
 mkdir -p "$FAKE_BIN" "$ROOT/scripts" "$ROOT/.codex/environments"
+# Keep the fixture's expected Debug path independent of CI's exported build
+# paths, which point at the real checkout.
+export APM44_APP_DERIVED_DATA="$ROOT/build/app"
+export APM44_BUILD_CONFIG=Debug
 cp "$SOURCE_ROOT/scripts/rebuild-and-open-app.sh" "$ROOT/scripts/"
 cp "$SOURCE_ROOT/.codex/environments/environment.toml" "$ROOT/.codex/environments/environment.toml"
 
