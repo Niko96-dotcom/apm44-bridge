@@ -49,6 +49,20 @@ enum BridgeErrorPresentation {
                 diagnostic: nil
             )
         }
+        if message == AppStrings.driverBuildMismatch {
+            return Presentation(
+                headline: message,
+                recovery: AppStrings.driverBuildMismatchRecovery,
+                diagnostic: nil
+            )
+        }
+        if isDriverBuildMismatchDetail(message) {
+            return Presentation(
+                headline: AppStrings.driverBuildMismatch,
+                recovery: AppStrings.driverBuildMismatchRecovery,
+                diagnostic: message
+            )
+        }
         if message == AppStrings.ipcFailed() {
             // Already contains recovery ("reinstall driver and reload…").
             return Presentation(headline: message, recovery: nil, diagnostic: nil)
@@ -79,6 +93,52 @@ enum BridgeErrorPresentation {
 
     static func headline(for message: String) -> String {
         presentation(for: message).headline
+    }
+
+    /// Detects `driverBuildMismatchDetail(app:driver:)` across locales by
+    /// splitting the localized template around two marker IDs. The template
+    /// order is driver then app.
+    private static func isDriverBuildMismatchDetail(_ message: String) -> Bool {
+        let appMarker = "__APM44_APP__"
+        let driverMarker = "__APM44_DRIVER__"
+        let template = AppStrings.driverBuildMismatchDetail(app: appMarker, driver: driverMarker)
+        guard let driverRange = template.range(of: driverMarker),
+              let appRange = template.range(of: appMarker) else {
+            return message.hasPrefix("Driver build")
+                || message.hasPrefix("Treiber-Build")
+        }
+        // Supports either marker order across locales.
+        let firstRange: Range<String.Index>
+        let secondMarker: String
+        let firstMarker: String
+        if driverRange.lowerBound < appRange.lowerBound {
+            firstRange = driverRange
+            firstMarker = driverMarker
+            secondMarker = appMarker
+        } else {
+            firstRange = appRange
+            firstMarker = appMarker
+            secondMarker = driverMarker
+        }
+        let parts = template.components(separatedBy: firstMarker)
+        guard parts.count == 2 else { return false }
+        let prefix = parts[0]
+        let rest = parts[1]
+        let middleAndSuffix = rest.components(separatedBy: secondMarker)
+        guard middleAndSuffix.count == 2 else { return false }
+        let middle = middleAndSuffix[0]
+        let suffix = middleAndSuffix[1]
+        _ = firstRange
+        guard message.hasPrefix(prefix) else { return false }
+        if !suffix.isEmpty, !message.hasSuffix(suffix) { return false }
+        let withoutPrefix = String(message.dropFirst(prefix.count))
+        let core: String
+        if suffix.isEmpty {
+            core = withoutPrefix
+        } else {
+            core = String(withoutPrefix.dropLast(suffix.count))
+        }
+        return core.contains(middle)
     }
 
     /// Detects `selectedOutputIncompatible(issue:)` across locales by

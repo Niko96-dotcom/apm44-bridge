@@ -78,10 +78,11 @@ See [local verification and performance](docs/development-verification.md) for
 its audio-device limits, repeatable measurements, worktree setup, and the
 Xcode compiler-probe workaround if a build stalls during discovery.
 
-Hardware pre-flight checks:
+Hardware pre-flight checks (default `--hal`: APM44 Bridge @ 44100 + AirPods @ 48000; BlackHole not required):
 
 ```bash
-bash scripts/verify-devices.sh
+bash scripts/verify-devices.sh --hal
+bash scripts/verify-devices.sh --fallback  # legacy BlackHole route only
 bash scripts/verify-hal-driver.sh
 ```
 

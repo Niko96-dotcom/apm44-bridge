@@ -18,7 +18,7 @@ Monitoring path in both cases: bridge resamples **44100 → 48000** and plays to
 | macOS 14+ | | |
 | **APM44 Bridge** @ **44100 Hz** in Audio MIDI Setup, or BlackHole 2ch @ **44100 Hz** for fallback validation | | |
 | AirPods Max USB-C @ **48000 Hz** (do **not** force 44100 on headphones) | | |
-| `bash scripts/verify-devices.sh` → exit 0 | | |
+| `bash scripts/verify-devices.sh --hal` (production) or `--fallback` (legacy) → exit 0 | | Default is `--hal`; use `--fallback` only for BlackHole validation |
 | `./build/BridgeDaemon/apm44-bridge --preflight` → exit 0 | | |
 | Menu bar app **APM44 Bridge** running (or CLI bridge started) | | |
 
