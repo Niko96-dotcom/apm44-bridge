@@ -8,34 +8,35 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.7</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.7</link>
-      <sparkle:version>0.12.7</sparkle:version>
-      <sparkle:shortVersionString>0.12.7</sparkle:shortVersionString>
+      <title>APM44 Bridge 0.12.8</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.8</link>
+      <sparkle:version>0.12.8</sparkle:version>
+      <sparkle:shortVersionString>0.12.8</sparkle:shortVersionString>
       <description sparkle:format="markdown"><![CDATA[
-## 0.12.7 - 2026-09-05
+## 0.12.8 - 2026-09-24
 
-- Reduced shared-memory audio transfer overhead by copying contiguous ring
-  spans instead of calculating wraparound for every frame. Audio quality,
-  buffering settings, and validation are unchanged.
-- Added repeatable transfer benchmarks and stronger tests for stereo ordering,
-  wraparound, and partial transfers.
-- Added an isolated development app launch and fixed verification with custom
-  build directories and fresh worktrees.
-- Added an opt-in workaround for Xcode 26.6 compiler discovery stalls, preserving
-  compiler diagnostics and failure reporting.
+- Setup now reports mismatched app and audio-driver builds and prevents the bridge
+  from starting until a matching installer is used.
+- Corrected the hardware preflight checks for the production HAL route and the
+  optional BlackHole fallback, including checks for the current sample rate.
+- Made installed-build verification reject a missing driver, failed shared-memory
+  checks, and mismatched live driver builds.
+- Tightened menu-bar and setup copy: dropped title-echo subtitles and helper
+  tours, and kept only scope, constraint, consequence, or status the title
+  cannot hold. Stopped/Gestoppt no longer shows “Using APM44 Bridge” /
+  “Nutzt APM44 Bridge”; the signal path already names the route.
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Sat, 05 Sep 2026 08:49:13 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.7/APM44Bridge-0.12.7.pkg"
-                 sparkle:edSignature="OYib1uuP4Q9eZGM7k30SsyoCHv3vLxj/D4da375vW/4ZFEAN8/U84BLRwnQ2aLOL97IknZ6b7mQvIHHz2XOfAg=="
+      <pubDate>Thu, 24 Sep 2026 22:55:01 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.8/APM44Bridge-0.12.8.pkg"
+                 sparkle:edSignature="6I1Akjlh6GYiQCGqhiKnoHbh3Ue2VXtT3MflT1Jv/tYfteV5lbDHOnsLym6KC0ceA4HxphFVmH67Lhe66SSECA=="
                  sparkle:installationType="package"
-                 length="7064761"
+                 length="4972556"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: +1NkQpKosF7gJO0csrTLDsPuznmaJNOR/USYfYW2lnNb7/BW5O8EPq4DNimnBsm6y2k15rNHK1jQ8by2SXRDDg==
-length: 1909
+edSignature: va0wYdCnq1dHEEbXFYQ49BFN8a/9nPgO57l7oRaebkSYVfnMUmSn11Wz7XNytWh/UP3BE3+bBa4Q8UQBWHzbAg==
+length: 2059
 -->
