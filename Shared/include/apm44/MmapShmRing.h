@@ -27,6 +27,8 @@ enum class ShmRingErrorCode {
   // object size.
   CapacityExceedsObject,
   ConsumerBusy,
+  // The header is a genuine APM44 ring (magic matches) but was produced by a different driver build (version or producer_build_id differs) - typically coreaudiod still running a previously installed driver.
+  ProducerBuildMismatch,
 };
 
 // Cross-process SPSC ring: interleaved float stereo in the mmap segment.

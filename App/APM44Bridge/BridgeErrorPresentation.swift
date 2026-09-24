@@ -56,6 +56,13 @@ enum BridgeErrorPresentation {
                 diagnostic: nil
             )
         }
+        if message == AppStrings.loadedDriverBuildMismatch {
+            return Presentation(
+                headline: message,
+                recovery: AppStrings.loadedDriverBuildMismatchRecovery,
+                diagnostic: nil
+            )
+        }
         if isDriverBuildMismatchDetail(message) {
             return Presentation(
                 headline: AppStrings.driverBuildMismatch,

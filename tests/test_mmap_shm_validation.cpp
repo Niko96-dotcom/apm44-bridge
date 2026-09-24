@@ -257,9 +257,172 @@ TEST_CASE("OpenRejectsMismatchedProducerBuildId", "[mmap_shm][validation][SHM-02
 
   apm44::MmapShmRing ring(name);
   REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
-  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
   REQUIRE(ring.lastError().find("producer_build_id='stale-build'") != std::string::npos);
   REQUIRE(ring.lastError().find("expected_consumer_build_id='") != std::string::npos);
+
+  CleanupShmObject(name);
+}
+
+TEST_CASE("OpenRejectsZeroVersionAsInvalidHeader", "[mmap_shm][validation]") {
+  // A half-published header (producer mid-create()) shows valid magic
+  // with version==0; that transient must stay InvalidHeader,
+  // never ProducerBuildMismatch (sticky exit 44).
+  const std::string name = IsolatedName("ver0");
+  const std::size_t totalSize = apm44::ShmTotalSize(64);
+  const int fd = CreateRawShmObject(name, totalSize);
+  REQUIRE(fd >= 0);
+
+  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  REQUIRE(base != MAP_FAILED);
+  std::memset(base, 0, totalSize);
+  WriteValidHeader(base, 64);
+  auto* header = static_cast<apm44::ShmRingHeader*>(base);
+  header->version = 0;
+  ::munmap(base, totalSize);
+  ::close(fd);
+
+  apm44::MmapShmRing ring(name);
+  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+
+  CleanupShmObject(name);
+}
+
+TEST_CASE("OpenRejectsZeroedBuildIdAsInvalidHeader", "[mmap_shm][validation]") {
+  // Valid magic+version with a zeroed build id is a half-published
+  // header, not a stale driver: InvalidHeader, not ProducerBuildMismatch.
+  const std::string name = IsolatedName("nobuild");
+  const std::size_t totalSize = apm44::ShmTotalSize(64);
+  const int fd = CreateRawShmObject(name, totalSize);
+  REQUIRE(fd >= 0);
+
+  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  REQUIRE(base != MAP_FAILED);
+  std::memset(base, 0, totalSize);
+  WriteValidHeader(base, 64);
+  auto* header = static_cast<apm44::ShmRingHeader*>(base);
+  std::memset(header->producer_build_id, 0, apm44::kShmBuildIdBytes);
+  ::munmap(base, totalSize);
+  ::close(fd);
+
+  apm44::MmapShmRing ring(name);
+  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+
+  CleanupShmObject(name);
+}
+
+TEST_CASE("OpenRejectsUnterminatedBuildIdAsInvalidHeader", "[mmap_shm][validation]") {
+  // Valid magic+version with a build id that fills all 64 bytes (no NUL
+  // terminator) is a partially-copied build id: InvalidHeader, not
+  // ProducerBuildMismatch.
+  const std::string name = IsolatedName("rawbuild");
+  const std::size_t totalSize = apm44::ShmTotalSize(64);
+  const int fd = CreateRawShmObject(name, totalSize);
+  REQUIRE(fd >= 0);
+
+  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  REQUIRE(base != MAP_FAILED);
+  std::memset(base, 0, totalSize);
+  WriteValidHeader(base, 64);
+  auto* header = static_cast<apm44::ShmRingHeader*>(base);
+  std::memset(header->producer_build_id, 'X', apm44::kShmBuildIdBytes);
+  ::munmap(base, totalSize);
+  ::close(fd);
+
+  apm44::MmapShmRing ring(name);
+  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+
+  CleanupShmObject(name);
+}
+
+TEST_CASE("OpenRejectsVersionMismatchAsBuildMismatch", "[mmap_shm][validation]") {
+  const std::string name = IsolatedName("ver");
+  const std::size_t totalSize = apm44::ShmTotalSize(64);
+  const int fd = CreateRawShmObject(name, totalSize);
+  REQUIRE(fd >= 0);
+
+  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  REQUIRE(base != MAP_FAILED);
+  std::memset(base, 0, totalSize);
+  WriteValidHeader(base, 64);
+  auto* header = static_cast<apm44::ShmRingHeader*>(base);
+  header->version = apm44::kShmVersion - 1;
+  ::munmap(base, totalSize);
+  ::close(fd);
+
+  apm44::MmapShmRing ring(name);
+  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
+
+  CleanupShmObject(name);
+}
+
+TEST_CASE("ObserverRejectsMismatchedProducerBuildId", "[mmap_shm][validation]") {
+  const std::string name = IsolatedName("obsb");
+  const std::size_t totalSize = apm44::ShmTotalSize(64);
+  const int fd = CreateRawShmObject(name, totalSize);
+  REQUIRE(fd >= 0);
+
+  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  REQUIRE(base != MAP_FAILED);
+  std::memset(base, 0, totalSize);
+  WriteValidHeader(base, 64);
+  auto* header = static_cast<apm44::ShmRingHeader*>(base);
+  std::memset(header->producer_build_id, 0, apm44::kShmBuildIdBytes);
+  std::strncpy(header->producer_build_id, "stale-build", apm44::kShmBuildIdBytes - 1);
+  ::munmap(base, totalSize);
+  ::close(fd);
+
+  apm44::MmapShmRing ring(name);
+  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Observer));
+  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
+
+  CleanupShmObject(name);
+}
+
+TEST_CASE("OpenRejectsBadMagicAsInvalidHeader", "[mmap_shm][validation]") {
+  const std::string name = IsolatedName("mag");
+  const std::size_t totalSize = apm44::ShmTotalSize(64);
+  const int fd = CreateRawShmObject(name, totalSize);
+  REQUIRE(fd >= 0);
+
+  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  REQUIRE(base != MAP_FAILED);
+  std::memset(base, 0, totalSize);
+  WriteValidHeader(base, 64);
+  auto* header = static_cast<apm44::ShmRingHeader*>(base);
+  header->magic = 0xDEADBEEFu;
+  ::munmap(base, totalSize);
+  ::close(fd);
+
+  apm44::MmapShmRing ring(name);
+  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+
+  CleanupShmObject(name);
+}
+
+TEST_CASE("OpenRejectsWrongChannelsAsInvalidHeader", "[mmap_shm][validation]") {
+  const std::string name = IsolatedName("ch");
+  const std::size_t totalSize = apm44::ShmTotalSize(64);
+  const int fd = CreateRawShmObject(name, totalSize);
+  REQUIRE(fd >= 0);
+
+  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  REQUIRE(base != MAP_FAILED);
+  std::memset(base, 0, totalSize);
+  WriteValidHeader(base, 64);
+  auto* header = static_cast<apm44::ShmRingHeader*>(base);
+  header->channels = apm44::kShmChannels + 1;
+  ::munmap(base, totalSize);
+  ::close(fd);
+
+  apm44::MmapShmRing ring(name);
+  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
+  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
 
   CleanupShmObject(name);
 }

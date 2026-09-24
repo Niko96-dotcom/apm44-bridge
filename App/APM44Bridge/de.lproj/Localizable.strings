@@ -62,6 +62,8 @@
 "connect_airpods" = "AirPods Max per USB-C-Kabel anschließen";
 "driver_build_mismatch" = "Audiotreiber-Build weicht ab — passenden Treiber neu installieren, um zu starten.";
 "driver_build_mismatch_recovery" = "Passenden APM44 Bridge-Treiber neu installieren, Core Audio neu laden oder Mac neu starten, dann erneut starten.";
+"loaded_driver_build_mismatch" = "Core Audio verwendet noch einen älteren APM44-Treiber.";
+"loaded_driver_build_mismatch_recovery" = "Core Audio neu laden oder Mac neu starten, dann erneut starten.";
 "build_id_missing" = "fehlt";
 "driver_build_mismatch_detail %@ %@" = "Treiber-Build %@ weicht vom App-Build %@ ab — passenden Treiber neu installieren.";
 "bridge_status" = "Brückenstatus";

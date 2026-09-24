@@ -123,7 +123,6 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
   header_ = static_cast<ShmRingHeader*>(base_);
   std::memset(base_, 0, totalSize);
 
-  header_->magic = kShmMagic;
   header_->version = kShmVersion;
   header_->capacity_frames = capacityFrames;
   capacityFrames_ = capacityFrames;
@@ -138,6 +137,9 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
       gNextShmDriverGeneration.fetch_add(1, std::memory_order_relaxed) + 1;
   header_->driver_generation.store(generation, std::memory_order_relaxed);
   header_->producer_epoch.store(generation, std::memory_order_relaxed);
+  std::atomic_thread_fence(std::memory_order_release);
+  // Magic is published last so consumers never classify a half-written header.
+  header_->magic = kShmMagic;
   CaptureMappedIdentity(fd_, mappedIdentity_, header_);
   return true;
 }
@@ -192,9 +194,27 @@ bool MmapShmRing::open(ShmRingRole role) {
   }
   header_ = static_cast<ShmRingHeader*>(base_);
   if (!ValidateShmHeader(*header_)) {
+    // Classify using only the fixed-offset magic+version+producer_build_id
+    // fields; do not read other fields to decide when the version differs.
+    const bool magicMatches = (header_->magic == kShmMagic);
+    const bool versionMatches = (header_->version == kShmVersion);
+    const bool buildMatches =
+        (RenderShmBuildId(header_->producer_build_id) == RenderShmBuildId(kBuildId));
+    // A half-published header (concurrent create()) shows magic with
+    // version==0 or a zero/unterminated build id; that is a transient,
+    // not a stale driver, so it stays InvalidHeader.
+    const bool versionPublished = (header_->version != 0);
+    const std::size_t buildLen = ::strnlen(header_->producer_build_id, kShmBuildIdBytes);
+    const bool buildPublished = (buildLen > 0 && buildLen < kShmBuildIdBytes);
     const std::string message = DescribeHeaderMismatch(*header_);
+    const bool isConsumerOrObserver =
+        (role_ == ShmRingRole::Consumer || role_ == ShmRingRole::Observer);
+    const bool isBuildMismatch = isConsumerOrObserver && magicMatches && versionPublished &&
+                                 buildPublished && (!versionMatches || !buildMatches);
     close();
-    recordError(ShmRingErrorCode::InvalidHeader, message);
+    recordError(isBuildMismatch ? ShmRingErrorCode::ProducerBuildMismatch
+                                : ShmRingErrorCode::InvalidHeader,
+                message);
     return false;
   }
   // SHM-02: a syntactically valid header can still lie about its

@@ -1,5 +1,7 @@
 #include "engine/VirtualDeviceFeed.h"
 
+#include "engine/ShmMismatchDebounce.h"
+
 #include "apm44/MmapShmRing.h"
 #include "apm44/PlanarRingBuffer.h"
 
@@ -112,4 +114,60 @@ TEST_CASE("VirtualDeviceFeed drains a complete 4096-frame DAW burst in one pass"
   feed.close();
   producer.close();
   shm_unlink(ringName.c_str());
+}
+
+TEST_CASE("ShmMismatchDebounce turns fatal on third identical mismatch", "[debounce]") {
+  apm44::ShmMismatchDebounce debounce;
+  const std::string detail = "invalid shm ring header version=3 expected_version=4";
+  REQUIRE_FALSE(
+      debounce.observe(apm44::ShmRingErrorCode::ProducerBuildMismatch, detail));
+  REQUIRE_FALSE(
+      debounce.observe(apm44::ShmRingErrorCode::ProducerBuildMismatch, detail));
+  REQUIRE(debounce.observe(apm44::ShmRingErrorCode::ProducerBuildMismatch, detail));
+}
+
+TEST_CASE("ShmMismatchDebounce needs three identical details in a row", "[debounce]") {
+  apm44::ShmMismatchDebounce debounce;
+  constexpr auto kMismatch = apm44::ShmRingErrorCode::ProducerBuildMismatch;
+  REQUIRE_FALSE(debounce.observe(kMismatch, "detail-a"));
+  REQUIRE_FALSE(debounce.observe(kMismatch, "detail-a"));
+  REQUIRE_FALSE(debounce.observe(kMismatch, "detail-b"));
+  REQUIRE_FALSE(debounce.observe(kMismatch, "detail-a"));
+  REQUIRE_FALSE(debounce.observe(kMismatch, "detail-a"));
+  REQUIRE(debounce.observe(kMismatch, "detail-a"));
+}
+
+TEST_CASE("ShmMismatchDebounce resets on an intervening other code", "[debounce]") {
+  apm44::ShmMismatchDebounce debounce;
+  constexpr auto kMismatch = apm44::ShmRingErrorCode::ProducerBuildMismatch;
+  const std::string detail = "invalid shm ring header version=3 expected_version=4";
+  REQUIRE_FALSE(debounce.observe(kMismatch, detail));
+  REQUIRE_FALSE(debounce.observe(kMismatch, detail));
+  REQUIRE_FALSE(debounce.observe(apm44::ShmRingErrorCode::InvalidHeader, detail));
+  REQUIRE_FALSE(debounce.observe(kMismatch, detail));
+  REQUIRE_FALSE(debounce.observe(kMismatch, detail));
+  REQUIRE(debounce.observe(kMismatch, detail));
+}
+
+TEST_CASE("ShmMismatchDebounce never fires for non-mismatch codes", "[debounce]") {
+  apm44::ShmMismatchDebounce debounce;
+  const std::string detail = "shm_open(open) failed: No such file or directory (errno 2)";
+  for (int i = 0; i < 5; ++i) {
+    REQUIRE_FALSE(debounce.observe(apm44::ShmRingErrorCode::None, detail));
+    REQUIRE_FALSE(debounce.observe(apm44::ShmRingErrorCode::OpenFailed, detail));
+    REQUIRE_FALSE(debounce.observe(apm44::ShmRingErrorCode::InvalidHeader, detail));
+    REQUIRE_FALSE(debounce.observe(apm44::ShmRingErrorCode::ConsumerBusy, detail));
+  }
+}
+
+TEST_CASE("ShmMismatchDebounce reset clears the streak", "[debounce]") {
+  apm44::ShmMismatchDebounce debounce;
+  constexpr auto kMismatch = apm44::ShmRingErrorCode::ProducerBuildMismatch;
+  const std::string detail = "invalid shm ring header version=3 expected_version=4";
+  REQUIRE_FALSE(debounce.observe(kMismatch, detail));
+  REQUIRE_FALSE(debounce.observe(kMismatch, detail));
+  debounce.reset();
+  REQUIRE_FALSE(debounce.observe(kMismatch, detail));
+  REQUIRE_FALSE(debounce.observe(kMismatch, detail));
+  REQUIRE(debounce.observe(kMismatch, detail));
 }

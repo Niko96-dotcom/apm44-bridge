@@ -33,6 +33,7 @@ enum BridgeProcessHealth: Equatable {
 
 @MainActor
 final class BridgeProcessManager: ObservableObject {
+    static let loadedDriverBuildMismatchExitStatus: Int32 = 44
     @Published private(set) var state: BridgeRunState = .idle
     @Published private(set) var latestMetrics: BridgeMetricsSnapshot?
     @Published private(set) var glitchFlash = false
@@ -965,6 +966,19 @@ final class BridgeProcessManager: ObservableObject {
             lastUnexpectedExitStatus = exitStatus
             lastUnexpectedStderr = sanitizedDiagnostic(stderr)
             logger.error("Bridge unexpected exit status=\(exitStatus)")
+        }
+
+        if exitStatus == Self.loadedDriverBuildMismatchExitStatus,
+           state == .running || state == .starting {
+            cancelRetryTask()
+            retryAttempt = 0
+            lastStopReason = nil
+            let message = AppStrings.loadedDriverBuildMismatch
+            state = .error(message)
+            bannerMessage = message
+            connectionPhase = .stopped
+            resumeTerminationWaiters()
+            return
         }
 
         if exitStatus != 0, case .running = state {
