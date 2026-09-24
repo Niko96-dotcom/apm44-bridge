@@ -4,6 +4,13 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+## 0.12.9 - 2026-09-25
+
+- When Core Audio is still running an older APM44 audio driver after an
+  update, the bridge now says so and asks you to reload Core Audio or restart
+  the Mac, instead of retrying several times and asking you to click Start
+  again.
+
 ## 0.12.8 - 2026-09-24
 
 - Setup now reports mismatched app and audio-driver builds and prevents the bridge
