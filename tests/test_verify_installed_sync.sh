@@ -148,6 +148,21 @@ echo "bridge fake: unsupported arg" >&2
 exit 64
 EOF
       ;;
+    hang)
+      cat >"$path" <<EOF
+#!/bin/bash
+set -euo pipefail
+if [[ "\${1:-}" == "--version" ]]; then
+  echo "apm44-bridge 0.12.7 build=$EXPECTED"
+  exit 0
+fi
+if [[ "\${1:-}" == "--shm-status" ]]; then
+  exec sleep 30
+fi
+echo "bridge fake: unsupported arg" >&2
+exit 64
+EOF
+      ;;
     *)
       echo "unknown bridge mode: $mode" >&2
       exit 64
@@ -258,6 +273,42 @@ expect_output_contains "missing driver bundle reports FAIL" "FAIL:"
 # 7. Dry run skips live shm even when the live ring would fail, without a driver.
 run_case_without_driver "dry run skips live shm" invalid_header 0 --dry-run
 expect_output_contains "dry run skips live shm" "dry-run: skipping live --shm-status"
+
+# 8. Hanging --shm-status must fail promptly with a timeout diagnosis.
+hang_dir="$TMP/hang"
+rm -rf "$hang_dir"
+mkdir -p "$hang_dir"
+hang_app="$hang_dir/APM44 Bridge.app"
+hang_bridge="$hang_dir/apm44-bridge"
+hang_driver="$hang_dir/APM44Bridge.driver"
+make_app_with_helper "$hang_app"
+make_bridge "$hang_bridge" "hang"
+make_driver_bundle "$hang_driver" "$EXPECTED"
+hang_status=0
+hang_start="$SECONDS"
+set +e
+APM44_APP_PATH="$hang_app" APM44_BRIDGE_BIN="$hang_bridge" APM44_DRIVER_PATH="$hang_driver" \
+  APM44_VERIFY_SHM_TIMEOUT=1 \
+  bash "$VERIFY" >"$TMP/out.txt" 2>&1
+hang_status=$?
+set -e
+hang_elapsed=$((SECONDS - hang_start))
+if [[ "$hang_status" -eq 1 ]]; then
+  PASS=$((PASS + 1))
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: hang exits nonzero: expected exit 1, got $hang_status" >&2
+  cat "$TMP/out.txt" >&2
+fi
+expect_output_contains "hang diagnostic reports timeout" "timed out"
+expect_output_contains "hang reports FAIL" "FAIL:"
+if [[ "$hang_elapsed" -lt 10 ]]; then
+  PASS=$((PASS + 1))
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: hang did not fail promptly: took ${hang_elapsed}s" >&2
+  cat "$TMP/out.txt" >&2
+fi
 
 echo "verify-installed-sync tests: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -ne 0 ]]; then

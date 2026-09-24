@@ -95,7 +95,7 @@ capture_with_timeout() {
   shift
   local tmp
   tmp="$(mktemp)"
-  "$@" >"$tmp" 2>/dev/null &
+  "$@" >"$tmp" 2>&1 &
   local pid=$!
   local limit=$((seconds * 10))
   local i
@@ -195,18 +195,21 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
-SHM_TMP="$(mktemp)"
+SHM_TIMEOUT="${APM44_VERIFY_SHM_TIMEOUT:-5}"
+SHM_OUT=""
 SHM_STATUS=0
-if "$BRIDGE" --shm-status >"$SHM_TMP" 2>&1; then
+if SHM_OUT="$(capture_with_timeout "$SHM_TIMEOUT" "$BRIDGE" --shm-status)"; then
   SHM_STATUS=0
 else
   SHM_STATUS=$?
 fi
-SHM_OUT="$(cat "$SHM_TMP")"
-rm -f "$SHM_TMP"
 
 if [[ -n "$SHM_OUT" ]]; then
   printf '%s\n' "$SHM_OUT"
+fi
+
+if [[ "$SHM_STATUS" -eq 124 ]]; then
+  fail "live --shm-status timed out after ${SHM_TIMEOUT}s (timeout; helper=$HELPER_ID repo=$REPO_ID); output: $SHM_OUT"
 fi
 
 if [[ "$SHM_STATUS" -ne 0 ]]; then

@@ -33,14 +33,15 @@ enum HalDriverDetector {
     }
 
     /// Fail-closed normalization: trims whitespace and rejects missing,
-    /// empty, placeholder (`unknown`, unresolved `$(…)`/`${…}`) values.
+    /// empty, placeholder (`unknown` case-insensitively, unresolved `$…`
+    /// such as `$(…)`/`${…}`) values.
     /// Returns nil for anything that must not compare equal.
     static func normalizedBuildID(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard trimmed != "unknown" else { return nil }
-        if trimmed.contains("$(") || trimmed.contains("${") { return nil }
+        guard trimmed.lowercased() != "unknown" else { return nil }
+        if trimmed.contains("$") { return nil }
         return trimmed
     }
 

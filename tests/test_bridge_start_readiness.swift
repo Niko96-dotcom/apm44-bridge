@@ -136,6 +136,31 @@ final class HalBuildIDTests: XCTestCase {
         ))
     }
 
+    func testUnknownRejectedInAnyCaseAndPlaceholdersFailClosed() {
+        for bad in ["unknown", "Unknown", "UNKNOWN", "UnKnOwN", "  Unknown  ", "$APM44_BUILD_ID"] {
+            XCTAssertNil(
+                HalDriverDetector.normalizedBuildID(bad),
+                "normalizedBuildID(\(bad)) must be nil"
+            )
+            XCTAssertFalse(
+                HalDriverDetector.buildIDsMatch(appBuildID: bad, driverBuildID: driverID),
+                "app ID \(bad) must not match"
+            )
+            XCTAssertFalse(
+                HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: bad),
+                "driver ID \(bad) must not match"
+            )
+            XCTAssertFalse(
+                HalDriverDetector.buildIDsMatch(appBuildID: bad, driverBuildID: bad),
+                "placeholder \(bad) must never match itself"
+            )
+        }
+        XCTAssertTrue(
+            HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: appID),
+            "valid exact full-ID comparison must still match"
+        )
+    }
+
     func testMismatchStatusIsNotReady() {
         XCTAssertEqual(
             HalDriverDetector.status(

@@ -142,6 +142,10 @@ final class BridgeProcessManager: ObservableObject {
         devices = list
     }
 
+    internal func setRoutingModeForTesting(_ mode: RoutingMode) {
+        routingMode = mode
+    }
+
     internal func setStateForTesting(_ newState: BridgeRunState) {
         state = newState
     }
@@ -264,6 +268,12 @@ final class BridgeProcessManager: ObservableObject {
             appID = HalDriverDetector.appBuildID()
             driverID = HalDriverDetector.driverBuildID()
         }
+        // Keep the launch route in lockstep with the live build-gate
+        // decision: `routingMode` may be stale (last hotplug refresh), so
+        // derive it from the same `halPresent` used for gating. This keeps
+        // `connectionPhase`, `buildArguments`, and target fill consistent.
+        // No silent fallback: HAL present + ID mismatch still errors below.
+        routingMode = halPresent ? .halVirtualDevice : .blackHoleFallback
         if halPresent,
            !HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: driverID) {
             let displayApp = HalDriverDetector.normalizedBuildID(appID)
