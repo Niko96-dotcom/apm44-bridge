@@ -133,7 +133,14 @@ check_release_entitlements() {
   local tmp
   tmp="$(mktemp)"
   # codesign writes this file only when an entitlements blob is present.
-  codesign -d --entitlements "$tmp" --xml "$target" >/dev/null 2>&1 || true
+  # An empty file with exit 0 means no entitlements (unsandboxed). A nonzero
+  # exit means extraction failed and must fail closed, never claim unsandboxed.
+  if ! codesign -d --entitlements "$tmp" --xml "$target" >/dev/null 2>&1; then
+    echo "FAIL: $label entitlement extraction failed"
+    rm -f "$tmp"
+    FAIL=1
+    return
+  fi
   if [[ ! -s "$tmp" ]]; then
     echo "OK: $label unsandboxed (no entitlements blob)"
     rm -f "$tmp"

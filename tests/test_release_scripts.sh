@@ -174,6 +174,11 @@ if [[ "${1:-}" == "--verify" || "${1:-}" == "--force" ]]; then
 fi
 
 if [[ "${1:-}" == "-d" || "${1:-}" == "-dv" || "${1:-}" == "-dvv" || "${1:-}" == "-dvvv" ]]; then
+  if [[ "${APM44_FAKE_ENTITLEMENTS:-empty}" == "extract-fail" && -n "$entitlement_out" ]]; then
+    mkdir -p "$(dirname "$entitlement_out")"
+    : >"$entitlement_out"
+    exit 1
+  fi
   if [[ -n "$entitlement_out" ]]; then
     write_fake_entitlements "$entitlement_out"
   fi
@@ -1440,6 +1445,8 @@ run_codesign_verify_case no-developer-id 0 failure "codesign-no-dev-id"    # [RE
 run_codesign_verify_case ad-hoc 1 success "codesign-local-override"        # [REL-01][REL-02]
 run_codesign_verify_case strict-ok 0 failure "codesign-sandbox-forbidden" sandbox
 run_codesign_verify_case strict-ok 0 failure "codesign-get-task-allow-forbidden" get-task-allow
+run_codesign_verify_case strict-ok 0 failure "codesign-entitlement-extract-fail" extract-fail
+assert_not_contains "$TMP/codesign-entitlement-extract-fail.out" "unsandboxed"
 run_codesign_verify_sparkle_nested_cases
 
 echo "release script tests: OK"
