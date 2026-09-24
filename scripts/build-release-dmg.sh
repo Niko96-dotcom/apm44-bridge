@@ -9,9 +9,9 @@ VERSION="$($ROOT/scripts/read-version.sh)"
   echo "error: APM44_VERSION disagrees with canonical VERSION=$VERSION" >&2
   exit 1
 }
-OUT="${APM44_DMG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.dmg}"
 STAGING="${APM44_DMG_STAGING:-$ROOT/build/signing/dmg-staging}"
 PACKAGE_ONLY="${APM44_DMG_PACKAGE_ONLY:-0}"
+SKIP_IMAGE="${APM44_DMG_SKIP_IMAGE:-0}"
 PKG="${APM44_PKG_PATH:-$ROOT/build/signing/APM44Bridge-${VERSION}.pkg}"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -20,13 +20,39 @@ Usage: build-release-dmg.sh [--help]
 
 Build Release artifacts, embed daemon, sign, and create a DMG for distribution.
 
-Prerequisites: Developer ID cert, optional notarization (scripts/notary-dry-run.sh)
+Prerequisites: Developer ID cert. Notarization is not required for local debug.
 
 Environment:
   APM44_DMG_PACKAGE_ONLY=1  package the validated PKG without rebuilding or re-signing
+  APM44_DMG_SKIP_IMAGE=1    build and sign only; do not write a DMG
+  APM44_DMG_PATH            override output path
+  APM44_DMG_PRINT_PATH=1    print the resolved DMG path and exit
 
-Output: build/signing/APM44Bridge-<version>.dmg
+Output:
+  public PKG-in-DMG: build/signing/APM44Bridge-<version>.dmg (PACKAGE_ONLY=1)
+  local/raw bundles: build/signing/APM44Bridge-<version>-bundles.dmg
 EOF
+  exit 0
+fi
+
+if [[ "$SKIP_IMAGE" == "1" && "$PACKAGE_ONLY" == "1" ]]; then
+  echo "error: APM44_DMG_SKIP_IMAGE=1 cannot be combined with APM44_DMG_PACKAGE_ONLY=1" >&2
+  exit 1
+fi
+
+# Public artifact is PKG-in-DMG. The pre-staple pass writes a distinctly named
+# bundles image (or skips the image) so a raw app+driver layout cannot occupy
+# the public filename.
+if [[ -n "${APM44_DMG_PATH:-}" ]]; then
+  OUT="$APM44_DMG_PATH"
+elif [[ "$PACKAGE_ONLY" == "1" ]]; then
+  OUT="$ROOT/build/signing/APM44Bridge-${VERSION}.dmg"
+else
+  OUT="$ROOT/build/signing/APM44Bridge-${VERSION}-bundles.dmg"
+fi
+
+if [[ "${APM44_DMG_PRINT_PATH:-0}" == "1" ]]; then
+  printf '%s\n' "$OUT"
   exit 0
 fi
 
@@ -78,6 +104,12 @@ fi
 
 APP="$ROOT/build/$CONFIG/APM44 Bridge.app"
 DRIVER="${APM44_DRIVER_PATH:-$ROOT/build/Driver/APM44Bridge.driver}"
+
+if [[ "$SKIP_IMAGE" == "1" ]]; then
+  echo "APM44_DMG_SKIP_IMAGE=1: build/sign complete; not writing a DMG"
+  echo "Public artifact is the PKG-in-DMG built after staple (APM44_DMG_PACKAGE_ONLY=1)."
+  exit 0
+fi
 
 rm -rf "$STAGING"
 mkdir -p "$STAGING"

@@ -1,5 +1,11 @@
 import CoreAudio
 import Foundation
+import OSLog
+
+private let logger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.niko.apm44.menu",
+    category: "Hotplug"
+)
 
 final class HotplugMonitor {
     private var listenerProc: AudioObjectPropertyListenerProc?
@@ -37,7 +43,9 @@ final class HotplugMonitor {
             Unmanaged.passUnretained(self).toOpaque()
         )
         if status != noErr {
-            NSLog("HotplugMonitor: failed to register listener (%d)", status)
+            logger.error("Failed to register device-list listener status=\(status)")
+        } else {
+            logger.info("Device-list listener registered")
         }
         selectionObserver = NotificationCenter.default.addObserver(
             forName: .apm44OutputDeviceChanged,

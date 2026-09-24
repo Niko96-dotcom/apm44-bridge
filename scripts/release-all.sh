@@ -27,8 +27,14 @@ fi
 
 bash scripts/generate-app-project.sh
 
-echo "== Build + sign + DMG =="
-bash scripts/build-release-dmg.sh
+echo "== Build + sign =="
+if [[ "$NOTARY_READY" == "1" ]]; then
+  # Do not write the public DMG name with a raw app+driver layout. The
+  # public PKG-in-DMG is created after staple (APM44_DMG_PACKAGE_ONLY=1).
+  APM44_DMG_SKIP_IMAGE=1 bash scripts/build-release-dmg.sh
+else
+  bash scripts/build-release-dmg.sh
+fi
 
 echo "== Verify version and architecture identity =="
 bash scripts/verify-version-identity.sh

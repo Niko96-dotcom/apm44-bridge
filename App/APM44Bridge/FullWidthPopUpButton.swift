@@ -30,6 +30,10 @@ struct FullWidthPopUpButton: NSViewRepresentable {
 
     func updateNSView(_ popUp: FixedWidthPopUpButton, context: Context) {
         context.coordinator.onSelect = onSelect
+        apply(to: popUp)
+    }
+
+    func apply(to popUp: FixedWidthPopUpButton) {
         if popUp.fixedWidth != width {
             popUp.fixedWidth = width
             popUp.invalidateIntrinsicContentSize()
@@ -44,15 +48,28 @@ struct FullWidthPopUpButton: NSViewRepresentable {
                 popUp.lastItem?.representedObject = option.id
             }
         }
+        var selectedTitleChanged = false
         for (index, option) in options.enumerated() where index < popUp.numberOfItems {
             popUp.item(at: index)?.isEnabled = option.isEnabled
             if popUp.item(at: index)?.title != option.title {
+                if (popUp.item(at: index)?.representedObject as? String) == selectedId {
+                    selectedTitleChanged = true
+                }
                 popUp.item(at: index)?.title = option.title
             }
         }
-        if let item = popUp.itemArray.first(where: { ($0.representedObject as? String) == selectedId }) {
+        // Same-id pickerLabel/compatibility updates mutate the item in place.
+        // NSPopUpButton keeps a stale bezel title unless select runs again.
+        if let item = popUp.itemArray.first(where: { ($0.representedObject as? String) == selectedId }),
+           popUp.selectedItem != item || selectedTitleChanged || popUp.title != item.title {
             popUp.select(item)
         }
+    }
+
+    static func dismantleNSView(_ popUp: FixedWidthPopUpButton, coordinator: Coordinator) {
+        popUp.target = nil
+        popUp.action = nil
+        coordinator.onSelect = nil
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }

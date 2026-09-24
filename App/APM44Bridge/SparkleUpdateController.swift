@@ -1,7 +1,13 @@
 import AppKit
 import Combine
 import Foundation
+import OSLog
 import Sparkle
+
+private let logger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.niko.apm44.menu",
+    category: "Updates"
+)
 
 enum AppUpdateState: Equatable {
     case idle
@@ -106,6 +112,7 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             // "Checking" state for a check we did not start.
             guard !self.updaterController.updater.sessionInProgress else { return }
             guard self.updaterController.updater.canCheckForUpdates else { return }
+            logger.info("Checking for updates")
             self.state = .checking
             self.updaterController.updater.checkForUpdatesInBackground()
         }
@@ -119,6 +126,7 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     func checkForUpdates() {
         guard updater.canCheckForUpdates else { return }
+        logger.info("Checking for updates")
         state = .checking
         updaterController.checkForUpdates(nil)
     }
@@ -127,14 +135,17 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         guard AppUpdateVersionComparator.isNewer(item.versionString, than: currentVersion) else {
+            logger.info("Ignored non-newer update")
             state = .idle
             return
         }
+        logger.info("Update available version=\(item.displayVersionString, privacy: .public)")
         state = .available(version: item.displayVersionString)
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
         if Self.isNoUpdateError(error) {
+            logger.info("No update available")
             state = .idle
         } else {
             fail(error)
@@ -142,10 +153,12 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        logger.info("No update available")
         state = .idle
     }
 
     func updater(_ updater: SPUUpdater, didDownloadUpdate item: SUAppcastItem) {
+        logger.info("Update downloaded version=\(item.displayVersionString, privacy: .public)")
         state = .readyToInstall(version: item.displayVersionString)
     }
 
@@ -154,10 +167,12 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     }
 
     func userDidCancelDownload(_ updater: SPUUpdater) {
+        logger.info("Update cancelled")
         state = .cancelled
     }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+        logger.info("Installing update version=\(item.displayVersionString, privacy: .public)")
         state = .installing(version: item.displayVersionString)
     }
 
@@ -167,6 +182,7 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             state = .idle
         } else if nsError.domain == SUSparkleErrorDomain,
                   nsError.code == 4007 { // Sparkle's SUInstallationCanceledError.
+            logger.info("Update cancelled")
             state = .cancelled
         } else {
             fail(error)
@@ -191,11 +207,14 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
                  immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
         // The standard Sparkle UI owns the install-on-quit decision. Returning
         // false lets it request admin authorization and relaunch safely.
+        logger.info("Installing update on quit version=\(item.displayVersionString, privacy: .public)")
         state = .installing(version: item.displayVersionString)
         return false
     }
 
     private func fail(_ error: Error) {
+        let nsError = error as NSError
+        logger.error("Update failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code)")
         state = .failed(message: Self.userFacingErrorMessage(error))
     }
 

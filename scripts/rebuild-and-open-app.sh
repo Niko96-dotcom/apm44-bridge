@@ -12,6 +12,7 @@ APP_NAME="APM44 Bridge"
 DAEMON_NAME="apm44-bridge"
 APP="$DERIVED_DATA_PATH/Build/Products/$CONFIG/$APP_NAME.app"
 EXECUTABLE="$APP/Contents/MacOS/$APP_NAME"
+OPEN_BIN="${APM44_OPEN_BIN:-/usr/bin/open}"
 
 usage() {
   cat >&2 <<USAGE
@@ -46,21 +47,77 @@ esac
 
 cd "$ROOT"
 
+# Match the rebuilt executable path, including processes launched with extra args.
+# -ww keeps BSD ps from truncating the command before the prefix match.
 local_app_pids() {
-  ps -axo pid=,comm= | awk -v target="$EXECUTABLE" '
-    { pid=$1; sub(/^[[:space:]]*[0-9]+[[:space:]]+/, ""); if ($0 == target) print pid }'
+  ps -axww -o pid=,command= | awk -v target="$EXECUTABLE" '
+    {
+      pid=$1
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "")
+      if ($0 == target || index($0, target " ") == 1) print pid
+    }'
 }
 
-if [[ "$MODE" == "--isolated" || "$MODE" == "--isolated-stop" ]]; then
-  for pid in $(local_app_pids); do kill -TERM "$pid"; done
+wait_until_local_app_stops() {
+  local _
   for _ in {1..40}; do
-    [[ -z "$(local_app_pids)" ]] && break
+    [[ -z "$(local_app_pids)" ]] && return 0
     sleep 0.2
   done
+  return 1
+}
+
+stop_local_app() {
+  local pid
+  for pid in $(local_app_pids); do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  if ! wait_until_local_app_stops; then
+    for pid in $(local_app_pids); do
+      kill -KILL "$pid" 2>/dev/null || true
+    done
+    wait_until_local_app_stops || true
+  fi
   if [[ -n "$(local_app_pids)" ]]; then
     echo "error: isolated app has not stopped; refusing to replace its bundle" >&2
     exit 1
   fi
+}
+
+# Default run/logs/verify still stop every process with these names, including
+# the installed app. Use --isolated to leave that instance running.
+stop_named_processes() {
+  echo "== Stop existing processes =="
+  pkill -TERM -x "$APP_NAME" 2>/dev/null || true
+  pkill -TERM -x "$DAEMON_NAME" 2>/dev/null || true
+
+  local _
+  for _ in {1..40}; do
+    if ! pgrep -x "$APP_NAME" >/dev/null && ! pgrep -x "$DAEMON_NAME" >/dev/null; then
+      break
+    fi
+    sleep 0.2
+  done
+
+  pkill -KILL -x "$APP_NAME" 2>/dev/null || true
+  pkill -KILL -x "$DAEMON_NAME" 2>/dev/null || true
+}
+
+build_app() {
+  echo "== Clean launch bundle =="
+  rm -rf "$APP"
+
+  echo "== Build local app =="
+  bash scripts/verify-app-build.sh
+
+  if [[ ! -x "$EXECUTABLE" ]]; then
+    echo "error: expected executable missing at $EXECUTABLE" >&2
+    exit 1
+  fi
+}
+
+if [[ "$MODE" == "--isolated" || "$MODE" == "--isolated-stop" ]]; then
+  stop_local_app
   [[ "$MODE" == "--isolated-stop" ]] && exit 0
 
   bash scripts/prepare-submodules.sh
@@ -68,11 +125,11 @@ if [[ "$MODE" == "--isolated" || "$MODE" == "--isolated-stop" ]]; then
   cmake --build "$ROOT/build/isolated-native" --target apm44-bridge --parallel
 fi
 
-echo "== Clean launch bundle =="
-rm -rf "$APP"
+if [[ "$MODE" != "--no-launch" && "$MODE" != "--isolated" && "$MODE" != "--isolated-stop" ]]; then
+  stop_named_processes
+fi
 
-echo "== Build local app =="
-bash scripts/verify-app-build.sh
+build_app
 
 if [[ "$MODE" == "--isolated" ]]; then
   # Separate bundle identity means UI edits cannot write the installed app's defaults.
@@ -85,7 +142,7 @@ if [[ "$MODE" == "--isolated" ]]; then
   APM44_APP_PATH="$APP" APM44_DAEMON_PATH="$ROOT/build/isolated-native/BridgeDaemon/apm44-bridge" \
     bash scripts/embed-daemon-in-app.sh
   echo "Isolated preferences: $local_id"
-  /usr/bin/open -n "$APP" --args -SUEnableAutomaticChecks NO -SUAutomaticallyUpdate NO
+  "$OPEN_BIN" -n "$APP" --args -SUEnableAutomaticChecks NO -SUAutomaticallyUpdate NO
   for _ in {1..40}; do
     pid="$(local_app_pids)"
     if [[ -n "$pid" ]]; then
@@ -99,11 +156,6 @@ if [[ "$MODE" == "--isolated" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$EXECUTABLE" ]]; then
-  echo "error: expected executable missing at $EXECUTABLE" >&2
-  exit 1
-fi
-
 echo "== Launch target =="
 echo "App: $APP"
 echo "Executable: $EXECUTABLE"
@@ -113,22 +165,8 @@ if [[ "$MODE" == "--no-launch" ]]; then
   exit 0
 fi
 
-echo "== Stop existing processes =="
-pkill -TERM -x "$APP_NAME" 2>/dev/null || true
-pkill -TERM -x "$DAEMON_NAME" 2>/dev/null || true
-
-for _ in {1..40}; do
-  if ! pgrep -x "$APP_NAME" >/dev/null && ! pgrep -x "$DAEMON_NAME" >/dev/null; then
-    break
-  fi
-  sleep 0.2
-done
-
-pkill -KILL -x "$APP_NAME" 2>/dev/null || true
-pkill -KILL -x "$DAEMON_NAME" 2>/dev/null || true
-
 echo "== Open rebuilt app =="
-/usr/bin/open -n "$APP"
+"$OPEN_BIN" -n "$APP"
 
 for _ in {1..40}; do
   pid="$(pgrep -x "$APP_NAME" | head -1 || true)"

@@ -43,6 +43,15 @@ if [[ ! -x "$EXECUTABLE" ]]; then
   exit 1
 fi
 
+PLIST_EXECUTABLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist" 2>/dev/null) || {
+  echo "error: built app is missing CFBundleExecutable" >&2
+  exit 1
+}
+if [[ "$PLIST_EXECUTABLE" != "$(basename "$EXECUTABLE")" ]]; then
+  echo "error: CFBundleExecutable '$PLIST_EXECUTABLE' does not match the built executable" >&2
+  exit 1
+fi
+
 echo "Built app: $APP"
 echo "Executable: $EXECUTABLE"
 codesign --verify --deep --strict "$APP"

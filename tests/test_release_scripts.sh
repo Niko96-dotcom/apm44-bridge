@@ -15,10 +15,12 @@ trap cleanup EXIT
 # Run the current scripts in a disposable repository layout. Builders may
 # replace bundles and staging directories freely without touching local builds.
 ROOT="$TMP/repo"
-mkdir -p "$FAKE_BIN" "$ROOT/App"
+mkdir -p "$FAKE_BIN" "$ROOT/App/APM44Bridge" "$ROOT/Driver"
 cp -R "$SOURCE_ROOT/scripts" "$SOURCE_ROOT/.github" "$ROOT/"
 cp "$SOURCE_ROOT/VERSION" "$ROOT/"
 cp "$SOURCE_ROOT/App/project.yml" "$ROOT/App/"
+cp "$SOURCE_ROOT/App/APM44Bridge/APM44Bridge.entitlements" "$ROOT/App/APM44Bridge/"
+cp "$SOURCE_ROOT/Driver/APM44Bridge.entitlements" "$ROOT/Driver/"
 
 cat >"$FAKE_BIN/xcrun" <<'EOF'
 #!/bin/bash
@@ -122,11 +124,67 @@ cat >"$FAKE_BIN/codesign" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
-if [[ "${1:-}" == "--verify" ]]; then
+if [[ -n "${APM44_FAKE_XCRUN_LOG:-}" ]]; then
+  printf '%s\n' "codesign $*" >>"$APM44_FAKE_XCRUN_LOG"
+fi
+
+write_fake_entitlements() {
+  local out="$1"
+  mkdir -p "$(dirname "$out")"
+  case "${APM44_FAKE_ENTITLEMENTS:-empty}" in
+    empty)
+      cat >"$out" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict/></plist>
+PLIST
+      ;;
+    sandbox)
+      cat >"$out" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/></dict></plist>
+PLIST
+      ;;
+    get-task-allow)
+      cat >"$out" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>
+PLIST
+      ;;
+    *)
+      echo "unsupported fake entitlements mode: ${APM44_FAKE_ENTITLEMENTS}" >&2
+      exit 64
+      ;;
+  esac
+}
+
+entitlement_out=""
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "--entitlements" && "$arg" != "-" && "$arg" != ":-" ]]; then
+    entitlement_out="$arg"
+  fi
+  prev="$arg"
+done
+
+if [[ "${1:-}" == "--verify" || "${1:-}" == "--force" ]]; then
   exit 0
 fi
 
-if [[ "${1:-}" == "-dv" ]]; then
+if [[ "${1:-}" == "-d" || "${1:-}" == "-dv" || "${1:-}" == "-dvv" || "${1:-}" == "-dvvv" ]]; then
+  if [[ "${APM44_FAKE_ENTITLEMENTS:-empty}" == "extract-fail" && -n "$entitlement_out" ]]; then
+    mkdir -p "$(dirname "$entitlement_out")"
+    : >"$entitlement_out"
+    exit 1
+  fi
+  if [[ -n "$entitlement_out" ]]; then
+    write_fake_entitlements "$entitlement_out"
+  fi
+  if [[ "${1:-}" == "-d" && -n "$entitlement_out" ]]; then
+    exit 0
+  fi
   case "${APM44_FAKE_CODESIGN_INFO:-strict-ok}" in
     strict-ok)
       echo "Authority=Developer ID Application: APM44 Test Org (LOCALTEAM)" >&2
@@ -350,8 +408,11 @@ fi
 case "$script" in
   scripts/build-release-dmg.sh|scripts/codesign-verify-release.sh|scripts/notary-dry-run.sh|scripts/notarize-release-dmg.sh|scripts/build-release-pkg.sh|scripts/notarize-release-pkg.sh|scripts/verify-release-pkg.sh|scripts/verify-release-dmg-layout.sh|scripts/verify-version-identity.sh|scripts/verify-release-architectures.sh|scripts/generate-appcast.sh|scripts/validate-appcast.sh|scripts/ensure-sparkle-tools.sh)
     prefix=""
+    if [[ "${APM44_DMG_SKIP_IMAGE:-0}" == "1" ]]; then
+      prefix="${prefix}APM44_DMG_SKIP_IMAGE=1 "
+    fi
     if [[ "${APM44_DMG_PACKAGE_ONLY:-0}" == "1" ]]; then
-      prefix="APM44_DMG_PACKAGE_ONLY=1 "
+      prefix="${prefix}APM44_DMG_PACKAGE_ONLY=1 "
     fi
     printf '%s\n' "${prefix}bash $script $*" >>"${APM44_FAKE_XCRUN_LOG:?}"
     exit 0
@@ -590,6 +651,7 @@ run_release_all_unnotarized_override() {
   assert_contains "$out" "LOCAL-ONLY UNNOTARIZED"
   assert_contains "$out" "Local-only unnotarized artifacts"
   assert_contains "$LOG" "scripts/build-release-dmg.sh"
+  assert_not_contains "$LOG" "APM44_DMG_SKIP_IMAGE=1"
   assert_not_contains "$LOG" "notarytool submit"
 }
 
@@ -603,7 +665,7 @@ run_release_all_notary_ready_sequence() {
     APM44_FAKE_NOTARY_HISTORY=ok \
     /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
 
-  assert_contains "$LOG" "bash scripts/build-release-dmg.sh"
+  assert_contains "$LOG" "APM44_DMG_SKIP_IMAGE=1 bash scripts/build-release-dmg.sh"
   assert_contains "$LOG" "bash scripts/notary-dry-run.sh"
   assert_contains "$LOG" "xcrun stapler staple build/Release/APM44 Bridge.app"
   assert_contains "$LOG" "xcrun stapler validate build/Release/APM44 Bridge.app"
@@ -896,6 +958,7 @@ run_dist_01_staple_before_dmg_order() {
     APM44_FAKE_NOTARY_HISTORY=ok \
     /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
 
+  local skip_image_line
   local app_staple_line
   local codesign_verify_line
   local notary_dry_run_line
@@ -903,6 +966,7 @@ run_dist_01_staple_before_dmg_order() {
   local package_only_line
   local dmg_notarize_line
 
+  skip_image_line="$(grep -n "APM44_DMG_SKIP_IMAGE=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
   app_staple_line="$(grep -n "xcrun stapler staple build/Release/APM44 Bridge.app" "$LOG" | head -1 | cut -d: -f1)"
   codesign_verify_line="$(grep -n "bash scripts/codesign-verify-release.sh" "$LOG" | head -1 | cut -d: -f1)"
   notary_dry_run_line="$(grep -n "bash scripts/notary-dry-run.sh" "$LOG" | head -1 | cut -d: -f1)"
@@ -910,9 +974,14 @@ run_dist_01_staple_before_dmg_order() {
   package_only_line="$(grep -n "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
   dmg_notarize_line="$(grep -n "bash scripts/notarize-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
 
-  if [[ -z "$app_staple_line" || -z "$codesign_verify_line" || -z "$notary_dry_run_line" || -z "$driver_staple_line" || -z "$package_only_line" || -z "$dmg_notarize_line" ]]; then
+  if [[ -z "$skip_image_line" || -z "$app_staple_line" || -z "$codesign_verify_line" || -z "$notary_dry_run_line" || -z "$driver_staple_line" || -z "$package_only_line" || -z "$dmg_notarize_line" ]]; then
     echo "DIST-01: expected staple/package/notarize lines missing from log" >&2
     cat "$LOG" >&2
+    exit 1
+  fi
+
+  if [[ "$skip_image_line" -ge "$app_staple_line" ]]; then
+    echo "DIST-01: first DMG pass must skip the public image before staple" >&2
     exit 1
   fi
 
@@ -974,11 +1043,264 @@ run_public_release_hygiene_check() {
   assert_contains "$out" ".planning/private.md"
 }
 
+assert_empty_entitlements_plist() {
+  local file="$1"
+  python3 -c '
+import plistlib, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+data = plistlib.loads(path.read_bytes())
+if not isinstance(data, dict) or data:
+    raise SystemExit(f"{path} must be an empty entitlements dict, got {data!r}")
+' "$file"
+}
+
+prepare_sparkle_tree() {
+  local app="$1"
+  local framework="$app/Contents/Frameworks/Sparkle.framework"
+  local ver="$framework/Versions/B"
+  rm -rf "$framework"
+  mkdir -p "$ver/XPCServices/Downloader.xpc/Contents" \
+    "$ver/XPCServices/Installer.xpc/Contents" \
+    "$ver/Updater.app/Contents/MacOS" \
+    "$framework/Versions"
+  ln -sfn B "$framework/Versions/Current"
+  printf 'sparkle\n' >"$ver/Sparkle"
+  printf 'autoupdate\n' >"$ver/Autoupdate"
+  printf 'updater\n' >"$ver/Updater.app/Contents/MacOS/Updater"
+  chmod +x "$ver/Sparkle" "$ver/Autoupdate" "$ver/Updater.app/Contents/MacOS/Updater"
+}
+
+run_sign_release_nested_entitlements_case() {
+  reset_log
+  local app="$TMP/sign-app/APM44 Bridge.app"
+  local driver="$TMP/sign-driver/APM44Bridge.driver"
+  local daemon="$TMP/sign-bin/apm44-bridge"
+  local out="$TMP/sign-nested.out"
+  mkdir -p "$app/Contents/MacOS" "$driver" "$(dirname "$daemon")"
+  touch "$app/Contents/MacOS/apm44-bridge" "$daemon"
+  chmod +x "$app/Contents/MacOS/apm44-bridge" "$daemon"
+  prepare_sparkle_tree "$app"
+
+  env PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    SIGN_ID="Developer ID Application: APM44 Test Org (LOCALTEAM)" \
+    APM44_DAEMON_PATH="$daemon" \
+    APM44_APP_PATH="$app" \
+    APM44_DRIVER_PATH="$driver" \
+    /bin/bash "$ROOT/scripts/sign-release.sh" >"$out"
+
+  local force_lines
+  force_lines="$(grep -F 'codesign --force' "$LOG" || true)"
+  if [[ -z "$force_lines" ]]; then
+    echo "sign-release did not invoke codesign --force" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+  while IFS= read -r line; do
+    if [[ "$line" != *"--options runtime"* ]]; then
+      echo "sign-release missing hardened runtime: $line" >&2
+      cat "$LOG" >&2
+      exit 1
+    fi
+    if [[ "$line" == *"--deep"* ]]; then
+      echo "sign-release used --deep for signing: $line" >&2
+      cat "$LOG" >&2
+      exit 1
+    fi
+  done <<<"$force_lines"
+
+  assert_contains "$out" "Signing nested:"
+  assert_contains "$LOG" "--preserve-metadata=entitlements"
+  assert_contains "$LOG" "Downloader.xpc"
+  assert_contains "$LOG" "Installer.xpc"
+  assert_contains "$LOG" "Autoupdate"
+  assert_contains "$LOG" "Updater.app"
+  assert_contains "$LOG" "--entitlements $ROOT/App/APM44Bridge/APM44Bridge.entitlements"
+  assert_contains "$LOG" "--entitlements $ROOT/Driver/APM44Bridge.entitlements"
+
+  while IFS= read -r line; do
+    if [[ "$line" == *"--preserve-metadata=entitlements"* && "$line" == *"--entitlements "* ]]; then
+      echo "nested Sparkle signed with host entitlements: $line" >&2
+      cat "$LOG" >&2
+      exit 1
+    fi
+  done <<<"$force_lines"
+
+  local downloader_line installer_line autoupdate_line updater_line sparkle_bin_line framework_line app_ent_line
+  downloader_line="$(grep -n 'Downloader.xpc' "$LOG" | head -1 | cut -d: -f1)"
+  installer_line="$(grep -n 'Installer.xpc' "$LOG" | head -1 | cut -d: -f1)"
+  autoupdate_line="$(grep -n '/Autoupdate' "$LOG" | head -1 | cut -d: -f1)"
+  updater_line="$(grep -n 'Updater.app' "$LOG" | head -1 | cut -d: -f1)"
+  sparkle_bin_line="$(grep -n '/Versions/Current/Sparkle' "$LOG" | head -1 | cut -d: -f1)"
+  framework_line="$(grep -n 'Sparkle.framework$' "$LOG" | head -1 | cut -d: -f1)"
+  app_ent_line="$(grep -nF -- "--entitlements $ROOT/App/APM44Bridge/APM44Bridge.entitlements" "$LOG" | head -1 | cut -d: -f1)"
+  if [[ -z "$downloader_line" || -z "$installer_line" || -z "$autoupdate_line" || -z "$updater_line" || -z "$sparkle_bin_line" || -z "$framework_line" || -z "$app_ent_line" ]]; then
+    echo "sign-release nested order: expected codesign lines missing" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+  if [[ "$downloader_line" -ge "$installer_line" || "$installer_line" -ge "$autoupdate_line" || "$autoupdate_line" -ge "$updater_line" || "$updater_line" -ge "$sparkle_bin_line" || "$sparkle_bin_line" -ge "$framework_line" || "$framework_line" -ge "$app_ent_line" ]]; then
+    echo "sign-release nested order is not inside-out" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
+}
+
+run_sign_release_missing_sparkle_helper_case() {
+  reset_log
+  local app="$TMP/sign-app-missing/APM44 Bridge.app"
+  local driver="$TMP/sign-driver-missing/APM44Bridge.driver"
+  local daemon="$TMP/sign-bin-missing/apm44-bridge"
+  local out="$TMP/sign-missing-sparkle.out"
+  mkdir -p "$app/Contents/MacOS" "$driver" "$(dirname "$daemon")"
+  touch "$app/Contents/MacOS/apm44-bridge" "$daemon"
+  chmod +x "$app/Contents/MacOS/apm44-bridge" "$daemon"
+  prepare_sparkle_tree "$app"
+  rm -rf "$app/Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Downloader.xpc"
+
+  if env PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    SIGN_ID="Developer ID Application: APM44 Test Org (LOCALTEAM)" \
+    APM44_DAEMON_PATH="$daemon" \
+    APM44_APP_PATH="$app" \
+    APM44_DRIVER_PATH="$driver" \
+    /bin/bash "$ROOT/scripts/sign-release.sh" >"$out" 2>&1; then
+    echo "sign-release should fail when Sparkle Downloader.xpc is missing" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "missing Sparkle nested code"
+}
+
+run_dmg_skip_image_rejects_package_only() {
+  local out="$TMP/dmg-skip-package-only.out"
+  if env \
+    APM44_DMG_SKIP_IMAGE=1 \
+    APM44_DMG_PACKAGE_ONLY=1 \
+    /bin/bash "$ROOT/scripts/build-release-dmg.sh" >"$out" 2>&1; then
+    echo "SKIP_IMAGE + PACKAGE_ONLY should fail" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "cannot be combined"
+}
+
+run_dmg_default_bundles_name_check() {
+  local version
+  version="$(/bin/bash "$ROOT/scripts/read-version.sh")"
+  local bundles
+  local public_name
+  bundles="$(env APM44_DMG_PRINT_PATH=1 /bin/bash "$ROOT/scripts/build-release-dmg.sh")"
+  public_name="$(env APM44_DMG_PRINT_PATH=1 APM44_DMG_PACKAGE_ONLY=1 /bin/bash "$ROOT/scripts/build-release-dmg.sh")"
+  [[ "$bundles" == "$ROOT/build/signing/APM44Bridge-${version}-bundles.dmg" ]] || {
+    echo "non-PKG default DMG should be -bundles.dmg, got $bundles" >&2
+    exit 1
+  }
+  [[ "$public_name" == "$ROOT/build/signing/APM44Bridge-${version}.dmg" ]] || {
+    echo "PACKAGE_ONLY DMG should use the public name, got $public_name" >&2
+    exit 1
+  }
+}
+
+run_notary_dry_run_cases() {
+  local app="$TMP/notary-app/APM44 Bridge.app"
+  local driver="$TMP/notary-driver/APM44Bridge.driver"
+  local daemon="$TMP/notary-bin/apm44-bridge"
+  local zip="$TMP/APM44Bridge-release.zip"
+  local staging="$TMP/notary-staging"
+  local out="$TMP/notary-dry-run.out"
+
+  mkdir -p "$app/Contents/MacOS" "$driver" "$(dirname "$daemon")"
+  printf 'app\n' >"$app/Contents/MacOS/APM44Bridge"
+  printf 'driver\n' >"$driver/APM44Bridge"
+  printf 'daemon\n' >"$daemon"
+  chmod +x "$daemon"
+
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_NOTARY_CHECK_ONLY=1 \
+    APM44_APP_PATH="$app" \
+    APM44_DAEMON_PATH="$daemon" \
+    APM44_DRIVER_PATH="$driver" \
+    APM44_RELEASE_STAGING="$staging" \
+    APM44_RELEASE_ZIP="$zip" \
+    /bin/bash "$ROOT/scripts/notary-dry-run.sh" >"$out" 2>&1
+
+  assert_contains "$out" "did not submit to Apple"
+  assert_contains "$out" "Notarization is not required for local debug"
+  assert_not_contains "$LOG" "notarytool submit"
+  [[ -f "$zip" ]] || { echo "check-only should write $zip" >&2; cat "$out" >&2; exit 1; }
+
+  rm -f "$zip"
+  reset_log
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_NOTARY_MODE=accepted \
+    NOTARY_PROFILE=TEST_PROFILE \
+    APM44_APP_PATH="$app" \
+    APM44_DAEMON_PATH="$daemon" \
+    APM44_DRIVER_PATH="$driver" \
+    APM44_RELEASE_STAGING="$staging" \
+    APM44_RELEASE_ZIP="$zip" \
+    /bin/bash "$ROOT/scripts/notary-dry-run.sh" >"$out" 2>&1
+
+  assert_contains "$LOG" "notarytool submit"
+  assert_contains "$out" "Notary dry-run complete"
+}
+
+run_codesign_verify_sparkle_nested_cases() {
+  local app="$TMP/verify-sparkle/APM44 Bridge.app"
+  local driver="$TMP/verify-sparkle-driver/APM44Bridge.driver"
+  local daemon="$TMP/verify-sparkle-bin/apm44-bridge"
+  local out="$TMP/verify-sparkle.out"
+
+  mkdir -p "$app/Contents/MacOS" "$driver" "$(dirname "$daemon")"
+  touch "$daemon"
+  chmod +x "$daemon"
+  prepare_sparkle_tree "$app"
+
+  env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_CODESIGN_INFO=strict-ok \
+    APM44_FAKE_ENTITLEMENTS=empty \
+    APM44_DAEMON_PATH="$daemon" \
+    APM44_APP_PATH="$app" \
+    APM44_DRIVER_PATH="$driver" \
+    /bin/bash "$ROOT/scripts/codesign-verify-release.sh" >"$out" 2>&1
+
+  assert_contains "$out" "OK: Sparkle Downloader.xpc verify"
+  assert_contains "$out" "OK: Sparkle Installer.xpc verify"
+  assert_contains "$out" "OK: Sparkle Autoupdate verify"
+  assert_contains "$out" "OK: Sparkle Updater.app verify"
+  assert_contains "$out" "OK: Sparkle Sparkle.framework verify"
+  assert_not_contains "$out" "nested Sparkle checks skipped"
+
+  rm -rf "$app/Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Downloader.xpc"
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_CODESIGN_INFO=strict-ok \
+    APM44_FAKE_ENTITLEMENTS=empty \
+    APM44_DAEMON_PATH="$daemon" \
+    APM44_APP_PATH="$app" \
+    APM44_DRIVER_PATH="$driver" \
+    /bin/bash "$ROOT/scripts/codesign-verify-release.sh" >"$out" 2>&1; then
+    echo "codesign-verify should fail when Sparkle Downloader.xpc is missing" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "FAIL: Sparkle Downloader.xpc missing"
+}
+
 run_codesign_verify_case() {
   local mode="$1"
   local override="$2"
   local expected="$3"
   local label="$4"
+  local entitlements_mode="${5:-empty}"
   local out="$TMP/$label.out"
   local root="$TMP/$label"
   local status=0
@@ -990,6 +1312,7 @@ run_codesign_verify_case() {
   local env_args=(
     PATH="$FAKE_BIN:$PATH"
     APM44_FAKE_CODESIGN_INFO="$mode"
+    APM44_FAKE_ENTITLEMENTS="$entitlements_mode"
     APM44_DAEMON_PATH="$root/bin/apm44-bridge"
     APM44_APP_PATH="$root/app/APM44 Bridge.app"
     APM44_DRIVER_PATH="$root/driver/APM44Bridge.driver"
@@ -1086,6 +1409,12 @@ run_dmg_checksum_artifact_check        # [DOC-04]
 
 run_dmg_pkg_first_layout_check
 
+run_dmg_skip_image_rejects_package_only
+
+run_dmg_default_bundles_name_check
+
+run_notary_dry_run_cases
+
 run_verify_release_dmg_layout_check
 
 run_final_install_artifact_verifier_check
@@ -1104,10 +1433,20 @@ run_workflow_action_trust_check
 
 run_public_release_hygiene_check
 
+assert_empty_entitlements_plist "$SOURCE_ROOT/App/APM44Bridge/APM44Bridge.entitlements"
+assert_empty_entitlements_plist "$SOURCE_ROOT/Driver/APM44Bridge.entitlements"
+run_sign_release_nested_entitlements_case
+run_sign_release_missing_sparkle_helper_case
+
 run_codesign_verify_case strict-ok 0 success "codesign-strict-ok"
 run_codesign_verify_case runtime-flag 0 success "codesign-runtime-flag"  # [REL-01]
 run_codesign_verify_case no-runtime 0 failure "codesign-no-runtime"        # [REL-01]
 run_codesign_verify_case no-developer-id 0 failure "codesign-no-dev-id"    # [REL-02]
 run_codesign_verify_case ad-hoc 1 success "codesign-local-override"        # [REL-01][REL-02]
+run_codesign_verify_case strict-ok 0 failure "codesign-sandbox-forbidden" sandbox
+run_codesign_verify_case strict-ok 0 failure "codesign-get-task-allow-forbidden" get-task-allow
+run_codesign_verify_case strict-ok 0 failure "codesign-entitlement-extract-fail" extract-fail
+assert_not_contains "$TMP/codesign-entitlement-extract-fail.out" "unsandboxed"
+run_codesign_verify_sparkle_nested_cases
 
 echo "release script tests: OK"

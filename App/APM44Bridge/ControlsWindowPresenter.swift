@@ -19,6 +19,8 @@ final class ControlsWindowPresenter: NSObject, ControlsPresenting, NSWindowDeleg
     private weak var updater: SparkleUpdateController?
     private var window: NSWindow?
 
+    internal var hasWindowForTesting: Bool { window != nil }
+
     func configure(manager: BridgeProcessManager, settings: BridgeSettings,
                    updater: SparkleUpdateController? = nil) {
         self.manager = manager

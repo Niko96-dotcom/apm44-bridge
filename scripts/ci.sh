@@ -44,6 +44,9 @@ bash tests/test_appcast.sh
 echo "== Compiler probe tests =="
 bash tests/test_compiler_probe.sh
 
+echo "== Rebuild-and-open script tests =="
+bash tests/test_rebuild_and_open_app.sh
+
 echo "== Verify-devices tests =="
 bash tests/test_verify_devices.sh
 

@@ -1,12 +1,24 @@
 import AppKit
 import SwiftUI
 
+/// Resolves the Help submenu without using `mainMenu.items.last`, which can
+/// rewrite Window when the menu bar extra's Help item is missing.
+enum AppKitMainMenu {
+    static func helpSubmenu(in mainMenu: NSMenu, applicationHelpMenu: NSMenu?) -> NSMenu? {
+        if let item = mainMenu.item(withTitle: "Hilfe") ?? mainMenu.item(withTitle: "Help") {
+            return item.submenu
+        }
+        return applicationHelpMenu
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var controlsPresenter: ControlsPresenting = ControlsWindowPresenter.shared
+    private var becomeActiveMenuObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NotificationCenter.default.addObserver(
+        becomeActiveMenuObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
@@ -20,6 +32,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.configureMainMenu()
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let becomeActiveMenuObserver {
+            NotificationCenter.default.removeObserver(becomeActiveMenuObserver)
+            self.becomeActiveMenuObserver = nil
         }
     }
 
@@ -46,48 +65,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appMenu.insertItem(settings, at: insertIndex)
         }
 
-        let helpItem = mainMenu.item(withTitle: "Hilfe")
-            ?? mainMenu.item(withTitle: "Help")
-            ?? mainMenu.items.last
         let wantedHelp = [AppStrings.helpMenuSetup, AppStrings.cubaseSetupGuide]
-        if let helpMenu = helpItem?.submenu {
-            let existing = helpMenu.items.map(\.title)
-            if existing != wantedHelp {
-                helpMenu.removeAllItems()
-                let setup = NSMenuItem(
-                    title: AppStrings.helpMenuSetup,
-                    action: #selector(showSetup),
-                    keyEquivalent: ""
-                )
-                setup.target = self
-                let cubase = NSMenuItem(
-                    title: AppStrings.cubaseSetupGuide,
-                    action: #selector(openCubaseGuide),
-                    keyEquivalent: ""
-                )
-                cubase.target = self
-                helpMenu.addItem(setup)
-                helpMenu.addItem(cubase)
+        if let helpMenu = AppKitMainMenu.helpSubmenu(
+            in: mainMenu,
+            applicationHelpMenu: NSApp.helpMenu
+        ) {
+            if helpMenu.items.map(\.title) != wantedHelp {
+                replaceHelpItems(on: helpMenu)
             }
             NSApp.helpMenu = helpMenu
         } else {
             let helpMenu = NSMenu(title: "Hilfe")
-            let setup = NSMenuItem(
-                title: AppStrings.helpMenuSetup,
-                action: #selector(showSetup),
-                keyEquivalent: ""
-            )
-            setup.target = self
-            let cubase = NSMenuItem(
-                title: AppStrings.cubaseSetupGuide,
-                action: #selector(openCubaseGuide),
-                keyEquivalent: ""
-            )
-            cubase.target = self
-            helpMenu.addItem(setup)
-            helpMenu.addItem(cubase)
+            replaceHelpItems(on: helpMenu)
             NSApp.helpMenu = helpMenu
         }
+    }
+
+    private func replaceHelpItems(on helpMenu: NSMenu) {
+        helpMenu.removeAllItems()
+        let setup = NSMenuItem(
+            title: AppStrings.helpMenuSetup,
+            action: #selector(showSetup),
+            keyEquivalent: ""
+        )
+        setup.target = self
+        let cubase = NSMenuItem(
+            title: AppStrings.cubaseSetupGuide,
+            action: #selector(openCubaseGuide),
+            keyEquivalent: ""
+        )
+        cubase.target = self
+        helpMenu.addItem(setup)
+        helpMenu.addItem(cubase)
     }
 
     @objc
@@ -111,7 +120,7 @@ struct APM44BridgeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var settings = BridgeSettings()
     @StateObject private var manager: BridgeProcessManager
-    @StateObject private var updater = SparkleUpdateController.shared
+    @StateObject private var updater: SparkleUpdateController
     private let hotplug: HotplugMonitor
     private let systemLifecycle: SystemLifecycleMonitor
 
@@ -120,7 +129,13 @@ struct APM44BridgeApp: App {
         _settings = StateObject(wrappedValue: settings)
         let manager = BridgeProcessManager(settings: settings)
         _manager = StateObject(wrappedValue: manager)
-        ControlsWindowPresenter.shared.configure(manager: manager, settings: settings)
+        let updater = SparkleUpdateController.shared
+        _updater = StateObject(wrappedValue: updater)
+        ControlsWindowPresenter.shared.configure(
+            manager: manager,
+            settings: settings,
+            updater: updater
+        )
         hotplug = HotplugMonitor(selectedUid: settings.outputDeviceUid) {
             Task { @MainActor in
                 await manager.handleHotplug()

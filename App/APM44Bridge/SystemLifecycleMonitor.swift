@@ -1,5 +1,11 @@
 import AppKit
 import Foundation
+import OSLog
+
+private let logger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.niko.apm44.menu",
+    category: "Lifecycle"
+)
 
 final class SystemLifecycleMonitor {
     private let notificationCenter: NotificationCenter
@@ -24,6 +30,7 @@ final class SystemLifecycleMonitor {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            logger.info("System will sleep")
             self?.onWillSleep()
         })
         tokens.append(notificationCenter.addObserver(
@@ -31,6 +38,7 @@ final class SystemLifecycleMonitor {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            logger.info("System did wake")
             self?.onDidWake()
         })
     }

@@ -15,22 +15,30 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<EOF
 Usage: notary-dry-run.sh [--help]
 
-Zip signed app + daemon + driver and submit via notarytool (profile: $PROFILE).
+Zip signed app + daemon + driver. Submit via notarytool unless check-only.
+
+Notarization is not required for local debug (use scripts/rebuild-and-open-app.sh
+or scripts/ci.sh). This script is a distribution check.
 
 Prerequisites:
   bash scripts/sign-release.sh
   xcrun notarytool store-credentials "$PROFILE"  (see scripts/setup-notary-profile.sh)
+    unless APM44_NOTARY_CHECK_ONLY=1
 
 Environment:
-  NOTARY_PROFILE         keychain profile (default AC_NOTARY)
-  APM44_RELEASE_STAGING  temp staging dir
-  APM44_RELEASE_ZIP      output zip path
+  NOTARY_PROFILE              keychain profile (default AC_NOTARY)
+  APM44_NOTARY_CHECK_ONLY=1   zip and verify signatures; do not submit
+  APM44_APP_PATH              path to .app bundle
+  APM44_DAEMON_PATH           path to apm44-bridge binary
+  APM44_DRIVER_PATH           path to .driver bundle
+  APM44_RELEASE_STAGING       temp staging dir
+  APM44_RELEASE_ZIP           output zip path
 EOF
   exit 0
 fi
 
-APP="$ROOT/build/$CONFIG/APM44 Bridge.app"
-DAEMON="$ROOT/build/BridgeDaemon/apm44-bridge"
+APP="${APM44_APP_PATH:-$ROOT/build/$CONFIG/APM44 Bridge.app}"
+DAEMON="${APM44_DAEMON_PATH:-$ROOT/build/BridgeDaemon/apm44-bridge}"
 DRIVER="${APM44_DRIVER_PATH:-$ROOT/build/Driver/APM44Bridge.driver}"
 
 for artifact in "$APP" "$DAEMON" "$DRIVER"; do
@@ -54,6 +62,14 @@ mkdir -p "$(dirname "$ZIP")"
 rm -f "$ZIP"
 echo "Creating release zip: $ZIP"
 ditto -c -k --keepParent "$STAGING" "$ZIP"
+
+if [[ "${APM44_NOTARY_CHECK_ONLY:-0}" == "1" ]]; then
+  echo ""
+  echo "Notary check-only: created $ZIP; did not submit to Apple."
+  echo "Notarization is not required for local debug."
+  echo "Submit this zip only for public-release evidence (omit APM44_NOTARY_CHECK_ONLY)."
+  exit 0
+fi
 
 require_notary_accepted "$ZIP" "$PROFILE" "release zip"
 
