@@ -2,6 +2,7 @@
 
 #include "engine/BridgeControlLoop.h"
 #include "engine/IoProcHandlers.h"
+#include "engine/ShmMismatchDebounce.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -73,7 +74,8 @@ bool IsSeverePartialShortage(std::size_t requestedFrames,
 
 bool IsFatalShmOpenFailure(ShmRingErrorCode code, int err) {
   if (code == ShmRingErrorCode::InvalidHeader || code == ShmRingErrorCode::PermissionFailed ||
-      code == ShmRingErrorCode::ConsumerBusy) {
+      code == ShmRingErrorCode::ConsumerBusy ||
+      code == ShmRingErrorCode::ProducerBuildMismatch) {
     return true;
   }
   if ((code == ShmRingErrorCode::OpenFailed || code == ShmRingErrorCode::MapFailed) &&
@@ -95,6 +97,7 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
     constexpr auto kWaitTimeout = std::chrono::seconds(15);
     const auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
     bool printedWaitHint = false;
+    ShmMismatchDebounce mismatchDebounce;
     while (!virtualFeed_.open()) {
       if (!printedWaitHint) {
         std::cerr << "Waiting for APM44 Bridge shm: the HAL driver should create "
@@ -103,10 +106,25 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
                      "driver, reload Core Audio, or run scripts/verify-hal-driver.sh.\n";
         printedWaitHint = true;
       }
-      if (IsFatalShmOpenFailure(virtualFeed_.lastOpenErrorCode(), virtualFeed_.lastOpenErrno())) {
-        std::cerr << "error: APM44 Bridge shm open failed: "
-                  << virtualFeed_.lastOpenError() << "\n";
-        return false;
+      const ShmRingErrorCode openCode = virtualFeed_.lastOpenErrorCode();
+      const int openErrno = virtualFeed_.lastOpenErrno();
+      const std::string openDetail = virtualFeed_.lastOpenError();
+      if (openCode == ShmRingErrorCode::ProducerBuildMismatch) {
+        // A half-published header from a concurrent create() can mimic a
+        // build mismatch for one poll; fail only after 3 identical
+        // consecutive observations, otherwise keep polling.
+        if (mismatchDebounce.observe(openCode, openDetail)) {
+          std::cerr << "error: loaded APM44 driver build mismatch: "
+                    << openDetail << " (reload Core Audio or restart the Mac)\n";
+          return false;
+        }
+      } else {
+        mismatchDebounce.reset();
+        if (IsFatalShmOpenFailure(openCode, openErrno)) {
+          std::cerr << "error: APM44 Bridge shm open failed: "
+                    << openDetail << "\n";
+          return false;
+        }
       }
       if (std::chrono::steady_clock::now() >= deadline) {
         std::cerr << "error: could not open shm ring after "

@@ -109,7 +109,7 @@ TEST_CASE("MmapShmRing producer consumer round trip", "[mmap_shm_ring]") {
   shm_unlink(ringName.c_str());
 }
 
-TEST_CASE("MmapShmRing reports invalid shm header", "[mmap_shm_ring]") {
+TEST_CASE("MmapShmRing reports producer build mismatch on version drift", "[mmap_shm_ring]") {
   const std::string ringName = TestRingName('i');
   apm44::MmapShmRing producer(ringName);
   REQUIRE(producer.create(512));
@@ -117,8 +117,22 @@ TEST_CASE("MmapShmRing reports invalid shm header", "[mmap_shm_ring]") {
 
   apm44::MmapShmRing consumer(ringName);
   REQUIRE_FALSE(consumer.open(apm44::ShmRingRole::Consumer));
-  REQUIRE(consumer.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+  REQUIRE(consumer.lastErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
   REQUIRE(consumer.lastError().find("expected_version") != std::string::npos);
+
+  producer.close();
+  consumer.close();
+  shm_unlink(ringName.c_str());
+}
+
+TEST_CASE("MmapShmRing publishes magic last and opens after create", "[mmap_shm_ring]") {
+  const std::string ringName = TestRingName('m');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(512));
+  REQUIRE(producer.header()->magic == apm44::kShmMagic);
+
+  apm44::MmapShmRing consumer(ringName);
+  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
 
   producer.close();
   consumer.close();

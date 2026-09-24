@@ -161,4 +161,15 @@ final class BridgeBuildMismatchPresentationTests: XCTestCase {
         XCTAssertNotNil(presentation.recovery)
         XCTAssertEqual(presentation.diagnostic, message)
     }
+
+    func testLoadedDriverBuildMismatchHasRecoveryWithoutDiagnostic() {
+        let presentation = BridgeErrorPresentation.presentation(
+            for: AppStrings.loadedDriverBuildMismatch
+        )
+        XCTAssertEqual(presentation.headline, AppStrings.loadedDriverBuildMismatch)
+        XCTAssertEqual(presentation.recovery, AppStrings.loadedDriverBuildMismatchRecovery)
+        XCTAssertNil(presentation.diagnostic)
+        XCTAssertFalse(AppStrings.loadedDriverBuildMismatch.isEmpty)
+        XCTAssertFalse(AppStrings.loadedDriverBuildMismatchRecovery.isEmpty)
+    }
 }

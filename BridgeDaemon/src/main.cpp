@@ -19,6 +19,7 @@
 namespace {
 
 constexpr int kExitStaleShmRing = 42;
+constexpr int kExitLoadedDriverBuildMismatch = 44;
 
 std::optional<apm44::BridgeDevicePair> ResolveDevices(const apm44::CliOptions& options,
                                                       bool requirePresent) {
@@ -174,6 +175,8 @@ const char* ShmErrorCodeName(apm44::ShmRingErrorCode code) {
       return "capacity_exceeds_object";
     case apm44::ShmRingErrorCode::ConsumerBusy:
       return "consumer_busy";
+    case apm44::ShmRingErrorCode::ProducerBuildMismatch:
+      return "producer_build_mismatch";
   }
   return "unknown";
 }
@@ -285,6 +288,11 @@ int main(int argc, char* argv[]) {
 
   apm44::BridgeEngine engine;
   if (!engine.prepare(*pair, engineOptions)) {
+    if (options.virtualDevice &&
+        engine.virtualFeedLastOpenErrorCode() ==
+            apm44::ShmRingErrorCode::ProducerBuildMismatch) {
+      return kExitLoadedDriverBuildMismatch;
+    }
     std::cerr << "error: engine prepare failed\n";
     return 1;
   }

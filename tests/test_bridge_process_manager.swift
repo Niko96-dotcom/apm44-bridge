@@ -979,4 +979,94 @@ final class BridgeProcessManagerTests: XCTestCase {
             XCTFail("expected .error on build mismatch, got \(manager.state)")
         }
     }
+
+    func testLoadedDriverBuildMismatchWhileRunningShowsErrorWithoutRetry() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [60]
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        let generationBefore = manager.retryGeneration
+        XCTAssertEqual(BridgeProcessManager.loadedDriverBuildMismatchExitStatus, 44)
+        manager.testTerminationStatus = BridgeProcessManager.loadedDriverBuildMismatchExitStatus
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        XCTAssertEqual(manager.state, .error(AppStrings.loadedDriverBuildMismatch))
+        if case .reconnecting = manager.state {
+            XCTFail("Exit 44 must not auto-retry, got reconnecting")
+        }
+        XCTAssertEqual(manager.retryAttemptForTesting, 0)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.loadedDriverBuildMismatch)
+        XCTAssertEqual(manager.retryGeneration, generationBefore)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testLoadedDriverBuildMismatchWhileStartingShowsErrorWithoutRetry() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [60]
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        manager.setStateForTesting(.starting)
+
+        let generationBefore = manager.retryGeneration
+        manager.testTerminationStatus = 44
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        XCTAssertEqual(manager.state, .error(AppStrings.loadedDriverBuildMismatch))
+        if case .reconnecting = manager.state {
+            XCTFail("Exit 44 in .starting must not auto-retry, got reconnecting")
+        }
+        XCTAssertEqual(manager.retryAttemptForTesting, 0)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.loadedDriverBuildMismatch)
+        XCTAssertEqual(manager.retryGeneration, generationBefore)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testLoadedDriverBuildMismatchResetsExistingRetryBudget() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [60]
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        manager.setRetryAttemptForTesting(2)
+
+        manager.testTerminationStatus = 44
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        XCTAssertEqual(manager.state, .error(AppStrings.loadedDriverBuildMismatch))
+        XCTAssertEqual(manager.retryAttemptForTesting, 0)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.loadedDriverBuildMismatch)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testExitOneWhileRunningStillAutoRetries() async {
+        let (manager, _, launcher) = makeManager()
+        manager.testRetryDelays = [60]
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        manager.testTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        if case .reconnecting = manager.state {
+            XCTAssertEqual(
+                manager.bannerMessage,
+                AppStrings.reconnectingAttempt(current: manager.retryAttemptForTesting, max: 4)
+            )
+        } else {
+            XCTFail("Expected reconnecting after exit 1, got \(manager.state)")
+        }
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
 }

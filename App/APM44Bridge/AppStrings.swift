@@ -122,6 +122,15 @@ enum AppStrings {
             "Reinstall the matching APM44 Bridge driver, reload Core Audio or restart the Mac, then try Start again."
         )
     }
+    static var loadedDriverBuildMismatch: String {
+        t("loaded_driver_build_mismatch", "Core Audio is still running an older APM44 driver.")
+    }
+    static var loadedDriverBuildMismatchRecovery: String {
+        t(
+            "loaded_driver_build_mismatch_recovery",
+            "Reload Core Audio or restart the Mac, then try Start again."
+        )
+    }
     static var buildIDMissingPlaceholder: String { t("build_id_missing", "missing") }
     static var bridgeStatus: String { t("bridge_status", "Bridge status") }
     static var stopped: String { t("stopped", "Stopped") }

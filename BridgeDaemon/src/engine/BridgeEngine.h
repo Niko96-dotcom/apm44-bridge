@@ -39,6 +39,9 @@ class BridgeEngine {
   const std::string& virtualFeedLastOpenError() const {
     return virtualFeed_.lastOpenError();
   }
+  ShmRingErrorCode virtualFeedLastOpenErrorCode() const {
+    return virtualFeed_.lastOpenErrorCode();
+  }
 
   const BridgeDevicePair& devices() const { return devices_; }
   std::size_t ringCapacity() const { return ring_.capacityFrames(); }
