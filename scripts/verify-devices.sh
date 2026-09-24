@@ -2,9 +2,21 @@
 # Pre-flight check: route-specific hardware sample rates.
 # HAL production (default): APM44 Bridge @ 44100 Hz + AirPods-class output @ 48000 Hz.
 # Legacy fallback (--fallback): BlackHole @ 44100 Hz + AirPods @ 48000 Hz.
-# Read-only: system_profiler (+ optional SwitchAudioSource listing).
+# Read-only: system_profiler, bridge Core Audio enumeration, and optional
+# SwitchAudioSource listing. The enumerator also sees USB outputs omitted by
+# system_profiler while their AudioBox is unacquired.
 # Optional: brew install switchaudio-osx  (not required)
 set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BRIDGE_BIN="${APM44_BRIDGE_BIN:-}"
+if [[ -z "$BRIDGE_BIN" ]]; then
+  if [[ -x "$ROOT/build/BridgeDaemon/apm44-bridge" ]]; then
+    BRIDGE_BIN="$ROOT/build/BridgeDaemon/apm44-bridge"
+  else
+    BRIDGE_BIN="/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge"
+  fi
+fi
 
 MODE="hal"
 JSON_MODE=0
@@ -12,8 +24,8 @@ JSON_MODE=0
 usage() {
   cat <<'EOF'
 Usage: verify-devices.sh [--hal|--fallback] [--json]
-  --hal       APM44 Bridge @ 44100 Hz + AirPods @ 48000 Hz (default)
-  --fallback  BlackHole @ 44100 Hz + AirPods @ 48000 Hz (legacy fallback)
+  --hal       APM44 Bridge @ 44100 Hz + AirPods USB @ 48000 Hz (default)
+  --fallback  BlackHole @ 44100 Hz + AirPods USB @ 48000 Hz (legacy fallback)
   --json      machine-readable output (valid JSON, includes selected mode)
 EOF
 }
@@ -137,8 +149,45 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 done <<<"$PROFILE"
 flush_block
 
+# system_profiler may list only the Bluetooth endpoint while a USB AirPods
+# output is present in Core Audio. Inspect the actual output transport instead.
+usb_airpods_found=0
+usb_airpods_name=""
+usb_probe_error=""
+airpods_ok=0
+if [[ ! -x "$BRIDGE_BIN" ]]; then
+  usb_probe_error="apm44-bridge device enumerator missing at $BRIDGE_BIN"
+elif ! DEVICE_LIST="$("$BRIDGE_BIN" --list-devices 2>/dev/null)"; then
+  usb_probe_error="apm44-bridge --list-devices failed"
+else
+  USB_ROWS="$(printf '%s\n' "$DEVICE_LIST" | awk -F '\t' '
+    (tolower($1) ~ /airpods/ || tolower($2) ~ /airpods/) &&
+    $4 ~ /O/ && $5 == 1 && $6 >= 2 && $8 == 1970496032 {
+      print $2 "\t" $3
+    }
+  ')"
+  while IFS=$'\t' read -r name rate; do
+    [[ -n "$name" ]] || continue
+    usb_airpods_found=1
+    usb_airpods_name="$name"
+    if [[ "$rate" == "48000" ]]; then
+      airpods_ok=1
+      airpods_name="$name"
+      break
+    fi
+  done <<<"$USB_ROWS"
+fi
+
+# A Bluetooth output at 48 kHz is not the documented USB-C route.
+if [[ "$usb_airpods_found" -eq 0 ]]; then
+  airpods_ok=0
+else
+  airpods_found=1
+  airpods_name="$usb_airpods_name"
+fi
+
 if [[ "$JSON_MODE" -eq 1 ]]; then
-  printf '{"mode":"%s","apm44":{"found":%s,"rate_44100":%s,"name":"%s"},"blackhole":{"found":%s,"rate_44100":%s,"name":"%s"},"airpods":{"found":%s,"rate_48000":%s,"name":"%s"}}\n' \
+  printf '{"mode":"%s","apm44":{"found":%s,"rate_44100":%s,"name":"%s"},"blackhole":{"found":%s,"rate_44100":%s,"name":"%s"},"airpods":{"found":%s,"usb_transport":%s,"rate_48000":%s,"name":"%s"}}\n' \
     "$MODE" \
     "$( [[ -n "$apm44_name" ]] && echo true || echo false )" \
     "$( [[ "$apm44_ok" -eq 1 ]] && echo true || echo false )" \
@@ -147,6 +196,7 @@ if [[ "$JSON_MODE" -eq 1 ]]; then
     "$( [[ "$blackhole_ok" -eq 1 ]] && echo true || echo false )" \
     "$(json_escape "$blackhole_name")" \
     "$( [[ -n "$airpods_name" ]] && echo true || echo false )" \
+    "$( [[ "$usb_airpods_found" -eq 1 ]] && echo true || echo false )" \
     "$( [[ "$airpods_ok" -eq 1 ]] && echo true || echo false )" \
     "$(json_escape "$airpods_name")"
 else
@@ -161,12 +211,14 @@ else
       echo "FAIL: APM44 Bridge not found — install the APM44 Bridge HAL driver (BlackHole alone does not satisfy --hal)"
     fi
 
-    if [[ -n "$airpods_name" ]]; then
-      if [[ "$airpods_ok" -eq 1 ]]; then
-        echo "PASS: AirPods nominal 48000 — $airpods_name"
-      else
-        echo "FAIL: AirPods found but not at 48000 Hz — open Audio MIDI Setup → AirPods Max USB-C → 48000 Hz (do not force 44100)"
-      fi
+    if [[ "$airpods_ok" -eq 1 ]]; then
+      echo "PASS: AirPods USB nominal 48000 — $airpods_name"
+    elif [[ "$usb_airpods_found" -eq 1 ]]; then
+      echo "FAIL: AirPods USB found but not at 48000 Hz — open Audio MIDI Setup → AirPods Max USB-C → 48000 Hz"
+    elif [[ -n "$usb_probe_error" ]]; then
+      echo "FAIL: cannot verify AirPods USB output — $usb_probe_error"
+    elif [[ "$airpods_found" -eq 1 ]]; then
+      echo "FAIL: AirPods found, but no USB output — Bluetooth does not satisfy the USB-C route"
     else
       echo "FAIL: AirPods output not found — connect AirPods Max USB-C"
     fi
@@ -187,12 +239,14 @@ else
       echo "FAIL: BlackHole not found — install BlackHole 2ch v0.6.1+ from https://github.com/ExistentialAudio/BlackHole/releases"
     fi
 
-    if [[ -n "$airpods_name" ]]; then
-      if [[ "$airpods_ok" -eq 1 ]]; then
-        echo "PASS: AirPods nominal 48000 — $airpods_name"
-      else
-        echo "FAIL: AirPods found but not at 48000 Hz — open Audio MIDI Setup → AirPods Max USB-C → 48000 Hz (do not force 44100)"
-      fi
+    if [[ "$airpods_ok" -eq 1 ]]; then
+      echo "PASS: AirPods USB nominal 48000 — $airpods_name"
+    elif [[ "$usb_airpods_found" -eq 1 ]]; then
+      echo "FAIL: AirPods USB found but not at 48000 Hz — open Audio MIDI Setup → AirPods Max USB-C → 48000 Hz"
+    elif [[ -n "$usb_probe_error" ]]; then
+      echo "FAIL: cannot verify AirPods USB output — $usb_probe_error"
+    elif [[ "$airpods_found" -eq 1 ]]; then
+      echo "FAIL: AirPods found, but no USB output — Bluetooth does not satisfy the USB-C route"
     else
       echo "FAIL: AirPods output not found — connect AirPods Max USB-C"
     fi

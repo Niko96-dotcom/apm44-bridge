@@ -8,6 +8,7 @@ VERIFY="$ROOT/scripts/verify-devices.sh"
 TMP="$(mktemp -d)"
 FAKE_BIN="$TMP/bin"
 PROFILE_FILE="$TMP/profile.txt"
+DEVICE_ROWS_FILE="$TMP/devices.txt"
 mkdir -p "$FAKE_BIN"
 
 cleanup() {
@@ -21,6 +22,13 @@ cat "$PROFILE_FILE" 2>/dev/null || true
 EOF
 chmod +x "$FAKE_BIN/system_profiler"
 
+cat >"$FAKE_BIN/apm44-bridge" <<EOF
+#!/bin/bash
+cat "$DEVICE_ROWS_FILE" 2>/dev/null || true
+EOF
+chmod +x "$FAKE_BIN/apm44-bridge"
+export APM44_BRIDGE_BIN="$FAKE_BIN/apm44-bridge"
+
 export PATH="$FAKE_BIN:/usr/bin:/bin"
 
 PASS=0
@@ -32,6 +40,12 @@ set_profile() {
   else
     printf '%s\n' "$1" >"$PROFILE_FILE"
   fi
+  set_airpods_device 48000 1970496032
+}
+
+set_airpods_device() {
+  printf 'UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\n' >"$DEVICE_ROWS_FILE"
+  printf 'airpods-output\tAirPods Max USB Audio\t%s\tO\t1\t2\t512\t%s\n' "$1" "$2" >>"$DEVICE_ROWS_FILE"
 }
 
 expect_exit() {
@@ -321,6 +335,33 @@ expect_output_not_contains "hal-ok no misleading BlackHole FAIL" "FAIL: BlackHol
 expect_exit "hal-ok --hal exits 0" 0 --hal
 expect_exit "hal-ok --fallback exits 1" 1 --fallback
 
+# A Bluetooth endpoint at 48 kHz must not masquerade as the USB-C route.
+set_airpods_device 48000 1651275109
+expect_exit "Bluetooth-only AirPods fail HAL" 1 --hal
+expect_output_contains "Bluetooth-only diagnosis" "Bluetooth does not satisfy the USB-C route"
+check_json_flag "Bluetooth-only JSON fails USB check" 'd["airpods"]["usb_transport"] is False and d["airpods"]["rate_48000"] is False' --hal --json
+
+saved_bridge_bin="$APM44_BRIDGE_BIN"
+export APM44_BRIDGE_BIN="$TMP/missing-bridge"
+expect_exit "missing Core Audio enumerator fails closed" 1 --hal
+expect_output_contains "missing enumerator diagnosis" "cannot verify AirPods USB output"
+export APM44_BRIDGE_BIN="$saved_bridge_bin"
+
+# Core Audio may show the USB output even when system_profiler only lists Bluetooth.
+set_profile 'Audio:
+
+    Devices:
+
+        APM44 Bridge:
+            Current SampleRate: 44100
+
+        AirPods Max von Nikolay:
+            Output Channels: 2
+            Current SampleRate: 48000
+            Transport: Bluetooth'
+expect_exit "USB output hidden from system_profiler still passes" 0 --hal
+expect_output_contains "USB output named in result" "PASS: AirPods USB nominal 48000"
+
 # 2. Fallback valid, no APM44 -> --fallback exit 0, default exit 1.
 set_profile "$FALLBACK_OK"
 expect_exit "fallback-ok --fallback exits 0" 0 --fallback
@@ -333,6 +374,7 @@ expect_exit "wrong apm44 rate --hal fails" 1 --hal
 expect_exit "wrong apm44 rate default fails" 1
 
 set_profile "$AIRPODS_WRONG"
+set_airpods_device 44100 1970496032
 expect_exit "wrong airpods rate --hal fails" 1 --hal
 expect_exit "wrong airpods rate --fallback fails" 1 --fallback
 
@@ -347,6 +389,7 @@ set_profile "$CROSS_TALK"
 expect_exit "cross-talk apm44 without rate fails" 1 --hal
 
 set_profile "$CROSS_TALK_AIRPODS"
+set_airpods_device 44100 1970496032
 expect_exit "cross-talk airpods without rate fails" 1 --hal
 
 set_profile "$CROSS_TALK_FALLBACK"
@@ -363,6 +406,7 @@ expect_exit "available-rate trap blackhole fails --fallback" 1 --fallback
 check_json_flag "available-rate trap blackhole json false" 'd["blackhole"]["rate_44100"] is False' --fallback --json
 
 set_profile "$AIRPODS_AVAILABLE_TRAP"
+set_airpods_device 44100 1970496032
 expect_exit "available-rate trap airpods fails --hal" 1 --hal
 expect_exit "available-rate trap airpods fails --fallback" 1 --fallback
 check_json_flag "available-rate trap airpods json false" 'd["airpods"]["rate_48000"] is False' --hal --json
