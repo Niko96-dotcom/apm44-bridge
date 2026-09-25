@@ -82,7 +82,8 @@ for artifact in "$APP" "$DRIVER"; do
 done
 
 SCRIPTS="$ROOT/build/signing/pkg-scripts"
-rm -rf "$PAYLOAD" "$SCRIPTS"
+COMPONENT_PLIST="$ROOT/build/signing/pkg-components.plist"
+rm -rf "$PAYLOAD" "$SCRIPTS" "$COMPONENT_PLIST"
 mkdir -p "$PAYLOAD/Applications"
 mkdir -p "$PAYLOAD/Library/Audio/Plug-Ins/HAL"
 mkdir -p "$SCRIPTS"
@@ -90,9 +91,181 @@ mkdir -p "$SCRIPTS"
 ditto "$APP" "$PAYLOAD/Applications/APM44 Bridge.app"
 ditto "$DRIVER" "$PAYLOAD/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 
+pkgbuild --analyze --root "$PAYLOAD" "$COMPONENT_PLIST"
+
+python3 - "$COMPONENT_PLIST" <<'PYEOF'
+import plistlib
+import sys
+path = sys.argv[1]
+with open(path, 'rb') as f:
+    data = plistlib.load(f)
+
+def fix_bundle(d):
+    if not isinstance(d, dict):
+        return
+    d['BundleIsRelocatable'] = False
+    d['BundleIsVersionChecked'] = False
+    if 'BundleOverwriteAction' not in d:
+        d['BundleOverwriteAction'] = 'upgrade'
+    child = d.get('ChildBundles')
+    if isinstance(child, list):
+        for c in child:
+            fix_bundle(c)
+
+if isinstance(data, list):
+    for entry in data:
+        fix_bundle(entry)
+elif isinstance(data, dict):
+    def walk(o):
+        if isinstance(o, dict):
+            if 'RootRelativeBundlePath' in o:
+                fix_bundle(o)
+            else:
+                for v in o.values():
+                    walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(data)
+else:
+    print('error: unexpected component plist top-level type', file=sys.stderr)
+    sys.exit(1)
+
+def collect_paths(o, out):
+    if isinstance(o, dict):
+        if 'RootRelativeBundlePath' in o:
+            out.append(o.get('RootRelativeBundlePath'))
+        for v in o.values():
+            if isinstance(v, (dict, list)):
+                collect_paths(v, out)
+    elif isinstance(o, list):
+        for v in o:
+            collect_paths(v, out)
+
+paths = []
+collect_paths(data, paths)
+if 'Applications/APM44 Bridge.app' not in paths:
+    print('error: component plist missing Applications/APM44 Bridge.app', file=sys.stderr)
+    sys.exit(1)
+if 'Library/Audio/Plug-Ins/HAL/APM44Bridge.driver' not in paths:
+    print('error: component plist missing Library/Audio/Plug-Ins/HAL/APM44Bridge.driver', file=sys.stderr)
+    sys.exit(1)
+
+with open(path, 'wb') as f:
+    plistlib.dump(data, f, fmt=plistlib.FMT_XML)
+PYEOF
+
 cat > "$SCRIPTS/preinstall" <<'PRE'
 #!/bin/bash
 set -e
+# Downgrade guard: refuse to replace a newer installed version with this older package.
+PKG_VERSION="@APM44_PKG_VERSION@"
+TARGET="${3:-/}"
+# The replacement below always targets the startup disk, so installing onto
+# another volume would check one volume and delete from another.
+if [[ "$TARGET" != "/" && "${APM44_PREINSTALL_GUARD_ONLY:-}" != "1" ]]; then
+  echo "APM44 Bridge can only be installed on the startup disk (target: $TARGET)." >&2
+  exit 1
+fi
+if [[ "$TARGET" == "/" ]]; then
+  APP_INFO_PLIST="/Applications/APM44 Bridge.app/Contents/Info.plist"
+  DRIVER_INFO_PLIST="/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist"
+else
+  TARGET_TRIMMED="${TARGET%/}"
+  APP_INFO_PLIST="$TARGET_TRIMMED/Applications/APM44 Bridge.app/Contents/Info.plist"
+  DRIVER_INFO_PLIST="$TARGET_TRIMMED/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist"
+fi
+INSTALLED_APP_VERSION=""
+INSTALLED_DRIVER_VERSION=""
+if [[ -f "$APP_INFO_PLIST" ]]; then
+  INSTALLED_APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' "$APP_INFO_PLIST" 2>/dev/null || true)"
+fi
+if [[ -f "$DRIVER_INFO_PLIST" ]]; then
+  INSTALLED_DRIVER_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' "$DRIVER_INFO_PLIST" 2>/dev/null || true)"
+fi
+apm44_version_is_numeric() {
+  local _apm44_v="$1"
+  if [[ -z "$_apm44_v" ]]; then
+    return 1
+  fi
+  case "$_apm44_v" in
+    *[!0-9.]* ) return 1 ;;
+  esac
+  case "$_apm44_v" in
+    .*|*.|*..*) return 1 ;;
+  esac
+  case "$_apm44_v" in
+    *[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*) return 1 ;;
+  esac
+  return 0
+}
+# Fail closed: a present but unparseable installed version could be newer.
+apm44_require_parseable() {
+  local _apm44_label="$1"
+  local _apm44_v="$2"
+  [[ -z "$_apm44_v" ]] && return 0
+  apm44_version_is_numeric "$_apm44_v" && return 0
+  echo "Cannot compare the installed APM44 Bridge $_apm44_label version \"$_apm44_v\"; remove it and run the installer again." >&2
+  exit 1
+}
+apm44_version_gt() {
+  local _apm44_a="$1"
+  local _apm44_b="$2"
+  apm44_version_is_numeric "$_apm44_a" || return 1
+  apm44_version_is_numeric "$_apm44_b" || return 1
+  local _apm44_a_rest="$_apm44_a"
+  local _apm44_b_rest="$_apm44_b"
+  local _apm44_a_part=""
+  local _apm44_b_part=""
+  while [[ -n "$_apm44_a_rest" || -n "$_apm44_b_rest" ]]; do
+    case "$_apm44_a_rest" in
+      *.*)
+        _apm44_a_part="${_apm44_a_rest%%.*}"
+        _apm44_a_rest="${_apm44_a_rest#*.}"
+        ;;
+      *)
+        _apm44_a_part="$_apm44_a_rest"
+        _apm44_a_rest=""
+        ;;
+    esac
+    case "$_apm44_b_rest" in
+      *.*)
+        _apm44_b_part="${_apm44_b_rest%%.*}"
+        _apm44_b_rest="${_apm44_b_rest#*.}"
+        ;;
+      *)
+        _apm44_b_part="$_apm44_b_rest"
+        _apm44_b_rest=""
+        ;;
+    esac
+    if [[ -z "$_apm44_a_part" ]]; then
+      _apm44_a_part="0"
+    fi
+    if [[ -z "$_apm44_b_part" ]]; then
+      _apm44_b_part="0"
+    fi
+    if (( 10#$_apm44_a_part > 10#$_apm44_b_part )); then
+      return 0
+    fi
+    if (( 10#$_apm44_a_part < 10#$_apm44_b_part )); then
+      return 1
+    fi
+  done
+  return 1
+}
+apm44_require_parseable app "$INSTALLED_APP_VERSION"
+apm44_require_parseable driver "$INSTALLED_DRIVER_VERSION"
+if apm44_version_gt "$INSTALLED_APP_VERSION" "$PKG_VERSION"; then
+  echo "APM44 Bridge $INSTALLED_APP_VERSION is already installed; refusing to replace it with older $PKG_VERSION." >&2
+  exit 1
+fi
+if apm44_version_gt "$INSTALLED_DRIVER_VERSION" "$PKG_VERSION"; then
+  echo "APM44 Bridge $INSTALLED_DRIVER_VERSION is already installed; refusing to replace it with older $PKG_VERSION." >&2
+  exit 1
+fi
+if [[ "${APM44_PREINSTALL_GUARD_ONLY:-}" == "1" ]]; then
+  exit 0
+fi
 # Ask the existing app to quit, then terminate only helpers launched from the
 # installed app bundle. This avoids replacing a running old process image.
 CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
@@ -130,7 +303,14 @@ rm -rf "/Applications/APM44 Bridge.app"
 rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 exit 0
 PRE
+PREINSTALL_TMP="$SCRIPTS/preinstall.tmp"
+sed "s/@APM44_PKG_VERSION@/$VERSION/g" "$SCRIPTS/preinstall" > "$PREINSTALL_TMP"
+mv "$PREINSTALL_TMP" "$SCRIPTS/preinstall"
 chmod +x "$SCRIPTS/preinstall"
+if grep -Fq "@APM44_PKG_VERSION@" "$SCRIPTS/preinstall"; then
+  echo "error: preinstall version placeholder not substituted" >&2
+  exit 1
+fi
 
 cat > "$SCRIPTS/postinstall" <<'POST'
 #!/bin/bash
@@ -185,6 +365,7 @@ chmod +x "$SCRIPTS/postinstall"
 mkdir -p "$(dirname "$PKG")"
 rm -f "$PKG" "$UNSIGNED_PKG" "$LOCAL_UNSIGNED_PKG"
 pkgbuild --root "$PAYLOAD" --scripts "$SCRIPTS" \
+  --component-plist "$COMPONENT_PLIST" \
   --identifier com.niko.apm44.pkg --version "$VERSION" \
   "$UNSIGNED_PKG"
 
