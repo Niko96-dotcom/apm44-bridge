@@ -4,6 +4,8 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+## 0.12.12 - 2026-09-25
+
 - Fixed the installer deleting APM44 Bridge when an older package ran after a
   newer one was installed; it now refuses the downgrade and leaves the newer
   install in place.
