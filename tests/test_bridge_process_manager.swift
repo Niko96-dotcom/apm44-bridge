@@ -1069,4 +1069,125 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
         XCTAssertEqual(launcher.makeCount, 1)
     }
+
+    func testSettingsRestartWhileIdleLeavesApplyingFalse() async {
+        let (manager, _, launcher) = makeManager()
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertFalse(manager.isApplyingSettings)
+
+        await manager.restartForSettingsChange()
+
+        XCTAssertFalse(manager.isApplyingSettings)
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+    }
+
+    func testApplyingSettingsTrueDuringRestartThenFalse() async {
+        let launcher = MockProcessLauncher()
+        launcher.terminationDelayNanoseconds = 200_000_000
+        let (manager, _, _) = makeManager(launcher: launcher)
+
+        manager.start()
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertFalse(manager.isApplyingSettings)
+
+        let restartTask = Task { await manager.restartForSettingsChange() }
+
+        for _ in 0..<200 {
+            if case .stopping = manager.state { break }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        guard case .stopping = manager.state else {
+            XCTFail("Expected stopping while settings restart waits, got \(manager.state)")
+            await restartTask.value
+            return
+        }
+        XCTAssertTrue(manager.isApplyingSettings)
+
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await restartTask.value
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertFalse(manager.isApplyingSettings)
+    }
+
+    func testSettingsRestartCoalescingLaunchesAtMostOnceMore() async {
+        let launcher = MockProcessLauncher()
+        let (manager, settings, _) = makeManager(launcher: launcher)
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        let first = Task { await manager.restartForSettingsChange() }
+        for _ in 0..<200 {
+            if case .stopping = manager.state { break }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        guard case .stopping = manager.state else {
+            XCTFail("Expected stopping for in-flight restart, got \(manager.state)")
+            await first.value
+            return
+        }
+
+        settings.srcQualityOverride = .high
+        let second = Task { await manager.restartForSettingsChange() }
+        settings.srcQualityOverride = .best
+        let third = Task { await manager.restartForSettingsChange() }
+
+        for _ in 0..<300 {
+            if case .stopping = manager.state, let proc = launcher.lastProcess {
+                await launcher.fireTermination(for: proc)
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            if launcher.makeCount == 3, manager.state == .running { break }
+        }
+
+        await first.value
+        await second.value
+        await third.value
+
+        for _ in 0..<100 {
+            if launcher.makeCount == 3, manager.state == .running { break }
+            if case .stopping = manager.state, let proc = launcher.lastProcess {
+                await launcher.fireTermination(for: proc)
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(launcher.makeCount, 3)
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertFalse(manager.isApplyingSettings)
+        let args = launcher.lastProcess?.arguments ?? []
+        if let index = args.firstIndex(of: "--src-quality") {
+            XCTAssertEqual(args[index + 1], "best")
+        } else {
+            XCTFail("Last launch must carry --src-quality, got \(args)")
+        }
+    }
+
+    func testStartBlockedReasonUsesCachedValues() {
+        let (manager, _, _) = makeManager()
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertNil(manager.startBlockedReason)
+
+        manager.halBuildCheckOverride = (
+            halPresent: true,
+            appID: fixtureBuildID,
+            driverID: "0.12.7+other-build-mismatch"
+        )
+        XCTAssertEqual(manager.startBlockedReason, AppStrings.driverBuildMismatch)
+
+        manager.halBuildCheckOverride = (
+            halPresent: true,
+            appID: fixtureBuildID,
+            driverID: fixtureBuildID
+        )
+        XCTAssertNil(manager.startBlockedReason)
+    }
 }

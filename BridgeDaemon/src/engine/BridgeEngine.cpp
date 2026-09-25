@@ -559,7 +559,10 @@ void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>
     if (onTick) {
       onTick(*this);
     }
-    std::this_thread::sleep_for(kControlLoopInterval);
+    if (WaitForStopOrTimeout(kControlLoopInterval,
+                             [] { return gStopRequested != 0; })) {
+      break;
+    }
   }
   stop();
   const MetricsSnapshot stopped = metricsSnapshot();

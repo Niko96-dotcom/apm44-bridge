@@ -43,6 +43,10 @@ final class BridgeProcessManager: ObservableObject {
     @Published private(set) var connectionPhase: BridgeConnectionPhase = .stopped
     @Published private(set) var lastStopReason: StopReason?
     @Published private var noticeMessage: String?
+    @Published private(set) var isApplyingSettings = false
+    @Published private(set) var cachedAppBuildID: String?
+    @Published private(set) var cachedDriverBuildID: String?
+    @Published private(set) var cachedBinaryURL: URL?
 
     var bannerMessage: String? {
         get {
@@ -114,9 +118,26 @@ final class BridgeProcessManager: ObservableObject {
         self.processLauncher = processLauncher ?? LiveProcessLauncher()
         self.binaryURLOverride = binaryURLOverride
         self.applicationTerminator = applicationTerminator
+        self.cachedBinaryURL = binaryURLOverride ?? BridgeBinaryLocator.resolve()
     }
 
-    var binaryURL: URL? { binaryURLOverride ?? BridgeBinaryLocator.resolve() }
+    var binaryURL: URL? { binaryURLOverride ?? cachedBinaryURL }
+
+    /// Cached readiness for SwiftUI body paths: computed purely from
+    /// cached/published state, never probing Core Audio, disk, or the
+    /// file system. Caches refresh in refreshRoutingMode(),
+    /// refreshDevices(), and start().
+    var startBlockedReason: String? {
+        BridgeStartReadiness.blockedReason(
+            binaryMissing: binaryURL == nil,
+            selectedUid: settings.outputDeviceUid,
+            devices: devices,
+            lastKnownName: deviceDisplayName,
+            halDevicePresent: routingMode == .halVirtualDevice,
+            appBuildID: cachedAppBuildID,
+            driverBuildID: cachedDriverBuildID
+        )
+    }
 
     var isTransitioning: Bool {
         switch state {
@@ -169,13 +190,43 @@ final class BridgeProcessManager: ObservableObject {
     /// Injectable HAL build check for deterministic tests:
     /// `(halPresent, appID, driverID)`. When nil, `start()` reads the live
     /// HAL enumeration and the two small Info.plists. No helper commands run.
-    internal var halBuildCheckOverride: (halPresent: Bool, appID: String?, driverID: String?)?
+    internal var halBuildCheckOverride: (halPresent: Bool, appID: String?, driverID: String?)? {
+        didSet {
+            if let override = halBuildCheckOverride {
+                updateReadinessCaches(
+                    halPresent: override.halPresent,
+                    appID: override.appID,
+                    driverID: override.driverID
+                )
+            }
+        }
+    }
+
+    private func updateReadinessCaches(halPresent: Bool, appID: String?, driverID: String?) {
+        let mode: RoutingMode = halPresent ? .halVirtualDevice : .blackHoleFallback
+        if routingMode != mode { routingMode = mode }
+        if cachedAppBuildID != appID { cachedAppBuildID = appID }
+        if cachedDriverBuildID != driverID { cachedDriverBuildID = driverID }
+    }
+
+    private func resolveCachedBinaryURL() {
+        guard binaryURLOverride == nil else { return }
+        let resolved = BridgeBinaryLocator.resolve()
+        if cachedBinaryURL != resolved { cachedBinaryURL = resolved }
+    }
+
+    private func settleApplyingSettings() {
+        if restartTask == nil, pendingRestartReason == nil, isApplyingSettings {
+            isApplyingSettings = false
+        }
+    }
 
     @discardableResult
     func refreshDevices() async -> Bool {
         hotplugRefreshGeneration += 1
         let refreshGeneration = hotplugRefreshGeneration
         refreshRoutingMode()
+        resolveCachedBinaryURL()
         if let override = testDeviceListOverride {
             applyRefreshedDeviceList(override)
             return true
@@ -237,7 +288,20 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func refreshRoutingMode() {
-        routingMode = HalDriverDetector.isHalInstalled() ? .halVirtualDevice : .blackHoleFallback
+        if let override = halBuildCheckOverride {
+            updateReadinessCaches(
+                halPresent: override.halPresent,
+                appID: override.appID,
+                driverID: override.driverID
+            )
+        } else {
+            let halPresent = HalDriverDetector.isHalInstalled()
+            updateReadinessCaches(
+                halPresent: halPresent,
+                appID: HalDriverDetector.appBuildID(),
+                driverID: HalDriverDetector.driverBuildID()
+            )
+        }
         updateConnectionPhase()
     }
 
@@ -253,6 +317,7 @@ final class BridgeProcessManager: ObservableObject {
             lastUnexpectedExitStatus = nil
             lastUnexpectedStderr = nil
         }
+        resolveCachedBinaryURL()
         guard let url = binaryURL else {
             logger.error("Bridge start blocked: missing binary")
             state = .error(AppStrings.bridgeNotFound)
@@ -284,7 +349,8 @@ final class BridgeProcessManager: ObservableObject {
         // derive it from the same `halPresent` used for gating. This keeps
         // `connectionPhase`, `buildArguments`, and target fill consistent.
         // No silent fallback: HAL present + ID mismatch still errors below.
-        routingMode = halPresent ? .halVirtualDevice : .blackHoleFallback
+        // Store the gate inputs in the readiness caches for SwiftUI.
+        updateReadinessCaches(halPresent: halPresent, appID: appID, driverID: driverID)
         if halPresent,
            !HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: driverID) {
             let displayApp = HalDriverDetector.normalizedBuildID(appID)
@@ -418,6 +484,7 @@ final class BridgeProcessManager: ObservableObject {
             lastStopReason = nil
             clearPipeHandlers()
         }
+        settleApplyingSettings()
         return false
     }
 
@@ -447,12 +514,14 @@ final class BridgeProcessManager: ObservableObject {
         if let existing = restartTask {
             pendingRestartReason = reason
             await existing.value
+            settleApplyingSettings()
             return
         }
 
         switch state {
         case .starting, .stopping:
             pendingRestartReason = reason
+            settleApplyingSettings()
             return
         default:
             break
@@ -469,10 +538,18 @@ final class BridgeProcessManager: ObservableObject {
             pendingRestartReason = nil
             await restart(reason: pending)
         }
+        settleApplyingSettings()
     }
 
     func restartForSettingsChange() async {
+        switch state {
+        case .running, .reconnecting, .error:
+            if !isApplyingSettings { isApplyingSettings = true }
+        default:
+            break
+        }
         await restart(reason: .settingsChange)
+        settleApplyingSettings()
     }
 
     private func performRestart(reason: StopReason) async {
@@ -846,12 +923,17 @@ final class BridgeProcessManager: ObservableObject {
         lastStopReason = nil
         resumeTerminationWaiters()
         drainPendingRestart()
+        settleApplyingSettings()
     }
 
     private func drainPendingRestart() {
         guard let pending = pendingRestartReason else { return }
+        // Coalescing: when a restart is already in flight its wrapper loop
+        // drains the pending reason. Spawning a second task here would
+        // launch an extra daemon. Only spawn when no restart is running.
+        guard restartTask == nil else { return }
         pendingRestartReason = nil
-        Task { await restart(reason: pending) }
+        Task { @MainActor in await restart(reason: pending) }
     }
 
     private func resumeTerminationWaiters() {
@@ -945,6 +1027,7 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func handleTermination(_ proc: Process) {
+        defer { settleApplyingSettings() }
         // A late callback from an old child must never clear state belonging
         // to a replacement process.
         guard process === proc else { return }
