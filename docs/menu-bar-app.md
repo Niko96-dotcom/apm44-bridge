@@ -44,6 +44,16 @@ The menu bar panel owns normal bridge lifecycle actions:
 - **Setup** reopens first-run checks. Incomplete first-run uses **Skip Setup**; completed checks use **Done**.
 - **Cubase setup guide** and **Help → APM44 Bridge Setup** are named help entries.
 
+Changing Output, Buffering, or Quality triggers a coalesced helper restart:
+rapid changes collapse into one restart, and the panel shows **Applying…**
+until the relaunched helper reports back.
+
+Update checks run automatically at every launch and daily. **Check for
+Updates…** in the panel footer and the app menu triggers a manual check.
+
+Start readiness is cached from the last device and build-identity refresh, not
+probed per render.
+
 The menu-bar extra is a template image: headphones when stopped, waveform when running. Color is not the only running/stopped signal.
 
 Quit is intentionally an app lifecycle action only. It does not install,

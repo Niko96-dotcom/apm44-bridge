@@ -5,11 +5,36 @@
 [![CodeQL](https://github.com/Niko96-dotcom/apm44-bridge/actions/workflows/codeql.yml/badge.svg)](https://github.com/Niko96-dotcom/apm44-bridge/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-APM44 Bridge is a macOS audio bridge for producers who want to keep DAW
-sessions at **44.1 kHz** while monitoring through **AirPods Max USB-C at
-48 kHz**.
+APM44 Bridge is for producers who track and mix at 44.1 kHz but monitor on
+AirPods Max connected over USB-C, which run at 48 kHz. It presents a virtual
+44.1 kHz Core Audio output device to the DAW and resamples to the headphones in
+user space, so the session rate never has to change.
 
-Production path:
+## Download
+
+Download the latest release (signed, notarized DMG containing a signed PKG):
+[GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases/latest).
+
+Requirements: macOS 14 or newer, Apple silicon or Intel Mac, AirPods Max over
+USB-C. See the [end-user install guide](docs/install.md).
+
+## Features
+
+- A virtual 44.1 kHz output device, **APM44 Bridge**, that any DAW can select.
+- High-quality resampling to 48 kHz (libsamplerate) with automatic clock-drift correction.
+- Picks your USB-C AirPods Max automatically and lists other compatible 48 kHz outputs.
+- **Buffering** presets (Low, Balanced, Safe) and resampling **Quality** (Standard, High, Best).
+- Lives in the menu bar, with Start/Stop, Open at login and guided Setup.
+- Updates itself: checks at launch, or on demand with **Check for Updates…**; app and driver always update together.
+- Clear guidance when the audio driver needs a reload or reinstall.
+
+## Quick start
+
+1. Open the DMG from the [latest release](https://github.com/Niko96-dotcom/apm44-bridge/releases/latest) and run the installer. It installs the app and its audio driver, then opens the app.
+2. In the DAW, select **APM44 Bridge** as the audio output. In Cubase, assign Control Room Monitor L/R to **APM44 Bridge** — see the [Cubase first-run guide](docs/first-run-cubase.md).
+3. In the menu-bar app, pick the AirPods output and press **Start**.
+
+## How it works
 
 ```text
 Cubase 15 / DAW at 44.1 kHz
@@ -22,10 +47,8 @@ The headphones are not retuned to 44.1 kHz. APM44 Bridge presents a virtual
 44.1 kHz Core Audio output device upstream, resamples in user space, handles
 clock drift, and plays to the physical 48 kHz endpoint.
 
-The v1.1 release-confidence target is **Cubase 15** with **AirPods Max over
-USB-C**. Logic Pro and Ableton Live remain documented matrix targets, but they
-are not broader release claims until their hardware/operator validation is
-recorded.
+Tested with Cubase 15. Logic Pro and Ableton Live are not yet validated — see
+the [DAW validation matrix](docs/daw-matrix.md).
 
 ## Status
 
@@ -35,17 +58,6 @@ recorded.
 | Bridge daemon `apm44-bridge` | libsamplerate conversion and drift control |
 | Menu bar app `APM44 Bridge` | virtual-device mode, latency presets, first-run checks, visible Quit control |
 | Release packaging | Developer ID signed PKG inside signed/notarized DMG |
-
-## Install
-
-Download the latest PKG-in-DMG release from
-[GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases).
-
-Start with:
-
-- [End-user install guide](docs/install.md)
-- [Cubase first-run guide](docs/first-run-cubase.md)
-- [30+ minute soak checklist](docs/cubase-soak.md)
 
 ## Development
 
