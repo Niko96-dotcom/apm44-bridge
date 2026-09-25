@@ -4,6 +4,13 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+- Changing Buffering or Quality is now much faster and no longer makes the
+  controls stutter: the menu stays responsive, shows "Applying…" with the
+  last readings instead of flashing Start/Stopped, and the helper restarts
+  about half a second sooner. Buffering segments now respond to clicks
+  anywhere in the segment, and re-selecting the current one no longer
+  restarts the bridge.
+
 ## 0.12.9 - 2026-09-25
 
 - When Core Audio is still running an older APM44 audio driver after an

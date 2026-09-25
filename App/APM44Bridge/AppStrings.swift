@@ -134,6 +134,7 @@ enum AppStrings {
     static var buildIDMissingPlaceholder: String { t("build_id_missing", "missing") }
     static var bridgeStatus: String { t("bridge_status", "Bridge status") }
     static var stopped: String { t("stopped", "Stopped") }
+    static var applyingSettings: String { t("applying_settings", "Applying…") }
     static var starting: String { t("starting", "Starting…") }
     static var stopping: String { t("stopping", "Stopping…") }
     static var reconnecting: String { t("reconnecting", "Reconnecting…") }

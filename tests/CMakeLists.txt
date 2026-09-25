@@ -19,6 +19,7 @@ function(apm44_add_test name)
 endfunction()
 
 apm44_add_test(test_audio_formats test_audio_formats.cpp)
+apm44_add_test(test_control_loop_wait test_control_loop_wait.cpp)
 apm44_add_test(test_hal_driver_contract test_hal_driver_contract.cpp)
 apm44_add_test(test_device_enumerator test_device_enumerator.cpp)
 apm44_add_test(test_planar_ring_buffer test_planar_ring_buffer.cpp)

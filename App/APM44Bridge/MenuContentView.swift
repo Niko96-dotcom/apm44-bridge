@@ -10,6 +10,7 @@ struct MenuContentView: View {
     @State private var showFirstRun = false
     @State private var showMonitoringDetails = false
     @State private var showErrorDetails = false
+    @State private var heldMetrics: BridgeMetricsSnapshot?
     /// Fixed layout geometry (see body `.padding(outerPadding)` +
     /// `.frame(width: contentWidth)`): menu pop-up bezels hug their label
     /// and segmented controls hug in window-hosted views, so equal
@@ -32,7 +33,7 @@ struct MenuContentView: View {
             controlCard
             updateSection
             primaryButtons
-            if let reason = startBlockedReason, showsStartButton {
+            if let reason = startBlockedReason, showsStartButton, !manager.isApplyingSettings {
                 Text(reason)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -69,6 +70,18 @@ struct MenuContentView: View {
         .task {
             _ = await manager.refreshDevices()
         }
+        .onAppear {
+            if let current = manager.latestMetrics { heldMetrics = current }
+        }
+        .onChange(of: manager.latestMetrics) { _, new in
+            if let new { heldMetrics = new }
+        }
+        .onChange(of: manager.state) { _, _ in
+            clearHeldMetricsIfSettled()
+        }
+        .onChange(of: manager.isApplyingSettings) { _, _ in
+            clearHeldMetricsIfSettled()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchAtLogin.refresh()
         }
@@ -103,8 +116,9 @@ struct MenuContentView: View {
 
             Spacer(minLength: 8)
 
-            if manager.isRunning, let metrics = manager.latestMetrics {
+            if let metrics = effectiveDetailMetrics {
                 latencyBadge(metrics)
+                    .opacity(showsHeldMetrics ? 0.5 : 1)
             }
         }
         .accessibilityElement(children: .combine)
@@ -218,16 +232,15 @@ struct MenuContentView: View {
             HStack(spacing: 0) {
                 ForEach(Array(LatencyPreset.allCases.enumerated()), id: \.element) { index, preset in
                     let selected = preset == settings.latencyPreset
-                    if index > 0,
-                       LatencyPreset.allCases[index - 1] != settings.latencyPreset,
-                       !selected {
+                    if index > 0 {
+                        let hideSeparator = LatencyPreset.allCases[index - 1] == settings.latencyPreset || selected
                         Rectangle()
                             .fill(Color.primary.opacity(0.18))
                             .frame(width: 1, height: 14)
+                            .opacity(hideSeparator ? 0 : 1)
                     }
                     Button {
-                        settings.latencyPreset = preset
-                        Task { await manager.restartForSettingsChange() }
+                        selectLatency(preset)
                     } label: {
                         Text(preset.shortTitle)
                             .font(.system(size: 13))
@@ -238,6 +251,7 @@ struct MenuContentView: View {
                                     .fill(selected ? Color.accentColor : Color.clear)
                             )
                             .foregroundStyle(selected ? .white : .primary)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(preset.shortTitle)
@@ -276,6 +290,12 @@ struct MenuContentView: View {
         }
     }
 
+    private func selectLatency(_ preset: LatencyPreset) {
+        guard settings.latencyPreset != preset else { return }
+        settings.latencyPreset = preset
+        Task { await manager.restartForSettingsChange() }
+    }
+
     private func selectQuality(_ quality: SrcQuality) {
         guard settings.effectiveSrcQuality != quality else { return }
         settings.srcQualityOverride = quality
@@ -297,7 +317,7 @@ struct MenuContentView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(manager.isTransitioning)
+                    .disabled(manager.isTransitioning || manager.isApplyingSettings)
                     .accessibilityLabel(AppStrings.stopBridge)
                     .accessibilityIdentifier("stop-bridge")
                 }
@@ -311,7 +331,7 @@ struct MenuContentView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(manager.isTransitioning || startBlockedReason != nil)
+                .disabled(manager.isTransitioning || manager.isApplyingSettings || startBlockedReason != nil)
                 .accessibilityLabel(AppStrings.restart)
                 .accessibilityIdentifier("restart-bridge")
             }
@@ -405,6 +425,7 @@ struct MenuContentView: View {
     }
 
     private var showsStartButton: Bool {
+        if manager.isApplyingSettings { return false }
         switch manager.state {
         case .idle, .error: return true
         case .starting, .running, .stopping, .reconnecting: return false
@@ -412,6 +433,7 @@ struct MenuContentView: View {
     }
 
     private var showsStopButton: Bool {
+        if manager.isApplyingSettings { return true }
         switch manager.state {
         case .running, .reconnecting: return true
         case .idle, .starting, .stopping, .error: return false
@@ -419,15 +441,37 @@ struct MenuContentView: View {
     }
 
     private var showsRestartButton: Bool {
+        if manager.isApplyingSettings { return true }
         switch manager.state {
         case .running, .error: return true
         case .idle, .starting, .stopping, .reconnecting: return false
         }
     }
 
+    /// While settings apply, and until the relaunched daemon's first tick,
+    /// the last snapshot stays visible (dimmed) so the layout never jumps.
+    private var effectiveDetailMetrics: BridgeMetricsSnapshot? {
+        if manager.isApplyingSettings || manager.isRunning {
+            return manager.latestMetrics ?? heldMetrics
+        }
+        return nil
+    }
+
+    private var showsHeldMetrics: Bool {
+        manager.latestMetrics == nil && effectiveDetailMetrics != nil
+    }
+
+    private func clearHeldMetricsIfSettled() {
+        guard !manager.isApplyingSettings else { return }
+        switch manager.state {
+        case .idle, .error: heldMetrics = nil
+        default: break
+        }
+    }
+
     private var statusDetail: some View {
         Group {
-            if manager.isRunning, let metrics = manager.latestMetrics {
+            if let metrics = effectiveDetailMetrics {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
@@ -483,6 +527,7 @@ struct MenuContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .opacity(showsHeldMetrics ? 0.5 : 1)
             } else if case .error(let message) = manager.state,
                       errorHasContent(message) {
                 errorDetailView(message: message)
@@ -501,8 +546,10 @@ struct MenuContentView: View {
 
     /// The details section only exists when it holds content: live metrics,
     /// or an error with recovery guidance/a diagnostic. No empty chrome.
+    /// While settings are being applied the last seen snapshot stays visible
+    /// (dimmed) so the popover height does not jump.
     private var showsStatusDetail: Bool {
-        if manager.isRunning, manager.latestMetrics != nil { return true }
+        if effectiveDetailMetrics != nil { return true }
         if case .error(let message) = manager.state { return errorHasContent(message) }
         return false
     }
@@ -651,18 +698,13 @@ struct MenuContentView: View {
     }
 
     private var startBlockedReason: String? {
-        BridgeStartReadiness.blockedReason(
-            binaryMissing: manager.binaryURL == nil,
-            selectedUid: settings.outputDeviceUid,
-            devices: manager.devices,
-            lastKnownName: manager.deviceDisplayName,
-            halDevicePresent: HalDriverDetector.isHalInstalled(),
-            appBuildID: HalDriverDetector.appBuildID(),
-            driverBuildID: HalDriverDetector.driverBuildID()
-        )
+        manager.startBlockedReason
     }
 
     private var statusText: String {
+        if manager.isApplyingSettings {
+            return AppStrings.applyingSettings
+        }
         if manager.isRunning {
             return manager.connectionPhase.label
         }
@@ -697,6 +739,7 @@ struct MenuContentView: View {
     }
 
     private var statusSymbol: String {
+        if manager.isApplyingSettings { return "arrow.triangle.2.circlepath" }
         switch manager.state {
         case .error: return "exclamationmark.triangle.fill"
         case .reconnecting: return "arrow.triangle.2.circlepath"
@@ -706,6 +749,7 @@ struct MenuContentView: View {
     }
 
     private var statusTint: Color {
+        if manager.isApplyingSettings { return .orange }
         switch manager.state {
         case .error: return .red
         case .reconnecting, .starting: return .orange

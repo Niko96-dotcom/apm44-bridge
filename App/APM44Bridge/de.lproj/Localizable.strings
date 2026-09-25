@@ -68,6 +68,7 @@
 "driver_build_mismatch_detail %@ %@" = "Treiber-Build %@ weicht vom App-Build %@ ab — passenden Treiber neu installieren.";
 "bridge_status" = "Brückenstatus";
 "stopped" = "Gestoppt";
+"applying_settings" = "Wird angewendet…";
 "starting" = "Startet …";
 "stopping" = "Stoppt …";
 "reconnecting" = "Verbindet neu …";
