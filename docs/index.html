@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>APM44 Bridge</title>
+  <meta name="description" content="Keep your DAW at 44.1 kHz and monitor on AirPods Max over USB-C at 48 kHz. A macOS menu-bar app with a virtual Core Audio device and drift-corrected resampling.">
+  <meta property="og:title" content="APM44 Bridge">
+  <meta property="og:description" content="Keep your DAW at 44.1 kHz and monitor on AirPods Max over USB-C at 48 kHz.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://niko96-dotcom.github.io/apm44-bridge/">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1d1d1f;
+      --muted: #5f6368;
+      --card: #f5f5f7;
+      --border: #e2e2e6;
+      --accent: #0a66d8;
+      --accent-fg: #ffffff;
+      --code-bg: #f0f0f3;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111113;
+        --fg: #f2f2f4;
+        --muted: #a0a0a8;
+        --card: #1c1c1f;
+        --border: #2c2c31;
+        --accent: #4c9aff;
+        --accent-fg: #0b1320;
+        --code-bg: #1f1f23;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 17px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 56px 20px 72px; }
+    h1 { font-size: 44px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 16px; }
+    h2 { font-size: 22px; letter-spacing: -0.01em; margin: 48px 0 12px; }
+    p { margin: 0 0 14px; }
+    .lede { font-size: 20px; color: var(--muted); margin-bottom: 28px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 14px; }
+    .button {
+      display: inline-block;
+      background: var(--accent);
+      color: var(--accent-fg);
+      font-weight: 600;
+      padding: 12px 22px;
+      border-radius: 10px;
+    }
+    .button:hover { text-decoration: none; filter: brightness(1.08); }
+    .secondary { font-weight: 500; }
+    .req { color: var(--muted); font-size: 15px; }
+    ol, ul { padding-left: 22px; margin: 0 0 14px; }
+    li { margin: 6px 0; }
+    .flow {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin: 0 0 16px;
+      display: grid;
+      gap: 8px;
+    }
+    .flow div { display: flex; gap: 10px; align-items: baseline; }
+    .flow .rate { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .flow .arrow { color: var(--muted); padding-left: 4px; }
+    code { background: var(--code-bg); border-radius: 5px; padding: 1px 5px; font: 0.9em ui-monospace, "SF Mono", Menlo, monospace; }
+    .note { color: var(--muted); font-size: 15px; }
+    footer { border-top: 1px solid var(--border); margin-top: 56px; padding-top: 20px; font-size: 15px; color: var(--muted); }
+    footer a { margin-right: 18px; }
+    @media (max-width: 520px) {
+      h1 { font-size: 34px; }
+      .flow div { flex-wrap: wrap; }
+      .flow .rate { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>APM44 Bridge</h1>
+  <p class="lede">Keep your DAW at 44.1&nbsp;kHz and monitor on AirPods&nbsp;Max over USB-C, which runs at 48&nbsp;kHz. APM44 Bridge adds a virtual 44.1&nbsp;kHz output device and resamples to your headphones, so the session rate never has to change.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/Niko96-dotcom/apm44-bridge/releases/latest">Download for macOS</a>
+    <a class="secondary" href="https://github.com/Niko96-dotcom/apm44-bridge">View on GitHub</a>
+  </div>
+  <p class="req">macOS 14 or newer &middot; Apple silicon or Intel &middot; AirPods Max over USB-C &middot; Free and open source (MIT)</p>
+
+  <h2>Quick start</h2>
+  <ol>
+    <li>Open the DMG and run the installer. It installs the app and its audio driver, then opens the app.</li>
+    <li>In your DAW, choose <strong>APM44 Bridge</strong> as the audio output. In Cubase, assign Control Room Monitor L/R to <strong>APM44 Bridge</strong>.</li>
+    <li>In the menu-bar app, pick your AirPods and press <strong>Start</strong>.</li>
+  </ol>
+  <p>Step-by-step: <a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/docs/install.md">install guide</a> and <a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/docs/first-run-cubase.md">Cubase first-run guide</a>.</p>
+
+  <h2>Features</h2>
+  <ul>
+    <li>A virtual 44.1&nbsp;kHz output device, <strong>APM44 Bridge</strong>, that any DAW can select.</li>
+    <li>High-quality resampling to 48&nbsp;kHz (libsamplerate) with automatic clock-drift correction.</li>
+    <li>Picks your USB-C AirPods Max automatically and lists other compatible 48&nbsp;kHz outputs.</li>
+    <li><strong>Buffering</strong> presets (Low, Balanced, Safe) and resampling <strong>Quality</strong> (Standard, High, Best).</li>
+    <li>Lives in the menu bar, with Start/Stop, Open at login and guided Setup.</li>
+    <li>Updates itself: checks at launch, or on demand with <strong>Check for Updates…</strong>; app and driver always update together.</li>
+    <li>Clear guidance when the audio driver needs a reload or reinstall.</li>
+  </ul>
+
+  <h2>How it works</h2>
+  <div class="flow" role="img" aria-label="Signal path: DAW at 44.1 kHz, to the APM44 Bridge virtual output device at 44.1 kHz, to the apm44-bridge resampler, to AirPods Max USB-C at 48 kHz">
+    <div><span>Cubase 15 / your DAW</span><span class="rate">44.1 kHz</span></div>
+    <div><span class="arrow">&darr;</span></div>
+    <div><span>APM44 Bridge virtual output device</span><span class="rate">44.1 kHz</span></div>
+    <div><span class="arrow">&darr;</span></div>
+    <div><span><code>apm44-bridge</code> resampler with drift control</span></div>
+    <div><span class="arrow">&darr;</span></div>
+    <div><span>AirPods Max over USB-C</span><span class="rate">48 kHz</span></div>
+  </div>
+  <p>The headphones are never retuned to 44.1&nbsp;kHz. APM44 Bridge presents a virtual 44.1&nbsp;kHz Core Audio device upstream, resamples in user space, corrects clock drift, and plays to the physical 48&nbsp;kHz endpoint.</p>
+  <p class="note">Tested with Cubase 15. Logic Pro and Ableton Live are not yet validated — see the <a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/docs/daw-matrix.md">DAW validation matrix</a>. BlackHole is an optional legacy route and is not required.</p>
+
+  <h2>Guides</h2>
+  <ul>
+    <li><a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/docs/install.md">Install and daily use</a></li>
+    <li><a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/docs/first-run-cubase.md">Cubase 15 first-run setup</a></li>
+    <li><a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/docs/cubase-soak.md">30+ minute soak checklist</a></li>
+    <li><a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/docs/menu-bar-app.md">Menu bar app</a> and <a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/docs/hal-driver.md">HAL driver</a> internals</li>
+    <li><a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md">Changelog</a></li>
+  </ul>
+
+  <footer>
+    <a href="https://github.com/Niko96-dotcom/apm44-bridge">Source code</a>
+    <a href="https://github.com/Niko96-dotcom/apm44-bridge/issues">Report an issue</a>
+    <a href="https://github.com/Niko96-dotcom/apm44-bridge/blob/main/LICENSE">MIT License</a>
+  </footer>
+</main>
+</body>
+</html>
