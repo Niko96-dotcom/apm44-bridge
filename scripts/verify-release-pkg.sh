@@ -109,6 +109,32 @@ require_script_marker "$preinstall" 'pkill -KILL -f "$APP_PATTERN"'
 require_script_marker "$postinstall" "APM44 Bridge.app missing after install"
 require_script_marker "$postinstall" "APM44Bridge.driver missing after install"
 require_script_marker "$postinstall" "Installed app/driver/helper build ID mismatch"
+require_script_marker "$preinstall" "refusing to replace it with older"
+if grep -Fq "@APM44_PKG_VERSION@" "$preinstall"; then
+  fail "preinstall contains unsubstituted @APM44_PKG_VERSION@ placeholder"
+fi
+
+package_info="$(find "$expanded" -type f -name PackageInfo | head -1)"
+[[ -n "$package_info" ]] || fail "expanded pkg missing PackageInfo"
+package_info_problem="$(python3 - "$package_info" <<'PYEOF'
+import sys
+import xml.etree.ElementTree as ET
+
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+except ET.ParseError as error:
+    print(f"PackageInfo is not valid XML: {error}")
+    sys.exit(0)
+relocated = [b.get("id") for r in root.iter("relocate") for b in r.iter("bundle")]
+if relocated:
+    print("PackageInfo contains <relocate> bundle entries (bundles must be non-relocatable): " + ", ".join(map(str, relocated)))
+    sys.exit(0)
+checked = [b.get("id") for v in root.iter("bundle-version") for b in v.iter("bundle")]
+if checked:
+    print("PackageInfo contains <bundle-version> entries (no bundle may be version-checked): " + ", ".join(map(str, checked)))
+PYEOF
+)"
+[[ -z "$package_info_problem" ]] || fail "$package_info_problem"
 
 BRIDGE="${APM44_BRIDGE_BIN:-$ROOT/build/BridgeDaemon/apm44-bridge}"
 version_out="unavailable"

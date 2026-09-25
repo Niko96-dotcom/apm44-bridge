@@ -4,6 +4,12 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+- Fixed the installer deleting APM44 Bridge when an older package ran after a
+  newer one was installed; it now refuses the downgrade and leaves the newer
+  install in place.
+- The installer now always installs into /Applications and the system HAL
+  folder instead of updating another copy of the app it finds on the Mac.
+
 ## 0.12.11 - 2026-09-25
 
 - The app now checks for updates each time it starts, so a new release shows

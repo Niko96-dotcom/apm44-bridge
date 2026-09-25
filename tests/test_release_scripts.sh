@@ -227,6 +227,59 @@ cat >"$FAKE_BIN/pkgbuild" <<'EOF'
 set -euo pipefail
 log="${APM44_FAKE_XCRUN_LOG:?}"
 printf '%s\n' "pkgbuild $*" >>"$log"
+is_analyze=0
+for arg in "$@"; do
+  if [[ "$arg" == "--analyze" ]]; then
+    is_analyze=1
+    break
+  fi
+done
+if [[ "$is_analyze" == "1" ]]; then
+  out="${@: -1}"
+  mkdir -p "$(dirname "$out")"
+  cat >"$out" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+  <dict>
+    <key>RootRelativeBundlePath</key>
+    <string>Applications/APM44 Bridge.app</string>
+    <key>BundleIsRelocatable</key>
+    <true/>
+    <key>BundleIsVersionChecked</key>
+    <true/>
+    <key>BundleOverwriteAction</key>
+    <string>upgrade</string>
+    <key>ChildBundles</key>
+    <array>
+      <dict>
+        <key>RootRelativeBundlePath</key>
+        <string>Applications/APM44 Bridge.app/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app</string>
+        <key>BundleIsRelocatable</key>
+        <true/>
+        <key>BundleIsVersionChecked</key>
+        <true/>
+        <key>BundleOverwriteAction</key>
+        <string>upgrade</string>
+      </dict>
+    </array>
+  </dict>
+  <dict>
+    <key>RootRelativeBundlePath</key>
+    <string>Library/Audio/Plug-Ins/HAL/APM44Bridge.driver</string>
+    <key>BundleIsRelocatable</key>
+    <true/>
+    <key>BundleIsVersionChecked</key>
+    <true/>
+    <key>BundleOverwriteAction</key>
+    <string>upgrade</string>
+  </dict>
+</array>
+</plist>
+PLIST
+  exit 0
+fi
 out="${@: -1}"
 mkdir -p "$(dirname "$out")"
 printf 'unsigned pkg\n' >"$out"
@@ -363,6 +416,7 @@ case "${1:-}" in
     cat >"$dest/Scripts/preinstall" <<'PRE'
 #!/bin/bash
 set -e
+# refusing to replace it with older - downgrade guard marker
 APP_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
 if pgrep -f "$APP_PATTERN" >/dev/null 2>&1; then
   echo "Terminating running APM44 Bridge before replacing the app" >&2
@@ -380,6 +434,48 @@ set -e
 [[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
 echo "Installed app/driver/helper build ID mismatch" >&2
 POST
+    if [[ "${APM44_FAKE_PKGINFO_MODE:-good}" == "bad-version-checked" ]]; then
+      cat >"$dest/PackageInfo" <<'PKGINFO'
+<?xml version="1.0" encoding="utf-8"?>
+<pkg-info overwrite-permissions="true" relocatable="false" identifier="com.niko.apm44.pkg" version="0.12.11" format-version="2" auth="root">
+    <payload numberOfFiles="1" installKBytes="1"/>
+    <bundle path="./Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" id="com.niko.apm44.bridge" CFBundleShortVersionString="0.12.11" CFBundleVersion="0.12.11"/>
+    <bundle-version>
+        <bundle id="com.niko.apm44.bridge"/>
+    </bundle-version>
+    <relocate/>
+</pkg-info>
+PKGINFO
+    elif [[ "${APM44_FAKE_PKGINFO_MODE:-good}" == "bad-relocate" ]]; then
+      cat >"$dest/PackageInfo" <<'PKGINFO'
+<?xml version="1.0" encoding="utf-8"?>
+<pkg-info overwrite-permissions="true" relocatable="false" identifier="com.niko.apm44.pkg" version="0.12.11" format-version="2" auth="root">
+    <payload numberOfFiles="1" installKBytes="1"/>
+    <bundle path="./Applications/APM44 Bridge.app" id="com.niko.apm44.menu" CFBundleShortVersionString="0.12.11" CFBundleVersion="0.12.11"/>
+    <bundle path="./Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" id="com.niko.apm44.bridge" CFBundleShortVersionString="0.12.11" CFBundleVersion="0.12.11"/>
+    <bundle-version/>
+    <relocate><bundle id="com.niko.apm44.menu"/></relocate>
+</pkg-info>
+PKGINFO
+    else
+      cat >"$dest/PackageInfo" <<'PKGINFO'
+<?xml version="1.0" encoding="utf-8"?>
+<pkg-info overwrite-permissions="true" relocatable="false" identifier="com.niko.apm44.pkg" version="0.12.11" format-version="2" auth="root">
+    <payload numberOfFiles="1" installKBytes="1"/>
+    <bundle path="./Applications/APM44 Bridge.app" id="com.niko.apm44.menu" CFBundleShortVersionString="0.12.11" CFBundleVersion="0.12.11"/>
+    <bundle path="./Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" id="com.niko.apm44.bridge" CFBundleShortVersionString="0.12.11" CFBundleVersion="0.12.11"/>
+    <bundle-version/>
+    <upgrade-bundle>
+        <bundle id="com.niko.apm44.menu"/>
+        <bundle id="com.niko.apm44.bridge"/>
+    </upgrade-bundle>
+    <strict-identifier>
+        <bundle id="com.niko.apm44.menu"/>
+    </strict-identifier>
+    <relocate/>
+</pkg-info>
+PKGINFO
+    fi
     ;;
   *)
     echo "unsupported fake pkgutil command: $*" >&2
@@ -563,6 +659,128 @@ run_pkg_replacement_script_check() {
   assert_contains "$postinstall" 'chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver'
   assert_contains "$postinstall" 'APM44 Bridge.app missing after install'
   assert_contains "$postinstall" 'APM44Bridge.driver missing after install'
+
+  assert_contains "$LOG" "--component-plist"
+  local component_plist="$ROOT/build/signing/pkg-components.plist"
+  [[ -f "$component_plist" ]] || { echo "expected component plist at $component_plist" >&2; exit 1; }
+  python3 - "$component_plist" <<'PYEOF'
+import plistlib
+import sys
+path = sys.argv[1]
+with open(path, 'rb') as f:
+    data = plistlib.load(f)
+def walk(o):
+    if isinstance(o, dict):
+        if 'RootRelativeBundlePath' in o:
+            if o.get('BundleIsRelocatable') is not False:
+                raise SystemExit("BundleIsRelocatable not false for %r" % (o.get('RootRelativeBundlePath'),))
+            if o.get('BundleIsVersionChecked') is not False:
+                raise SystemExit("BundleIsVersionChecked not false for %r" % (o.get('RootRelativeBundlePath'),))
+        for v in o.values():
+            walk(v)
+    elif isinstance(o, list):
+        for v in o:
+            walk(v)
+walk(data)
+PYEOF
+  local pkg_version
+  pkg_version="$(/bin/bash "$ROOT/scripts/read-version.sh")"
+  assert_contains "$preinstall" "$pkg_version"
+  assert_not_contains "$preinstall" "@APM44_PKG_VERSION@"
+  assert_contains "$preinstall" "refusing to replace it with older"
+}
+
+write_guard_test_plist() {
+  local plist="$1"
+  local ver="$2"
+  mkdir -p "$(dirname "$plist")"
+  rm -f "$plist"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $ver" "$plist"
+}
+
+run_preinstall_guard_case() {
+  local preinstall="$1"
+  local target="$2"
+  local expected_status="$3"
+  local label="$4"
+  local out="$TMP/$label.out"
+  local err="$TMP/$label.err"
+  local status=0
+  if env APM44_PREINSTALL_GUARD_ONLY=1 /bin/bash "$preinstall" "$PKG" "/" "$target" >"$out" 2>"$err"; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" != "$expected_status" ]]; then
+    echo "$label: expected exit $expected_status, got $status" >&2
+    cat "$out" "$err" >&2
+    exit 1
+  fi
+  if [[ "$expected_status" == "1" ]]; then
+    assert_contains "$err" "${5:-refusing to replace it with older}"
+  fi
+}
+
+run_preinstall_downgrade_guard_check() {
+  run_pkg_builder_case one success "pkg-guard-setup"
+
+  local preinstall="$ROOT/build/signing/pkg-scripts/preinstall"
+  local pkg_version
+  pkg_version="$(/bin/bash "$ROOT/scripts/read-version.sh")"
+  local target="$TMP/target"
+
+  rm -rf "$target"
+  mkdir -p "$target"
+  write_guard_test_plist "$target/Applications/APM44 Bridge.app/Contents/Info.plist" "99.0.0"
+  write_guard_test_plist "$target/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist" "$pkg_version"
+  run_preinstall_guard_case "$preinstall" "$target" "1" "preinstall-guard-newer-app"
+  [[ -d "$target/Applications/APM44 Bridge.app" ]] || { echo "downgrade guard must not delete fake app" >&2; exit 1; }
+  [[ -f "$target/Applications/APM44 Bridge.app/Contents/Info.plist" ]] || { echo "downgrade guard must not delete fake app plist" >&2; exit 1; }
+
+  rm -rf "$target"
+  mkdir -p "$target"
+  write_guard_test_plist "$target/Applications/APM44 Bridge.app/Contents/Info.plist" "$pkg_version"
+  write_guard_test_plist "$target/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist" "$pkg_version"
+  run_preinstall_guard_case "$preinstall" "$target" "0" "preinstall-guard-equal"
+
+  rm -rf "$target"
+  mkdir -p "$target"
+  write_guard_test_plist "$target/Applications/APM44 Bridge.app/Contents/Info.plist" "0.0.1"
+  write_guard_test_plist "$target/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist" "0.0.1"
+  run_preinstall_guard_case "$preinstall" "$target" "0" "preinstall-guard-older"
+
+  rm -rf "$target"
+  mkdir -p "$target"
+  run_preinstall_guard_case "$preinstall" "$target" "0" "preinstall-guard-missing"
+
+  rm -rf "$target"
+  mkdir -p "$target"
+  write_guard_test_plist "$target/Applications/APM44 Bridge.app/Contents/Info.plist" "$pkg_version"
+  write_guard_test_plist "$target/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist" "99.0.0"
+  run_preinstall_guard_case "$preinstall" "$target" "1" "preinstall-guard-newer-driver"
+
+  # Fail closed on installed versions that cannot be compared safely.
+  local unparseable
+  for unparseable in "0.12.12-beta" "99999999999999999999" "1.0.0.0.0.10000000000"; do
+    rm -rf "$target"
+    mkdir -p "$target"
+    write_guard_test_plist "$target/Applications/APM44 Bridge.app/Contents/Info.plist" "$unparseable"
+    run_preinstall_guard_case "$preinstall" "$target" "1" "preinstall-guard-unparseable" "Cannot compare the installed APM44 Bridge app version"
+    [[ -d "$target/Applications/APM44 Bridge.app" ]] || { echo "unparseable guard must not delete fake app" >&2; exit 1; }
+  done
+
+  # Non-startup-disk targets are refused before any side effect. Never execute
+  # that path here: outside guard-only mode the script kills and deletes the
+  # real install, so check the ordering statically instead.
+  assert_contains "$preinstall" "can only be installed on the startup disk"
+  local refuse_line kill_line rm_line
+  refuse_line="$(grep -n "can only be installed on the startup disk" "$preinstall" | head -1 | cut -d: -f1)"
+  kill_line="$(grep -n "pkill" "$preinstall" | head -1 | cut -d: -f1)"
+  rm_line="$(grep -n "rm -rf" "$preinstall" | head -1 | cut -d: -f1)"
+  [[ "$refuse_line" -lt "$kill_line" && "$refuse_line" -lt "$rm_line" ]] || {
+    echo "startup-disk refusal must precede pkill ($kill_line) and rm -rf ($rm_line); found at $refuse_line" >&2
+    exit 1
+  }
 }
 
 run_notary_case() {
@@ -944,6 +1162,43 @@ run_verify_release_pkg_check() {
   assert_contains "$PKG.provenance.txt" "helper_build_id=FAKEPKG123"
   assert_contains "$PKG.provenance.txt" "app_bundle_sha256="
   assert_contains "$PKG.provenance.txt" "driver_executable_sha256="
+}
+
+run_verify_release_pkg_relocate_reject_check() {
+  run_verify_release_pkg_reject_case bad-relocate "relocate"
+  run_verify_release_pkg_reject_case bad-version-checked "bundle-version"
+}
+
+run_verify_release_pkg_reject_case() {
+  local mode="$1"
+  local expected="$2"
+  local out="$TMP/verify-release-pkg-$mode.out"
+  rm -f "$PKG.sha256" "$PKG.provenance.txt"
+  printf 'verify pkg\n' >"$PKG"
+  (cd "$(dirname "$PKG")" && shasum -a 256 "$(basename "$PKG")" >"$(basename "$PKG").sha256")
+  prepare_verify_pkg_inputs
+
+  reset_log
+  local status=0
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_PKGINFO_MODE="$mode" \
+    APM44_PKG_PATH="$PKG" \
+    APM44_APP_PATH="$VERIFY_APP" \
+    APM44_DRIVER_EXECUTABLE="$VERIFY_DRIVER_EXE" \
+    APM44_BRIDGE_BIN="$VERIFY_BRIDGE" \
+    /bin/bash "$ROOT/scripts/verify-release-pkg.sh" >"$out" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" -eq 0 ]]; then
+    echo "verify should fail for $mode PackageInfo" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "$expected"
 }
 
 # DIST-01: enforce that inner app/driver are stapled before the final DMG is packaged,
@@ -1405,6 +1660,8 @@ run_pkg_identity_gate_cases
 
 run_pkg_replacement_script_check
 
+run_preinstall_downgrade_guard_check
+
 run_dmg_checksum_artifact_check        # [DOC-04]
 
 run_dmg_pkg_first_layout_check
@@ -1424,6 +1681,8 @@ run_uninstall_script_check
 run_pkg_validation_order_check
 
 run_verify_release_pkg_check
+
+run_verify_release_pkg_relocate_reject_check
 
 run_dist_01_staple_before_dmg_order      # [DIST-01]
 
