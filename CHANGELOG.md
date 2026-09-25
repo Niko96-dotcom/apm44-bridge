@@ -4,6 +4,8 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+## 0.12.11 - 2026-09-25
+
 - The app now checks for updates each time it starts, so a new release shows
   up right away instead of up to a day later.
 - Added Check for Updates… to the menu-bar panel and the app menu.
