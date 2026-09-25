@@ -4,6 +4,8 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+## 0.12.10 - 2026-09-25
+
 - Changing Buffering or Quality is now much faster and no longer makes the
   controls stutter: the menu stays responsive, shows "Applying…" with the
   last readings instead of flashing Start/Stopped, and the helper restarts
