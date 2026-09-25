@@ -10,6 +10,10 @@ AirPods Max connected over USB-C, which run at 48 kHz. It presents a virtual
 44.1 kHz Core Audio output device to the DAW and resamples to the headphones in
 user space, so the session rate never has to change.
 
+<p align="center">
+  <img src="docs/images/menu-bar-panel.png" width="340" alt="APM44 Bridge menu-bar panel with USB AirPods Max selected, Buffering set to Safe and Quality set to Best">
+</p>
+
 ## Download
 
 Download the latest release (signed, notarized DMG containing a signed PKG):
