@@ -1,7 +1,7 @@
 # Release validation checklist
 
-This checklist is the current 0.12.6 PKG-in-DMG distribution validation path.
-It separates credential-free verification
+This checklist is the PKG-in-DMG distribution validation path for the current
+`<version>`. It separates credential-free verification
 from Apple Developer credential checks so local-only artifacts are never
 confused with a public release.
 
@@ -117,8 +117,8 @@ bash scripts/release-all.sh
 bash scripts/codesign-verify-release.sh
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-$(scripts/read-version.sh).dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-$(scripts/read-version.sh).dmg"
 
 # 5. Installed app / HAL checks after installing from the DMG
 APM44_RUN_FINAL_INSTALL_SMOKE=1 bash scripts/verify-final-install-artifact.sh
@@ -133,7 +133,7 @@ Run this on the target Mac with USB-C AirPods Max and Cubase available:
 
 ```bash
 # 1. Clean install from the final DMG
-hdiutil attach "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
+hdiutil attach "build/signing/APM44Bridge-$(scripts/read-version.sh).dmg"
 # Open the mounted PKG, or run:
 APM44_RUN_FINAL_INSTALL_SMOKE=1 bash scripts/verify-final-install-artifact.sh
 # Reboot once if Audio MIDI Setup does not show the HAL device after install.
@@ -155,6 +155,11 @@ separate ThreadSanitizer build. Sanitizer failures are release blocking.
 # Play a 440 Hz tone and confirm menu bar state reaches Running.
 # Complete docs/cubase-soak.md for a 30+ minute hardware soak.
 bash scripts/validate-export-rate.sh --check-file ~/Desktop/your-mix.wav
+
+# 5. Reinstall and downgrade-refusal (0.12.12+)
+# Run the same-version PKG again over the existing install: it must succeed
+# and leave a working app + driver. Then run an OLDER PKG over the newer
+# install: the installer must refuse the downgrade without deleting anything.
 ```
 
 Record command output and operator notes in the release issue or tag checklist.
@@ -186,12 +191,12 @@ For the PKG-in-DMG public path, assess these artifacts after
 
 ```bash
 bash scripts/codesign-verify-release.sh
-codesign --verify --verbose "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
+codesign --verify --verbose "build/signing/APM44Bridge-$(scripts/read-version.sh).dmg"
 bash scripts/verify-release-dmg-layout.sh
 xcrun stapler validate "build/Release/APM44 Bridge.app"
 xcrun stapler validate build/Driver/APM44Bridge.driver
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-$(scripts/read-version.sh).dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-$(scripts/read-version.sh).dmg"
 ```
 
 The final command is the Gatekeeper assessment for the public DMG.
@@ -266,8 +271,8 @@ repackaging:
 
 ```bash
 bash scripts/codesign-verify-release.sh
-xcrun stapler validate "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
-spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-${APM44_VERSION:-0.12.6}.dmg"
+xcrun stapler validate "build/signing/APM44Bridge-$(scripts/read-version.sh).dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "build/signing/APM44Bridge-$(scripts/read-version.sh).dmg"
 ```
 
 If hardware/operator evidence is needed for a final ship decision, run it on a

@@ -1,17 +1,17 @@
 # Installing APM44 Bridge (end users)
 
-APM44 Bridge is a **macOS menu bar app** plus a **HAL audio driver**. The v1.2
-validation anchor is Cubase 15 at **44.1 kHz** into **APM44 Bridge**, with
-monitoring on **AirPods Max USB-C at 48 kHz**.
+APM44 Bridge is a **macOS menu bar app** plus a **HAL audio driver**. The DAW
+plays at **44.1 kHz** into **APM44 Bridge**, with monitoring on **AirPods Max
+USB-C at 48 kHz**.
 
 ## What you download
 
-From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases):
+From [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases/latest):
 
 | Artifact | Use when |
 |----------|----------|
-| **`APM44Bridge-0.12.6.dmg`** | Current PKG-in-DMG public release artifact; open **APM44Bridge-0.12.6.pkg** inside the DMG |
-| **`APM44Bridge-0.12.6.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
+| **`APM44Bridge-<version>.dmg`** | Current PKG-in-DMG public release artifact; open **APM44Bridge-\<version\>.pkg** inside the DMG |
+| **`APM44Bridge-<version>.dmg.sha256`** | Optional checksum file for verifying the download before opening the DMG |
 
 Maintainer build: `bash scripts/release-all.sh` produces the signed,
 notarized, stapled PKG-in-DMG release. The final DMG is packaged after the
@@ -32,11 +32,15 @@ notarized DMG release.
    shasum -a 256 -c APM44Bridge-<version>.dmg.sha256
    ```
 
-3. Open the DMG and open **APM44Bridge-<version>.pkg**.
+3. Open the DMG and open **APM44Bridge-\<version\>.pkg**.
 4. Enter your Mac admin password when Installer asks. This is expected:
    APM44 Bridge installs a HAL audio driver under
    `/Library/Audio/Plug-Ins/HAL/`, which macOS protects as an admin location.
 5. **Reboot once** if **APM44 Bridge** does not appear in **Audio MIDI Setup** (first HAL install).
+
+The PKG installs `/Applications/APM44 Bridge.app` and
+`/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver`, reloads Core Audio, and
+opens the app.
 
 ## Verify installation
 
@@ -50,6 +54,13 @@ After the installer finishes:
    test -d "/Applications/APM44 Bridge.app" && echo "app installed"
    test -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" && echo "driver installed"
    ```
+
+## Updating
+
+The app checks for updates automatically at every launch and daily. You can
+also check manually with **Check for Updates…** in the menu-bar panel footer or
+in the app menu. An update installs the matching app and driver together, so
+both stay on the same build.
 
 ## After install — every session
 
@@ -81,8 +92,58 @@ In the menu bar panel:
 - **Balanced** — lower-latency everyday option after setup; HAL path uses at least ~20 ms internal buffer automatically.
 - **Low** — lowest latency; may click if the DAW or Bluetooth adds jitter.
 
+Changing Buffering or Quality restarts the helper and briefly shows
+**Applying…** while the new setting takes effect.
+
 If you hear rare tiny clicks, switch to **Safe**, use **USB-C** AirPods, and
-watch **Hard xruns** and **Recoveries** in the menu bar while playing.
+watch **Known lost frames** and **Recoveries** under **Details** in the menu bar while playing.
+
+## Troubleshooting
+
+### "Installation failed"
+
+From 0.12.12, the installer always installs to `/Applications` and `/Library`
+(no relocation to other copies of the app), and it refuses to replace a newer
+installed version with an older one instead of deleting anything — the existing
+newer install is left in place.
+
+If an older installer failed with **Installation failed**, download the latest
+PKG from [GitHub Releases](https://github.com/Niko96-dotcom/apm44-bridge/releases/latest)
+and run it again.
+
+### "Driver not detected" / reload audio driver
+
+If Setup reports **Driver not detected**:
+
+- **Not installed** means the driver is missing — re-run the installer PKG.
+- **Installed, not loaded** means the driver is on disk but Core Audio has not
+  loaded it yet. Use the **Reload audio driver** button (**Requires an admin
+  password**), or **Restart the Mac once if it is still missing**.
+
+### Audio driver build mismatch
+
+Setup and Start show a clear error when the app, driver, and helper builds do
+not match. If Core Audio is still running an older driver after an update, the
+app reports:
+
+```text
+Core Audio is still running an older APM44 driver.
+```
+
+with the recovery:
+
+```text
+Reload Core Audio or restart the Mac, then try Start again.
+```
+
+A mismatched installed driver reports:
+
+```text
+Audio driver build mismatch — reinstall the matching driver to start.
+```
+
+Fix: install the matching release PKG (an update installs the app and driver
+together), reload Core Audio or restart once, then press Start again.
 
 ## Uninstall
 
