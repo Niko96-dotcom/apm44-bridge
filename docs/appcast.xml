@@ -8,29 +8,31 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.9</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.9</link>
-      <sparkle:version>0.12.9</sparkle:version>
-      <sparkle:shortVersionString>0.12.9</sparkle:shortVersionString>
+      <title>APM44 Bridge 0.12.10</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.10</link>
+      <sparkle:version>0.12.10</sparkle:version>
+      <sparkle:shortVersionString>0.12.10</sparkle:shortVersionString>
       <description sparkle:format="markdown"><![CDATA[
-## 0.12.9 - 2026-09-25
+## 0.12.10 - 2026-09-25
 
-- When Core Audio is still running an older APM44 audio driver after an
-  update, the bridge now says so and asks you to reload Core Audio or restart
-  the Mac, instead of retrying several times and asking you to click Start
-  again.
+- Changing Buffering or Quality is now much faster and no longer makes the
+  controls stutter: the menu stays responsive, shows "Applying…" with the
+  last readings instead of flashing Start/Stopped, and the helper restarts
+  about half a second sooner. Buffering segments now respond to clicks
+  anywhere in the segment, and re-selecting the current one no longer
+  restarts the bridge.
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Fri, 25 Sep 2026 06:43:30 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.9/APM44Bridge-0.12.9.pkg"
-                 sparkle:edSignature="qj1qpcs1J4o2GjmaT2vGU8W8VMcz+t18f82gVMTQKN9xCrXkThfsw6iaepssx/rn2UfvCSNu/WZ0gAt0OGIsBA=="
+      <pubDate>Fri, 25 Sep 2026 08:16:50 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.10/APM44Bridge-0.12.10.pkg"
+                 sparkle:edSignature="PPiQoZqyPoBuG6q4PIfSWp1Aff9UUP6cOTyTfnb5EYs1JvW88I3z9SHxwLQ968ZzwCPjwkBppDi6P4SiPEK9AA=="
                  sparkle:installationType="package"
-                 length="4977288"
+                 length="5008494"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: 6WUPaHuBZmrtDhK0TPj2uWnoITf/s9cLHxbazMZsSmiPLPbyws/DmeqHtxYQ6hnUS+R3TyUylHWYfhbrE7eqAQ==
-length: 1579
+edSignature: OW0e6P5G+cxXRW3YuCIAgc4zhsUOUEvMvWE5vevacVtp/WeGg8xOajWcNVI1LUKRFujWq9vikCEfGdKXTYV6Cg==
+length: 1742
 -->
