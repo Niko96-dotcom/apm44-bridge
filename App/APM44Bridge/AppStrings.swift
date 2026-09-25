@@ -78,6 +78,7 @@ enum AppStrings {
         t("could_not_update_open_at_login", "Could not update Open at login")
     }
     static var checkingUpdates: String { t("checking_updates", "Checking for updates…") }
+    static var checkForUpdates: String { t("check_for_updates", "Check for Updates…") }
     static var updateCancelled: String { t("update_cancelled", "Update cancelled.") }
     static var cubaseControlRoom: String { t("cubase_control_room", "Cubase Control Room") }
     static var cubaseControlRoomHint: String {

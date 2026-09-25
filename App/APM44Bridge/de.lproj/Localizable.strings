@@ -45,6 +45,7 @@
 "open_settings" = "Einstellungen öffnen";
 "could_not_update_open_at_login" = "„Bei der Anmeldung öffnen“ konnte nicht geändert werden";
 "checking_updates" = "Suche nach Updates …";
+"check_for_updates" = "Nach Updates suchen …";
 "update_cancelled" = "Update abgebrochen.";
 "cubase_control_room" = "Cubase Control Room";
 "cubase_control_room_hint" = "Monitor 1 Geräteanschlüsse auf APM44 Bridge links und rechts legen";

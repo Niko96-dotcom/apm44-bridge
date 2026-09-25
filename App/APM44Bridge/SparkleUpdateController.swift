@@ -81,16 +81,19 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     private static let noUpdateErrorCode = 1001
 
     @Published private(set) var state: AppUpdateState = .idle
+    @Published private(set) var canCheckForUpdates = false
 
     private(set) var updaterController: SPUStandardUpdaterController!
     private let currentVersion: String
-    private var backgroundCheckTask: Task<Void, Never>?
+    private let launchDate: Date
+    private var didEvaluateLaunchCheck = false
 
     init(
         currentVersion: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "0.0.0"
     ) {
         self.currentVersion = currentVersion
+        self.launchDate = Date()
         super.init()
 
         updaterController = SPUStandardUpdaterController(
@@ -99,39 +102,56 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             userDriverDelegate: nil
         )
 
-        // Sparkle schedules subsequent checks itself using the Info.plist
-        // interval. One explicit background check after launch makes the first
-        // run deterministic without fighting Sparkle's scheduler later.
-        backgroundCheckTask = Task { @MainActor [weak self] in
-            await Task.yield()
-            guard let self else { return }
-            guard self.updaterController.updater.automaticallyChecksForUpdates else { return }
-            // SPUStandardUpdaterController starts its own first update cycle on
-            // the next main-run-loop turn. If that cycle won the race, the
-            // explicit launch check is a no-op; do not expose a permanent
-            // "Checking" state for a check we did not start.
-            guard !self.updaterController.updater.sessionInProgress else { return }
-            guard self.updaterController.updater.canCheckForUpdates else { return }
-            logger.info("Checking for updates")
-            self.state = .checking
-            self.updaterController.updater.checkForUpdatesInBackground()
-        }
-    }
-
-    deinit {
-        backgroundCheckTask?.cancel()
+        // Mirror Sparkle's readiness so manual UI can disable itself.
+        // Assigned on the main thread; Sparkle mutates this KVO property
+        // on the main thread.
+        updaterController.updater.publisher(for: \.canCheckForUpdates)
+            .assign(to: &$canCheckForUpdates)
     }
 
     var updater: SPUUpdater { updaterController.updater }
 
+    /// False while Sparkle is busy or while an update is being checked,
+    /// is downloaded and waiting, or is installing: a new check would
+    /// overwrite that status.
+    var canStartManualCheck: Bool {
+        Self.canStartManualCheck(canCheckForUpdates: canCheckForUpdates, state: state)
+    }
+
+    nonisolated static func canStartManualCheck(canCheckForUpdates: Bool, state: AppUpdateState) -> Bool {
+        guard canCheckForUpdates else { return false }
+        switch state {
+        case .checking, .readyToInstall, .installing: return false
+        case .idle, .available, .cancelled, .failed: return true
+        }
+    }
+
     func checkForUpdates() {
-        guard updater.canCheckForUpdates else { return }
+        guard updater.canCheckForUpdates, canStartManualCheck else { return }
         logger.info("Checking for updates")
         state = .checking
         updaterController.checkForUpdates(nil)
     }
 
     // MARK: SPUUpdaterDelegate
+
+    func updater(_ updater: SPUUpdater, willScheduleUpdateCheckAfterDelay delay: TimeInterval) {
+        guard !didEvaluateLaunchCheck else { return }
+        didEvaluateLaunchCheck = true
+        guard Self.shouldRunLaunchCheck(
+            automaticallyChecks: updater.automaticallyChecksForUpdates,
+            lastCheckDate: updater.lastUpdateCheckDate,
+            launchDate: launchDate
+        ) else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let liveUpdater = self.updaterController.updater
+            guard !liveUpdater.sessionInProgress, liveUpdater.canCheckForUpdates else { return }
+            logger.info("Checking for updates")
+            self.state = .checking
+            liveUpdater.checkForUpdatesInBackground()
+        }
+    }
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         guard AppUpdateVersionComparator.isNewer(item.versionString, than: currentVersion) else {
@@ -221,6 +241,16 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     nonisolated static func isNoUpdateError(_ error: Error) -> Bool {
         let nsError = error as NSError
         return nsError.domain == SUSparkleErrorDomain && nsError.code == noUpdateErrorCode
+    }
+
+    nonisolated static func shouldRunLaunchCheck(
+        automaticallyChecks: Bool,
+        lastCheckDate: Date?,
+        launchDate: Date
+    ) -> Bool {
+        guard automaticallyChecks else { return false }
+        guard let lastCheckDate else { return true }
+        return lastCheckDate < launchDate
     }
 
     nonisolated static func userFacingErrorMessage(_ error: Error) -> String {

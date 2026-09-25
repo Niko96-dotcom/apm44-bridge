@@ -42,4 +42,43 @@ final class SparkleUpdaterTests: XCTestCase {
         )
     }
 
+    func testShouldRunLaunchCheck() {
+        let launchDate = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertFalse(SparkleUpdateController.shouldRunLaunchCheck(
+            automaticallyChecks: false, lastCheckDate: nil, launchDate: launchDate))
+        XCTAssertFalse(SparkleUpdateController.shouldRunLaunchCheck(
+            automaticallyChecks: false,
+            lastCheckDate: launchDate.addingTimeInterval(-86400),
+            launchDate: launchDate))
+        XCTAssertTrue(SparkleUpdateController.shouldRunLaunchCheck(
+            automaticallyChecks: true, lastCheckDate: nil, launchDate: launchDate))
+        XCTAssertTrue(SparkleUpdateController.shouldRunLaunchCheck(
+            automaticallyChecks: true,
+            lastCheckDate: launchDate.addingTimeInterval(-86400),
+            launchDate: launchDate))
+        XCTAssertFalse(SparkleUpdateController.shouldRunLaunchCheck(
+            automaticallyChecks: true,
+            lastCheckDate: launchDate.addingTimeInterval(1),
+            launchDate: launchDate))
+        XCTAssertFalse(SparkleUpdateController.shouldRunLaunchCheck(
+            automaticallyChecks: true, lastCheckDate: launchDate, launchDate: launchDate))
+    }
+
+    func testCheckForUpdatesString() {
+        XCTAssertFalse(AppStrings.checkForUpdates.isEmpty)
+        XCTAssertTrue(AppStrings.checkForUpdates.hasSuffix("…"))
+    }
+
+
+    func testManualCheckIsBlockedWhileBusyOrInstalling() {
+        let allowed: [AppUpdateState] = [.idle, .available(version: "1.0"), .cancelled, .failed(message: "x")]
+        for state in allowed {
+            XCTAssertTrue(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: state), "\(state)")
+            XCTAssertFalse(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: false, state: state), "\(state)")
+        }
+        let busy: [AppUpdateState] = [.checking, .readyToInstall(version: "1.0"), .installing(version: "1.0")]
+        for state in busy {
+            XCTAssertFalse(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: state), "\(state)")
+        }
+    }
 }

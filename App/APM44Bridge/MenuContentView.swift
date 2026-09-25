@@ -651,6 +651,16 @@ struct MenuContentView: View {
                 .buttonStyle(.link)
                 .accessibilityLabel(AppStrings.setup)
             }
+            // Own row: the German title does not fit beside the version and
+            // Setup at the fixed popover width.
+            Button(AppStrings.checkForUpdates) {
+                updater.checkForUpdates()
+            }
+            .font(.caption2)
+            .buttonStyle(.link)
+            .accessibilityIdentifier("check-for-updates")
+            .accessibilityLabel(AppStrings.checkForUpdates)
+            .disabled(!updater.canStartManualCheck)
             Link(AppStrings.cubaseSetupGuide, destination: HelpLinks.cubaseSetup)
                 .font(.caption2)
                 .accessibilityLabel(AppStrings.cubaseSetupGuide)
