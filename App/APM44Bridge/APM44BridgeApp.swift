@@ -53,16 +53,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func configureMainMenu() {
         guard let mainMenu = NSApp.mainMenu else { return }
 
-        if let appMenu = mainMenu.items.first?.submenu,
-           appMenu.item(withTitle: AppStrings.settingsMenu) == nil {
-            let settings = NSMenuItem(
-                title: AppStrings.settingsMenu,
-                action: #selector(showSettings),
-                keyEquivalent: ","
-            )
-            settings.target = self
-            let insertIndex = min(1, appMenu.items.count)
-            appMenu.insertItem(settings, at: insertIndex)
+        if let appMenu = mainMenu.items.first?.submenu {
+            if appMenu.item(withTitle: AppStrings.checkForUpdates) == nil {
+                let check = NSMenuItem(
+                    title: AppStrings.checkForUpdates,
+                    action: #selector(checkForUpdates),
+                    keyEquivalent: ""
+                )
+                check.target = self
+                let insertIndex = min(1, appMenu.items.count)
+                appMenu.insertItem(check, at: insertIndex)
+            }
+            if appMenu.item(withTitle: AppStrings.settingsMenu) == nil {
+                let settings = NSMenuItem(
+                    title: AppStrings.settingsMenu,
+                    action: #selector(showSettings),
+                    keyEquivalent: ","
+                )
+                settings.target = self
+                if let checkIndex = appMenu.items.firstIndex(where: { $0.title == AppStrings.checkForUpdates }) {
+                    appMenu.insertItem(settings, at: min(checkIndex + 1, appMenu.items.count))
+                } else {
+                    let insertIndex = min(1, appMenu.items.count)
+                    appMenu.insertItem(settings, at: insertIndex)
+                }
+            }
         }
 
         let wantedHelp = [AppStrings.helpMenuSetup, AppStrings.cubaseSetupGuide]
@@ -102,6 +117,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc
     private func showSettings() {
         controlsPresenter.showControls()
+    }
+
+    @objc
+    private func checkForUpdates() {
+        SparkleUpdateController.shared.checkForUpdates()
+    }
+
+    @objc
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(checkForUpdates) {
+            return SparkleUpdateController.shared.canStartManualCheck
+        }
+        return true
     }
 
     @objc
