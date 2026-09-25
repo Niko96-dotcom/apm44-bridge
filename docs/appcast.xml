@@ -8,31 +8,28 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.10</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.10</link>
-      <sparkle:version>0.12.10</sparkle:version>
-      <sparkle:shortVersionString>0.12.10</sparkle:shortVersionString>
+      <title>APM44 Bridge 0.12.11</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.11</link>
+      <sparkle:version>0.12.11</sparkle:version>
+      <sparkle:shortVersionString>0.12.11</sparkle:shortVersionString>
       <description sparkle:format="markdown"><![CDATA[
-## 0.12.10 - 2026-09-25
+## 0.12.11 - 2026-09-25
 
-- Changing Buffering or Quality is now much faster and no longer makes the
-  controls stutter: the menu stays responsive, shows "Applying…" with the
-  last readings instead of flashing Start/Stopped, and the helper restarts
-  about half a second sooner. Buffering segments now respond to clicks
-  anywhere in the segment, and re-selecting the current one no longer
-  restarts the bridge.
+- The app now checks for updates each time it starts, so a new release shows
+  up right away instead of up to a day later.
+- Added Check for Updates… to the menu-bar panel and the app menu.
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Fri, 25 Sep 2026 08:16:50 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.10/APM44Bridge-0.12.10.pkg"
-                 sparkle:edSignature="PPiQoZqyPoBuG6q4PIfSWp1Aff9UUP6cOTyTfnb5EYs1JvW88I3z9SHxwLQ968ZzwCPjwkBppDi6P4SiPEK9AA=="
+      <pubDate>Fri, 25 Sep 2026 10:05:54 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.11/APM44Bridge-0.12.11.pkg"
+                 sparkle:edSignature="hRHfAPzPvCtiDIypeUhc9QRX4nNKIJfT+y5/WoPjBi4KyU7ycohqNnn1ZeEF7tbjmPa6qAZS3Vww6XcPk3EDAw=="
                  sparkle:installationType="package"
-                 length="5008494"
+                 length="5015689"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: OW0e6P5G+cxXRW3YuCIAgc4zhsUOUEvMvWE5vevacVtp/WeGg8xOajWcNVI1LUKRFujWq9vikCEfGdKXTYV6Cg==
-length: 1742
+edSignature: 8fl038VTKE80VzIZVe0N2QHv+wRisXNy0t8BeqF9o3PMYlbhd+O8jSY6+Ni2j3s+uPy90fT0W/WATgEp6kV2CA==
+length: 1544
 -->
