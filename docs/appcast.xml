@@ -8,30 +8,35 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.12</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.12</link>
-      <sparkle:version>0.12.12</sparkle:version>
-      <sparkle:shortVersionString>0.12.12</sparkle:shortVersionString>
+      <title>APM44 Bridge 0.12.13</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.13</link>
+      <sparkle:version>0.12.13</sparkle:version>
+      <sparkle:shortVersionString>0.12.13</sparkle:shortVersionString>
       <description sparkle:format="markdown"><![CDATA[
-## 0.12.12 - 2026-09-25
+## 0.12.13 - 2026-09-26
 
-- Fixed the installer deleting APM44 Bridge when an older package ran after a
-  newer one was installed; it now refuses the downgrade and leaves the newer
-  install in place.
-- The installer now always installs into /Applications and the system HAL
-  folder instead of updating another copy of the app it finds on the Mac.
+- Updates are easier to follow: update windows now come to the front (the app
+  shows a Dock icon while updating), the menu-bar panel closes so it no longer
+  covers them, and a downloaded update offers Install and Relaunch in the panel.
+- A successful update no longer ends with a false "update failed" message.
+- A download interrupted by the network now says so and offers Try Again, and
+  the panel keeps showing which update is available.
+- If the bridge was running when an update installs, it starts again after the
+  relaunch.
+- The app remembers your output device's name, so a disconnected device is
+  shown by name instead of "selected output".
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Fri, 25 Sep 2026 16:21:12 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.12/APM44Bridge-0.12.12.pkg"
-                 sparkle:edSignature="IfeJ0gX9/nhiUJt6O+LtmTwmojacSC2pWKYYhgHq2n9lkGh8tSWhaWO/b0pYsH3TEPo/ZbuTMu6eyzJZRxC2DA=="
+      <pubDate>Sat, 26 Sep 2026 11:15:21 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.13/APM44Bridge-0.12.13.pkg"
+                 sparkle:edSignature="s/QaMiFFPhiLi6vEh5vesfb1RfwLsvS/r4ZvSolYL8ZlomqXXtGqo66LKR4NkZfgzPcGoQwZwnFdBz79NR9kDg=="
                  sparkle:installationType="package"
-                 length="5016553"
+                 length="5056956"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: nuOx+aZaAxGsjeyh4X9ylEHXyegIC8ZvK8XYP3S1m1knSxENwmCWTBYnL1g9FOmUjyKzbmz59kD8ALXu3sG3AQ==
-length: 1675
+edSignature: GyiX/2TarW1CAL8nMXOJ5/5+bF5rgcxc7aKEekv8+2YVq388rkZOc8GeXV9k+OtJUQHb8lxYXx9GdhVrld6RBw==
+length: 2008
 -->
