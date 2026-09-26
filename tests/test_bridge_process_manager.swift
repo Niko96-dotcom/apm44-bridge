@@ -1405,4 +1405,14 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
     }
+
+    func testAutomationStartDecision() {
+        XCTAssertTrue(BridgeProcessManager.shouldAutomationStart(state: .idle, blockedReason: nil))
+        XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .idle, blockedReason: "missing"))
+        XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .running, blockedReason: nil))
+        XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .starting, blockedReason: nil))
+        XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .stopping, blockedReason: nil))
+        XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .reconnecting, blockedReason: nil))
+        XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .error("x"), blockedReason: nil))
+    }
 }

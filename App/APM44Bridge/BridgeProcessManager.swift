@@ -200,6 +200,17 @@ final class BridgeProcessManager: ObservableObject {
         return false
     }
 
+    /// Pure launch-automation decision: start only from idle with no blocker.
+    /// Read by the launch Task after the initial refresh; the defaults key
+    /// itself is checked at the call site and never persisted here.
+    nonisolated static func shouldAutomationStart(
+        state: BridgeRunState,
+        blockedReason: String?
+    ) -> Bool {
+        guard state == .idle else { return false }
+        return blockedReason == nil
+    }
+
     internal func setDevicesForTesting(_ list: [AudioDeviceRow]) {
         devices = list
     }

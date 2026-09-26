@@ -1,5 +1,11 @@
 import AppKit
+import OSLog
 import SwiftUI
+
+private let logger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.niko.apm44.menu",
+    category: "App"
+)
 
 /// Resolves the Help submenu without using `mainMenu.items.last`, which can
 /// rewrite Window when the menu bar extra's Help item is missing.
@@ -31,6 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for _ in 0..<15 {
                 self.configureMainMenu()
                 try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+        if UserDefaults.standard.bool(forKey: "APM44AutomationCheckForUpdates") {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                logger.info("Checking for updates (automation)")
+                SparkleUpdateController.shared.checkForUpdates()
             }
         }
     }
@@ -186,6 +199,14 @@ struct APM44BridgeApp: App {
         Task { @MainActor in
             await manager.refreshDevices()
             manager.resumeAfterUpdateIfRequested(now: Date())
+            if UserDefaults.standard.bool(forKey: "APM44AutomationStartBridge"),
+               BridgeProcessManager.shouldAutomationStart(
+                   state: manager.state,
+                   blockedReason: manager.startBlockedReason
+               ) {
+                logger.info("Bridge starting (automation)")
+                manager.start()
+            }
         }
     }
 
