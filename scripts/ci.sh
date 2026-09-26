@@ -38,6 +38,9 @@ bash tests/test_ui_chrome.sh
 echo "== Release script tests =="
 bash tests/test_release_scripts.sh
 
+echo "== E2E script tests =="
+bash tests/test_e2e_scripts.sh
+
 echo "== Sparkle appcast tests =="
 bash tests/test_appcast.sh
 
