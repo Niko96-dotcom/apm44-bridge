@@ -109,6 +109,7 @@ require_script_marker "$preinstall" 'pkill -KILL -f "$APP_PATTERN"'
 require_script_marker "$postinstall" "APM44 Bridge.app missing after install"
 require_script_marker "$postinstall" "APM44Bridge.driver missing after install"
 require_script_marker "$postinstall" "Installed app/driver/helper build ID mismatch"
+require_script_marker "$postinstall" "COMMAND_LINE_INSTALL"
 require_script_marker "$preinstall" "refusing to replace it with older"
 if grep -Fq "@APM44_PKG_VERSION@" "$preinstall"; then
   fail "preinstall contains unsubstituted @APM44_PKG_VERSION@ placeholder"

@@ -170,8 +170,25 @@ enum AppStrings {
         t("update_check_failed_retry", "Update check failed. Try again later.")
     }
 
+    static var tryAgain: String { t("try_again", "Try Again") }
+
+    static var updateDownloadInterrupted: String {
+        t(
+            "update_download_interrupted",
+            "The update download was interrupted. Check your internet connection and try again."
+        )
+    }
+
     static func updateCheckFailed(detail: String) -> String {
         format("update_check_failed %@", "Update check failed: %@", detail)
+    }
+
+    static func updateDownloadFailed(detail: String) -> String {
+        format("update_download_failed %@", "Update download failed: %@", detail)
+    }
+
+    static func installUpdateAndRelaunch(_ version: String) -> String {
+        format("install_update_and_relaunch %@", "Install %@ and Relaunch", version)
     }
 
     static func previousOutputUnavailable(name: String) -> String {

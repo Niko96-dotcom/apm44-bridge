@@ -4,6 +4,8 @@ import Foundation
 final class BridgeSettings: ObservableObject {
     private enum Keys {
         static let outputDeviceUid = "apm44.outputDeviceUid"
+        static let outputDeviceName = "apm44.outputDeviceName"
+        static let resumeAfterUpdateAt = "apm44.resumeAfterUpdateAt"
         static let latencyPreset = "apm44.latencyPreset"
         static let srcQualityOverride = "apm44.srcQualityOverride"
     }
@@ -23,6 +25,26 @@ final class BridgeSettings: ObservableObject {
 
     @Published var latencyPreset: LatencyPreset {
         didSet { defaults.set(latencyPreset.rawValue, forKey: Keys.latencyPreset) }
+    }
+
+    /// Last seen display name for the selected output, so the UI can show it
+    /// while the device is absent (e.g. after relaunch before Core Audio
+    /// re-enumerates). Only ever names the current outputDeviceUid: it is
+    /// cleared whenever the uid changes to a device not in the list.
+    @Published var outputDeviceName: String? {
+        didSet { defaults.set(outputDeviceName, forKey: Keys.outputDeviceName) }
+    }
+
+    /// Set when an in-app (Sparkle) update starts installing while the bridge
+    /// is running, so the next launch can resume it. Cleared on launch.
+    @Published var resumeAfterUpdateRequestedAt: Date? {
+        didSet {
+            if let resumeAfterUpdateRequestedAt {
+                defaults.set(resumeAfterUpdateRequestedAt, forKey: Keys.resumeAfterUpdateAt)
+            } else {
+                defaults.removeObject(forKey: Keys.resumeAfterUpdateAt)
+            }
+        }
     }
 
     @Published var srcQualityOverride: SrcQuality? {
@@ -46,6 +68,8 @@ final class BridgeSettings: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         outputDeviceUid = defaults.string(forKey: Keys.outputDeviceUid)
+        outputDeviceName = defaults.string(forKey: Keys.outputDeviceName)
+        resumeAfterUpdateRequestedAt = defaults.object(forKey: Keys.resumeAfterUpdateAt) as? Date
         if let raw = defaults.string(forKey: Keys.latencyPreset),
            let preset = LatencyPreset(rawValue: raw) {
             latencyPreset = preset

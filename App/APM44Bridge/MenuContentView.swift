@@ -387,6 +387,7 @@ struct MenuContentView: View {
                 updateStatus(AppStrings.checkingUpdates, systemImage: "arrow.triangle.2.circlepath", tint: .secondary)
             case let .available(version):
                 Button {
+                    dismissMenuBarPanel()
                     updater.checkForUpdates()
                 } label: {
                     Text(AppStrings.updateAvailable(version))
@@ -396,13 +397,40 @@ struct MenuContentView: View {
                 .controlSize(.large)
                 .accessibilityLabel(AppStrings.updateAvailable(version))
             case let .readyToInstall(version):
-                updateStatus(AppStrings.updateReady(version), systemImage: "checkmark.circle", tint: .green)
+                Button {
+                    dismissMenuBarPanel()
+                    updater.showPendingUpdate()
+                } label: {
+                    Text(AppStrings.installUpdateAndRelaunch(version))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityLabel(AppStrings.installUpdateAndRelaunch(version))
+                .accessibilityIdentifier("install-update")
             case let .installing(version):
                 updateStatus(AppStrings.installingUpdate(version), systemImage: "gearshape", tint: .accentColor)
             case .cancelled:
                 updateStatus(AppStrings.updateCancelled, systemImage: "xmark.circle", tint: .secondary)
             case let .failed(message):
-                updateStatus(message, systemImage: "exclamationmark.triangle", tint: .orange)
+                VStack(alignment: .leading, spacing: 8) {
+                    updateStatus(message, systemImage: "exclamationmark.triangle", tint: .orange)
+                    if let retryVersion = updater.lastOfferedVersion {
+                        Text(AppStrings.updateAvailable(retryVersion))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Button {
+                        dismissMenuBarPanel()
+                        updater.checkForUpdates()
+                    } label: {
+                        Text(AppStrings.tryAgain)
+                    }
+                    .buttonStyle(.link)
+                    .accessibilityLabel(AppStrings.tryAgain)
+                    .accessibilityIdentifier("retry-update")
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -654,6 +682,7 @@ struct MenuContentView: View {
             // Own row: the German title does not fit beside the version and
             // Setup at the fixed popover width.
             Button(AppStrings.checkForUpdates) {
+                dismissMenuBarPanel()
                 updater.checkForUpdates()
             }
             .font(.caption2)

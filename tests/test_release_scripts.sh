@@ -433,6 +433,10 @@ set -e
 [[ -d "/Applications/APM44 Bridge.app" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
 [[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
 echo "Installed app/driver/helper build ID mismatch" >&2
+# Skip relaunch for command-line installs (Sparkle relaunches itself).
+if [[ -z "${COMMAND_LINE_INSTALL:-}" ]]; then
+  : # GUI installs relaunch the app here
+fi
 POST
     if [[ "${APM44_FAKE_PKGINFO_MODE:-good}" == "bad-version-checked" ]]; then
       cat >"$dest/PackageInfo" <<'PKGINFO'
@@ -659,6 +663,20 @@ run_pkg_replacement_script_check() {
   assert_contains "$postinstall" 'chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver'
   assert_contains "$postinstall" 'APM44 Bridge.app missing after install'
   assert_contains "$postinstall" 'APM44Bridge.driver missing after install'
+
+  assert_contains "$postinstall" "COMMAND_LINE_INSTALL"
+  local cli_guard_line cli_open_line cli_close_line
+  cli_guard_line="$(grep -n "COMMAND_LINE_INSTALL" "$postinstall" | head -1 | cut -d: -f1)"
+  cli_open_line="$(grep -n 'open "/Applications/APM44 Bridge.app"' "$postinstall" | head -1 | cut -d: -f1)"
+  [[ -n "$cli_guard_line" && -n "$cli_open_line" && "$cli_guard_line" -lt "$cli_open_line" ]] || {
+    echo "postinstall must guard the relaunch open with COMMAND_LINE_INSTALL (guard=$cli_guard_line open=$cli_open_line)" >&2
+    exit 1
+  }
+  cli_close_line="$(awk -v open_line="$cli_open_line" 'NR > open_line && $0 ~ /^fi/ { print NR; exit }' "$postinstall")"
+  [[ -n "$cli_close_line" ]] || {
+    echo "postinstall relaunch open at line $cli_open_line is not followed by a closing fi" >&2
+    exit 1
+  }
 
   assert_contains "$LOG" "--component-plist"
   local component_plist="$ROOT/build/signing/pkg-components.plist"
