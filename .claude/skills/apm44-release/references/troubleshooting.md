@@ -8,6 +8,12 @@ Each row: symptom → cause → exact fix. Stop the release sequence; fix; re-ru
 - Cause: `main` has no required status checks, so `gh pr merge` merges immediately even while CI is pending.
 - Fix: never merge unless every check is `pass` or `skipping`. Repair on `main` with a follow-up PR, get it green, then rebuild from the new HEAD.
 
+## Release build interrupted (session ended, reboot)
+
+- Symptom: the build log stops mid-way (often at `== Notarize DMG ==`); `RELEASE_ALL_EXIT=` never appears; `build/signing/APM44Bridge-X.Y.Z.dmg.sha256` or the modified `docs/appcast.xml` is missing.
+- Cause: the build ran attached to a session that ended, or the Mac rebooted.
+- Fix: rename the log to `*.interrupted`, run `git checkout -- docs/appcast.xml`, and redo Step 3 exactly (detached with `nohup … & disown`). Never reuse partial artifacts.
+
 ## Build ID changed after an extra commit
 
 - Symptom: release log `build identity:` shows a different `+<12-char SHA>` than the HEAD the build started from.
@@ -95,3 +101,28 @@ APM44_PREINSTALL_GUARD_ONLY=1 /bin/bash /tmp/apm44-pkgx/Scripts/preinstall pkg /
 # Success: exit 0 when the installed version is <= X.Y.Z; exit 1 with "refusing to replace it with older" when newer.
 # STOP: never run that script without APM44_PREINSTALL_GUARD_ONLY=1.
 ```
+
+## E2E: selected output not connected
+
+- Symptom: `FAIL: the selected output (…) is not connected; connect and wake it … or omit --start-bridge` right after `STEP 1: Preflight`.
+- Cause: the app refuses to start the bridge without its output; AirPods Max over USB-C drop out of Core Audio when unplugged or asleep.
+- Fix: ask the user to plug in and put on the AirPods; confirm with `"/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge" --list-devices | grep -i airpods` (ALIVE column 1); rerun. Nothing was changed by the failed run.
+
+## E2E: port 8765 already in use
+
+- Symptom: `FAIL: port 8765 is already in use` in preflight.
+- Cause: a feed server left over from an older harness version (fixed: the server is now exec'd and cleaned up), or another local server.
+- Fix: `lsof -nP -iTCP:8765 -sTCP:LISTEN`; if it is `python3 -m http.server` whose working directory (`lsof -p <pid> | grep cwd`) is a `/var/folders/.../T/tmp.*/feed` run dir, `kill <pid>`; otherwise rerun with `--port 8766`.
+
+## E2E: the update installed but the run reported FAIL
+
+- Symptom: a FAIL line, yet `/Applications/APM44 Bridge.app` already reports X.Y.Z (e.g. the user clicked the update window themselves, or an older harness timed out waiting for a window that had already closed).
+- Cause: the install flow and the harness disagreed about which window was showing; the harness now follows the app log.
+- Fix: do not rerun run 1 (the candidate is no longer newer). Run run 2 (`--label 99.0.0`) to get a complete PASS table for X.Y.Z.
+
+## E2E: app left pointed at the test feed
+
+- Symptom: after an aborted run, the app shows "update check failed" or `ps -axww | grep "SUFeedURL http://127.0.0.1"` lists it.
+- Cause: a run aborted before the update relaunched the app without arguments (the harness now relaunches it normally on exit).
+- Fix: `osascript -e 'tell application id "com.niko.apm44.menu" to quit'`, then `open -a "/Applications/APM44 Bridge.app"`.
+
