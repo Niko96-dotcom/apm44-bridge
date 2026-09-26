@@ -274,8 +274,12 @@ if echo "\$args" | grep -q "APM44 Bridge"; then
 fi
 exit 1
 EOF
-  cat >"$FAKE_BIN/pkill" <<'EOF'
+  cat >"$FAKE_BIN/pkill" <<EOF
 #!/bin/bash
+set -euo pipefail
+STATE_DIR="$state"
+printf '%s\n' "\$*" >>"\$STATE_DIR/pkill_args"
+: >"\$STATE_DIR/app_pid"
 exit 0
 EOF
   cat >"$FAKE_BIN/PlistBuddy" <<EOF
@@ -336,6 +340,7 @@ EOF
 set -euo pipefail
 STATE_DIR="$state"
 args="\$*"
+printf '%s\n' "\$*" >>"\$STATE_DIR/log_args"
 if printf '%s' "\$args" | grep -q 'category == "Bridge"'; then
   if [[ -f "\$STATE_DIR/updated" ]]; then
     echo "Bridge resuming after update"
@@ -347,6 +352,14 @@ if [[ "\${APM44_E2E_FAKE_UPDATE_FAILED:-0}" == "1" ]]; then
   echo "Update failed simulated"
 fi
 label="\$(cat "\$STATE_DIR/expected_label" 2>/dev/null || echo "0.12.15")"
+if [[ -f "\$STATE_DIR/stale_logs" ]]; then
+  if ! printf '%s' "\$args" | grep -Fq -- "--start"; then
+    echo "Update available version=\$label"
+    echo "Update downloaded version=\$label"
+    echo "Installing update version=\$label"
+    exit 0
+  fi
+fi
 if [[ -f "\$STATE_DIR/no_update_available" ]]; then
   exit 0
 fi
@@ -369,7 +382,9 @@ if printf '%s' "\$args" | grep -q "first process"; then
   exit 0
 fi
 if printf '%s' "\$args" | grep -q 'tell application "APM44 Bridge" to quit'; then
-  : > "\$STATE_DIR/app_pid"
+  if [[ ! -f "\$STATE_DIR/quit_keeps_pid" ]]; then
+    : > "\$STATE_DIR/app_pid"
+  fi
   exit 0
 fi
 if printf '%s' "\$args" | grep -q "name of every window"; then
@@ -379,6 +394,9 @@ if printf '%s' "\$args" | grep -q "name of every window"; then
   exit 0
 fi
 if printf '%s' "\$args" | grep -q '"Install Update"'; then
+  if [[ -f "\$STATE_DIR/no_install_button" ]]; then
+    exit 1
+  fi
   # The click starts the download; with install_click_errors the call itself
   # reports an error (Sparkle closed the window mid-click), as seen for real.
   touch "\$STATE_DIR/downloaded"
@@ -388,6 +406,16 @@ if printf '%s' "\$args" | grep -q '"Install Update"'; then
   exit 0
 fi
 if printf '%s' "\$args" | grep -q "Install and Relaunch"; then
+  if [[ -f "\$STATE_DIR/no_relaunch" ]]; then
+    cat "\$STATE_DIR/new_version" > "\$STATE_DIR/app_version"
+    cat "\$STATE_DIR/new_build" > "\$STATE_DIR/app_build"
+    cat "\$STATE_DIR/new_build" > "\$STATE_DIR/driver_build"
+    cat "\$STATE_DIR/new_build" > "\$STATE_DIR/helper_build"
+    cat "\$STATE_DIR/new_build" > "\$STATE_DIR/loaded_build"
+    touch "\$STATE_DIR/downloaded"
+    touch "\$STATE_DIR/updated"; rm -f "\$STATE_DIR/app_has_test_args"
+    exit 0
+  fi
   cat "\$STATE_DIR/new_pid" > "\$STATE_DIR/app_pid"
   cat "\$STATE_DIR/new_version" > "\$STATE_DIR/app_version"
   cat "\$STATE_DIR/new_build" > "\$STATE_DIR/app_build"
@@ -398,6 +426,16 @@ if printf '%s' "\$args" | grep -q "Install and Relaunch"; then
   exit 0
 fi
 if printf '%s' "\$args" | grep -q "neu starten"; then
+  if [[ -f "\$STATE_DIR/no_relaunch" ]]; then
+    cat "\$STATE_DIR/new_version" > "\$STATE_DIR/app_version"
+    cat "\$STATE_DIR/new_build" > "\$STATE_DIR/app_build"
+    cat "\$STATE_DIR/new_build" > "\$STATE_DIR/driver_build"
+    cat "\$STATE_DIR/new_build" > "\$STATE_DIR/helper_build"
+    cat "\$STATE_DIR/new_build" > "\$STATE_DIR/loaded_build"
+    touch "\$STATE_DIR/downloaded"
+    touch "\$STATE_DIR/updated"; rm -f "\$STATE_DIR/app_has_test_args"
+    exit 0
+  fi
   cat "\$STATE_DIR/new_pid" > "\$STATE_DIR/app_pid"
   cat "\$STATE_DIR/new_version" > "\$STATE_DIR/app_version"
   cat "\$STATE_DIR/new_build" > "\$STATE_DIR/app_build"
@@ -413,12 +451,17 @@ EOF
 #!/bin/bash
 set -euo pipefail
 STATE_DIR="$state"
-if [[ ! -s "\$STATE_DIR/app_pid" ]]; then
-  cat "\$STATE_DIR/old_pid" > "\$STATE_DIR/app_pid"
-fi
 if printf '%s' "\$*" | grep -q "SUFeedURL"; then
+  if [[ -f "\$STATE_DIR/feed_pid" ]]; then
+    cat "\$STATE_DIR/feed_pid" > "\$STATE_DIR/app_pid"
+  elif [[ ! -s "\$STATE_DIR/app_pid" ]]; then
+    cat "\$STATE_DIR/old_pid" > "\$STATE_DIR/app_pid"
+  fi
   touch "\$STATE_DIR/app_has_test_args"
 else
+  if [[ ! -s "\$STATE_DIR/app_pid" ]]; then
+    cat "\$STATE_DIR/old_pid" > "\$STATE_DIR/app_pid"
+  fi
   rm -f "\$STATE_DIR/app_has_test_args"
   touch "\$STATE_DIR/plain_relaunch"
 fi
@@ -627,6 +670,226 @@ run_roundtrip_happy_case() {
   assert_not_contains "$out" "/Applications/APM44 Bridge.app"
   # After a successful update Sparkle relaunches the app without test args.
   assert_not_contains "$out" "cleanup: relaunched APM44 Bridge"
+  # Bug 3 regression: log helpers must scope to this run via --start, never --last.
+  assert_contains "$state/log_args" "--start"
+  if grep -Fq -- "--last" "$state/log_args"; then
+    echo "log helpers must not use --last" >&2
+    cat "$state/log_args" >&2
+    exit 1
+  fi
+  assert_server_stopped "$state"
+}
+
+run_roundtrip_feed_pid_cases() {
+  # T1 (bug 1): STEP 8 must not accept the STEP 3 feed process.
+  # Subcase A: installer rewrites the version but never relaunches
+  # (pid stays at the feed PID) -> must FAIL with "no new PID".
+  local state="$TMP/case-rt-state-feed-stale"
+  setup_roundtrip_state "$state" ""
+  : >"$state/windows"
+  printf '150\n' >"$state/feed_pid"
+  touch "$state/no_relaunch"
+  printf '0.12.14\n' >"$state/app_version"
+  printf '0.12.15\n' >"$state/expected_label"
+  write_roundtrip_fakes "$state"
+  local fake_app="$TMP/case-rt-app-feed-stale/APM44 Bridge.app"
+  local fake_driver="$TMP/case-rt-driver-feed-stale/APM44Bridge.driver"
+  mkdir -p "$fake_app/Contents" "$fake_driver/Contents"
+  printf 'fake app\n' >"$fake_app/Contents/Info.plist"
+  printf 'fake driver\n' >"$fake_driver/Contents/Info.plist"
+  local pkg="$TMP/case-rt-pkg-feed-stale.pkg"
+  printf 'candidate pkg bytes' >"$pkg"
+  local out="$TMP/case-rt-feed-stale.out"
+  local status=0
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    SPARKLE_SIGN_UPDATE="$FAKE_BIN/sign_update" \
+    APM44_E2E_APP_PATH="$fake_app" \
+    APM44_E2E_DRIVER_PATH="$fake_driver" \
+    APM44_E2E_HELPER="$FAKE_BIN/apm44-bridge" \
+    APM44_E2E_OSASCRIPT="$FAKE_BIN/osascript" \
+    APM44_E2E_OPEN="$FAKE_BIN/open" \
+    APM44_E2E_PGREP="$FAKE_BIN/pgrep" \
+    APM44_E2E_PKILL="$FAKE_BIN/pkill" \
+    APM44_E2E_LOG="$FAKE_BIN/log" \
+    APM44_E2E_DEFAULTS="$FAKE_BIN/defaults" \
+    APM44_E2E_CURL="$FAKE_BIN/curl" \
+    APM44_E2E_PYTHON3="$FAKE_BIN/python3" \
+    APM44_E2E_PLISTBUDDY="$FAKE_BIN/PlistBuddy" \
+    APM44_E2E_FEED_SCRIPT="$ROOT/scripts/e2e-local-update-feed.sh" \
+    APM44_E2E_AUDIO_FLOW_SCRIPT="$FAKE_BIN/fake-audio-flow.sh" \
+    APM44_E2E_FAKE_STATE="$state" \
+    APM44_E2E_NEW_PID_WAIT=2 \
+    APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_SETTLE_SECONDS=0 \
+    /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" -eq 0 ]]; then
+    echo "feed-pid without relaunch should fail with no new PID" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "FAIL: no new PID"
+  assert_not_contains "$out" "relaunched: old pid"
+  assert_server_stopped "$state"
+
+  # Subcase B: distinct feed PID happy path still passes and names the new PID.
+  local state2="$TMP/case-rt-state-feed-happy"
+  setup_roundtrip_state "$state2" ""
+  : >"$state2/windows"
+  printf '150\n' >"$state2/feed_pid"
+  printf '0.12.14\n' >"$state2/app_version"
+  printf '0.12.15\n' >"$state2/expected_label"
+  write_roundtrip_fakes "$state2"
+  local fake_app2="$TMP/case-rt-app-feed-happy/APM44 Bridge.app"
+  local fake_driver2="$TMP/case-rt-driver-feed-happy/APM44Bridge.driver"
+  mkdir -p "$fake_app2/Contents" "$fake_driver2/Contents"
+  printf 'fake app\n' >"$fake_app2/Contents/Info.plist"
+  printf 'fake driver\n' >"$fake_driver2/Contents/Info.plist"
+  local pkg2="$TMP/case-rt-pkg-feed-happy.pkg"
+  printf 'candidate pkg bytes' >"$pkg2"
+  local out2="$TMP/case-rt-feed-happy.out"
+  local status2=0
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    SPARKLE_SIGN_UPDATE="$FAKE_BIN/sign_update" \
+    APM44_E2E_APP_PATH="$fake_app2" \
+    APM44_E2E_DRIVER_PATH="$fake_driver2" \
+    APM44_E2E_HELPER="$FAKE_BIN/apm44-bridge" \
+    APM44_E2E_OSASCRIPT="$FAKE_BIN/osascript" \
+    APM44_E2E_OPEN="$FAKE_BIN/open" \
+    APM44_E2E_PGREP="$FAKE_BIN/pgrep" \
+    APM44_E2E_PKILL="$FAKE_BIN/pkill" \
+    APM44_E2E_LOG="$FAKE_BIN/log" \
+    APM44_E2E_DEFAULTS="$FAKE_BIN/defaults" \
+    APM44_E2E_CURL="$FAKE_BIN/curl" \
+    APM44_E2E_PYTHON3="$FAKE_BIN/python3" \
+    APM44_E2E_PLISTBUDDY="$FAKE_BIN/PlistBuddy" \
+    APM44_E2E_FEED_SCRIPT="$ROOT/scripts/e2e-local-update-feed.sh" \
+    APM44_E2E_AUDIO_FLOW_SCRIPT="$FAKE_BIN/fake-audio-flow.sh" \
+    APM44_E2E_FAKE_STATE="$state2" \
+    APM44_E2E_NEW_PID_WAIT=2 \
+    APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_SETTLE_SECONDS=0 \
+    /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg2" --expect-version "0.12.15" --yes >"$out2" 2>&1; then
+    status2=0
+  else
+    status2=$?
+  fi
+  if [[ "$status2" -ne 0 ]]; then
+    echo "distinct feed-pid happy path should exit 0, got $status2" >&2
+    cat "$out2" >&2
+    exit 1
+  fi
+  assert_contains "$out2" "relaunched: old pid 111 -> new pid 222"
+  assert_contains "$out2" "Result: PASS"
+  assert_server_stopped "$state2"
+}
+
+run_roundtrip_pkill_pattern_case() {
+  # T2 (bug 2): force-quit must match processes launched with arguments.
+  local state="$TMP/case-rt-state-pkill"
+  setup_roundtrip_state "$state" ""
+  : >"$state/windows"
+  touch "$state/quit_keeps_pid"
+  printf '0.12.14\n' >"$state/app_version"
+  printf '0.12.15\n' >"$state/expected_label"
+  write_roundtrip_fakes "$state"
+  local fake_app="$TMP/case-rt-app-pkill/APM44 Bridge.app"
+  local fake_driver="$TMP/case-rt-driver-pkill/APM44Bridge.driver"
+  mkdir -p "$fake_app/Contents" "$fake_driver/Contents"
+  printf 'fake app\n' >"$fake_app/Contents/Info.plist"
+  printf 'fake driver\n' >"$fake_driver/Contents/Info.plist"
+  local pkg="$TMP/case-rt-pkg-pkill.pkg"
+  printf 'candidate pkg bytes' >"$pkg"
+  local out="$TMP/case-rt-pkill.out"
+  local status=0
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    SPARKLE_SIGN_UPDATE="$FAKE_BIN/sign_update" \
+    APM44_E2E_APP_PATH="$fake_app" \
+    APM44_E2E_DRIVER_PATH="$fake_driver" \
+    APM44_E2E_HELPER="$FAKE_BIN/apm44-bridge" \
+    APM44_E2E_OSASCRIPT="$FAKE_BIN/osascript" \
+    APM44_E2E_OPEN="$FAKE_BIN/open" \
+    APM44_E2E_PGREP="$FAKE_BIN/pgrep" \
+    APM44_E2E_PKILL="$FAKE_BIN/pkill" \
+    APM44_E2E_LOG="$FAKE_BIN/log" \
+    APM44_E2E_DEFAULTS="$FAKE_BIN/defaults" \
+    APM44_E2E_CURL="$FAKE_BIN/curl" \
+    APM44_E2E_PYTHON3="$FAKE_BIN/python3" \
+    APM44_E2E_PLISTBUDDY="$FAKE_BIN/PlistBuddy" \
+    APM44_E2E_FEED_SCRIPT="$ROOT/scripts/e2e-local-update-feed.sh" \
+    APM44_E2E_AUDIO_FLOW_SCRIPT="$FAKE_BIN/fake-audio-flow.sh" \
+    APM44_E2E_FAKE_STATE="$state" \
+    APM44_E2E_QUIT_WAIT=2 \
+    APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_SETTLE_SECONDS=0 \
+    /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    echo "pkill fallback should get past STEP 3, got $status" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "STEP 3: OK"
+  assert_contains "$state/pkill_args" "( |\$)"
+  assert_server_stopped "$state"
+}
+
+run_roundtrip_stale_logs_case() {
+  # T3 (bug 3): stale unified-log lines must not satisfy STEPs 5/6/7/9.
+  local state="$TMP/case-rt-state-stale-logs"
+  setup_roundtrip_state "$state" ""
+  : >"$state/windows"
+  touch "$state/stale_logs"
+  touch "$state/no_install_button"
+  printf '0.12.14\n' >"$state/app_version"
+  printf '0.12.15\n' >"$state/expected_label"
+  write_roundtrip_fakes "$state"
+  local fake_app="$TMP/case-rt-app-stale-logs/APM44 Bridge.app"
+  mkdir -p "$fake_app/Contents"
+  printf 'fake app\n' >"$fake_app/Contents/Info.plist"
+  local pkg="$TMP/case-rt-pkg-stale-logs.pkg"
+  printf 'candidate pkg bytes' >"$pkg"
+  local out="$TMP/case-rt-stale-logs.out"
+  local status=0
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    SPARKLE_SIGN_UPDATE="$FAKE_BIN/sign_update" \
+    APM44_E2E_APP_PATH="$fake_app" \
+    APM44_E2E_OSASCRIPT="$FAKE_BIN/osascript" \
+    APM44_E2E_OPEN="$FAKE_BIN/open" \
+    APM44_E2E_PGREP="$FAKE_BIN/pgrep" \
+    APM44_E2E_PKILL="$FAKE_BIN/pkill" \
+    APM44_E2E_LOG="$FAKE_BIN/log" \
+    APM44_E2E_DEFAULTS="$FAKE_BIN/defaults" \
+    APM44_E2E_CURL="$FAKE_BIN/curl" \
+    APM44_E2E_PYTHON3="$FAKE_BIN/python3" \
+    APM44_E2E_PLISTBUDDY="$FAKE_BIN/PlistBuddy" \
+    APM44_E2E_FEED_SCRIPT="$ROOT/scripts/e2e-local-update-feed.sh" \
+    APM44_E2E_FAKE_STATE="$state" \
+    APM44_E2E_INSTALL_BUTTON_WAIT=2 \
+    APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_QUIT_WAIT=2 \
+    APM44_E2E_SETTLE_SECONDS=0 \
+    /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" -eq 0 ]]; then
+    echo "stale logs without a real click should fail at STEP 6" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "FAIL: Install Update button not found/clicked"
   assert_server_stopped "$state"
 }
 
@@ -784,5 +1047,8 @@ run_roundtrip_happy_case 0.12.15 99.0.0 click-errors
 run_roundtrip_output_missing_case
 run_roundtrip_restores_app_on_fail_case
 run_roundtrip_windows_fail_case
+run_roundtrip_feed_pid_cases
+run_roundtrip_pkill_pattern_case
+run_roundtrip_stale_logs_case
 
 echo "e2e script tests: OK"

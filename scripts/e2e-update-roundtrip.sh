@@ -111,6 +111,7 @@ FEED_WAIT="${APM44_E2E_FEED_WAIT:-30}"
 QUIT_WAIT="${APM44_E2E_QUIT_WAIT:-20}"
 
 APP_EXEC="$APP_PATH/Contents/MacOS/APM44 Bridge"
+APP_PROC_PATTERN="^${APP_EXEC}( |\$)"
 APP_INFO="$APP_PATH/Contents/Info.plist"
 DRIVER_INFO="$DRIVER_PATH/Contents/Info.plist"
 FEED_URL="http://127.0.0.1:${PORT}/appcast.xml"
@@ -167,7 +168,7 @@ trap cleanup EXIT
 
 e2e_app_pids() {
   # Match with or without launch arguments (a relaunch for this test adds them).
-  "$PGREP" -f "^${APP_EXEC}( |\$)" 2>/dev/null || true
+  "$PGREP" -f "$APP_PROC_PATTERN" 2>/dev/null || true
 }
 
 e2e_app_version_now() {
@@ -175,13 +176,11 @@ e2e_app_version_now() {
 }
 
 e2e_log_updates() {
-  local last="$1"
-  "$LOG_CMD" show --last "$last" --info --style compact --predicate 'process == "APM44 Bridge" AND category == "Updates"' 2>/dev/null || true
+  "$LOG_CMD" show --start "$RUN_LOG_START" --info --style compact --predicate 'process == "APM44 Bridge" AND category == "Updates"' 2>/dev/null || true
 }
 
 e2e_log_bridge() {
-  local last="$1"
-  "$LOG_CMD" show --last "$last" --info --style compact --predicate 'process == "APM44 Bridge" AND category == "Bridge"' 2>/dev/null || true
+  "$LOG_CMD" show --start "$RUN_LOG_START" --info --style compact --predicate 'process == "APM44 Bridge" AND category == "Bridge"' 2>/dev/null || true
 }
 
 e2e_resolve_sign_update() {
@@ -291,6 +290,7 @@ echo "STEP 2: OK (feed at $FEED_URL)"
 
 # STEP 3: Quit and relaunch
 echo "STEP 3: Quit and relaunch"
+RUN_LOG_START="$(date '+%Y-%m-%d %H:%M:%S')"
 "$OSASCRIPT" -e 'tell application "APM44 Bridge" to quit' >/dev/null 2>&1 || true
 QUIT_START="$(date +%s)"
 QUIT_DONE=0
@@ -307,7 +307,7 @@ while true; do
   sleep "$POLL"
 done
 if [[ "$QUIT_DONE" -ne 1 ]]; then
-  "$PKILL" -TERM -f "^${APP_EXEC}\$" 2>/dev/null || true
+  "$PKILL" -TERM -f "$APP_PROC_PATTERN" 2>/dev/null || true
   sleep "$POLL"
   LEFT2="$(e2e_app_pids || true)"
   if [[ -n "$LEFT2" ]]; then
@@ -354,7 +354,7 @@ echo "STEP 5: Wait for update available"
 U_START="$(date +%s)"
 U_FOUND=0
 while true; do
-  if e2e_log_updates "5m" 2>/dev/null | grep -Fq "Update available version=${LABEL}"; then
+  if e2e_log_updates 2>/dev/null | grep -Fq "Update available version=${LABEL}"; then
     U_FOUND=1
     break
   fi
@@ -366,6 +366,11 @@ while true; do
 done
 if [[ "$U_FOUND" -ne 1 ]]; then
   echo "FAIL: did not see 'Update available version=${LABEL}' within ${UPDATE_WAIT}s" >&2
+  exit 1
+fi
+FEED_PIDS="$(e2e_app_pids || true)"
+if [[ -z "$FEED_PIDS" ]]; then
+  echo "FAIL: no feed process found after relaunch (old=$OLD_PID)" >&2
   exit 1
 fi
 echo "STEP 5: OK (update available ${LABEL})"
@@ -398,7 +403,7 @@ while true; do
     break
   fi
   # The app log is the authority: a started download means Install was clicked.
-  if e2e_log_updates "5m" | grep -Fq "Update downloaded version=${LABEL}"; then
+  if e2e_log_updates | grep -Fq "Update downloaded version=${LABEL}"; then
     I_CLICKED=1
     break
   fi
@@ -445,7 +450,7 @@ while true; do
     break
   fi
   # Someone (the script or the human) already clicked Install and Relaunch.
-  if e2e_log_updates "10m" | grep -Fq "Installing update version=${LABEL}"; then
+  if e2e_log_updates | grep -Fq "Installing update version=${LABEL}"; then
     A_CLICKED=1
     break
   fi
@@ -469,11 +474,26 @@ N_OK=0
 while true; do
   CANDIDATES="$(e2e_app_pids || true)"
   CUR_VER="$(e2e_app_version_now || echo "unknown")"
-  FIRST_PID="$(printf '%s\n' "$CANDIDATES" | head -n 1 | tr -d '[:space:]' || true)"
-  if [[ -n "$FIRST_PID" && "$FIRST_PID" != "$OLD_PID" && "$CUR_VER" == "$EXPECT_VERSION" ]]; then
-    NEW_PID="$FIRST_PID"
-    N_OK=1
-    break
+  if [[ "$CUR_VER" == "$EXPECT_VERSION" ]]; then
+    CAND_LINE=""
+    while IFS= read -r CAND_LINE; do
+      CAND_PID="$(printf '%s' "$CAND_LINE" | tr -d '[:space:]' || true)"
+      if [[ -z "$CAND_PID" ]]; then
+        continue
+      fi
+      if [[ "$CAND_PID" == "$OLD_PID" ]]; then
+        continue
+      fi
+      if printf '%s\n' "$FEED_PIDS" | grep -Fxq "$CAND_PID"; then
+        continue
+      fi
+      NEW_PID="$CAND_PID"
+      N_OK=1
+      break
+    done <<< "$CANDIDATES"
+    if [[ "$N_OK" -eq 1 ]]; then
+      break
+    fi
   fi
   NOW="$(date +%s)"
   if [[ $((NOW - N_START)) -ge "$NEW_PID_WAIT" ]]; then
@@ -547,7 +567,7 @@ else
   check_fail "no-windows" "windows: $WINDOWS_OUT"
 fi
 
-if e2e_log_updates "10m" 2>/dev/null | grep -Fq "Update failed"; then
+if e2e_log_updates 2>/dev/null | grep -Fq "Update failed"; then
   check_fail "no-update-failed" "found 'Update failed' in log"
 else
   check_pass "no-update-failed" "no 'Update failed' lines"
@@ -563,7 +583,7 @@ for DKEY in SUFeedURL APM44AutomationCheckForUpdates APM44AutomationStartBridge;
 done
 
 if [[ "$START_BRIDGE" -eq 1 ]]; then
-  if e2e_log_bridge "10m" 2>/dev/null | grep -Fq "Bridge resuming after update"; then
+  if e2e_log_bridge 2>/dev/null | grep -Fq "Bridge resuming after update"; then
     check_pass "bridge-resuming" "found 'Bridge resuming after update'"
   else
     check_fail "bridge-resuming" "missing 'Bridge resuming after update'"
