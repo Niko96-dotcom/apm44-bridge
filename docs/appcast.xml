@@ -8,27 +8,27 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.14</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.14</link>
-      <sparkle:version>0.12.14</sparkle:version>
-      <sparkle:shortVersionString>0.12.14</sparkle:shortVersionString>
+      <title>APM44 Bridge 0.12.15</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.15</link>
+      <sparkle:version>0.12.15</sparkle:version>
+      <sparkle:shortVersionString>0.12.15</sparkle:shortVersionString>
       <description sparkle:format="markdown"><![CDATA[
-## 0.12.14 - 2026-09-26
+## 0.12.15 - 2026-09-26
 
-- After the app closes its menu-bar panel for an update window, the next click
-  on the menu-bar icon opens the panel again right away.
+- If an update window opens while you are working in another app, the APM44
+  Bridge Dock icon now bounces until you look at it.
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Sat, 26 Sep 2026 15:58:33 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.14/APM44Bridge-0.12.14.pkg"
-                 sparkle:edSignature="aM4StV7ls16z3JmfB94pEyojgGOj+17AiVageKN0KI1e7LsPWnDd+v1TV2/bXPwjcavmEYwMXLSHatwgohijCA=="
+      <pubDate>Sat, 26 Sep 2026 20:52:39 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.15/APM44Bridge-0.12.15.pkg"
+                 sparkle:edSignature="q9kb7mxnyFkPuAHa/bIfPHgO221BbI9nKdiSmuf8K/csMkG2ThV88n0VqvlclQXmQwKhXhAuhFcBr5M5nop4Bg=="
                  sparkle:installationType="package"
-                 length="5059459"
+                 length="5064781"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: Jq/CpaUmCLYvBlrVSvpIenUJ6620vPuj5zOK8Ca1dR5D7/Z+Uh2v3wVmas9BqmG/O0/lQndQ+xw5+p5v83h7DQ==
-length: 1488
+edSignature: or1R4tB4md2avJe+9TxL4vFE4Qq9UnK/rV8Ssqwal8rOparNqb9IBwWF3H5Y0dUUSxZnWNKoWLVXuzUijeaOAw==
+length: 1481
 -->
