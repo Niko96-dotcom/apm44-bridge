@@ -354,11 +354,19 @@ fi
 # first-run setup does not render during the load gap and wrongly report the
 # driver as missing.
 sleep 4
-# Skip the relaunch for command-line installs (COMMAND_LINE_INSTALL=1):
-# Sparkle installs via /usr/sbin/installer and relaunches the app itself.
-# Launching the new app here, while Sparkle's install and relaunch session
-# is still in flight, makes Sparkle report a failed update.
-if [[ -z "${COMMAND_LINE_INSTALL:-}" ]]; then
+# Launch unless this is a Sparkle-driven install. Sparkle stages the package
+# under a path containing /org.sparkle-project.Sparkle/ (passed as $1) and
+# relaunches the app itself. Launching the new app here, while Sparkle's
+# install and relaunch session is still in flight, makes Sparkle report a
+# failed update. MDM, Munki and manual `installer` runs still launch the
+# menu-bar app.
+apm44_should_launch_app() {
+  case "$1" in
+    */org.sparkle-project.Sparkle/*) return 1;;
+  esac
+  return 0
+}
+if apm44_should_launch_app "$1"; then
   CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
   if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && -d "/Applications/APM44 Bridge.app" ]]; then
     sudo -u "$CONSOLE_USER" open "/Applications/APM44 Bridge.app" 2>/dev/null || true

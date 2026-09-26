@@ -433,9 +433,10 @@ set -e
 [[ -d "/Applications/APM44 Bridge.app" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
 [[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
 echo "Installed app/driver/helper build ID mismatch" >&2
-# Skip relaunch for command-line installs (Sparkle relaunches itself).
-if [[ -z "${COMMAND_LINE_INSTALL:-}" ]]; then
-  : # GUI installs relaunch the app here
+# Skip relaunch for Sparkle-driven installs (Sparkle relaunches itself).
+apm44_should_launch_app() { case "$1" in */org.sparkle-project.Sparkle/*) return 1;; esac; return 0; }
+if apm44_should_launch_app "$1"; then
+  : # installs relaunch the app here
 fi
 POST
     if [[ "${APM44_FAKE_PKGINFO_MODE:-good}" == "bad-version-checked" ]]; then
@@ -664,12 +665,13 @@ run_pkg_replacement_script_check() {
   assert_contains "$postinstall" 'APM44 Bridge.app missing after install'
   assert_contains "$postinstall" 'APM44Bridge.driver missing after install'
 
-  assert_contains "$postinstall" "COMMAND_LINE_INSTALL"
-  local cli_guard_line cli_open_line cli_close_line
-  cli_guard_line="$(grep -n "COMMAND_LINE_INSTALL" "$postinstall" | head -1 | cut -d: -f1)"
+  assert_contains "$postinstall" "org.sparkle-project.Sparkle"
+  assert_contains "$postinstall" "apm44_should_launch_app"
+  local sparkle_guard_line cli_open_line cli_close_line
+  sparkle_guard_line="$(grep -n "org.sparkle-project.Sparkle" "$postinstall" | head -1 | cut -d: -f1)"
   cli_open_line="$(grep -n 'open "/Applications/APM44 Bridge.app"' "$postinstall" | head -1 | cut -d: -f1)"
-  [[ -n "$cli_guard_line" && -n "$cli_open_line" && "$cli_guard_line" -lt "$cli_open_line" ]] || {
-    echo "postinstall must guard the relaunch open with COMMAND_LINE_INSTALL (guard=$cli_guard_line open=$cli_open_line)" >&2
+  [[ -n "$sparkle_guard_line" && -n "$cli_open_line" && "$sparkle_guard_line" -lt "$cli_open_line" ]] || {
+    echo "postinstall must guard the relaunch open for Sparkle paths (guard=$sparkle_guard_line open=$cli_open_line)" >&2
     exit 1
   }
   cli_close_line="$(awk -v open_line="$cli_open_line" 'NR > open_line && $0 ~ /^fi/ { print NR; exit }' "$postinstall")"
@@ -706,6 +708,33 @@ PYEOF
   assert_contains "$preinstall" "$pkg_version"
   assert_not_contains "$preinstall" "@APM44_PKG_VERSION@"
   assert_contains "$preinstall" "refusing to replace it with older"
+}
+
+run_postinstall_launch_guard_behavior_check() {
+  run_pkg_builder_case one success "pkg-launch-guard-behavior"
+
+  local postinstall="$ROOT/build/signing/pkg-scripts/postinstall"
+  local guard_src="$TMP/launch-guard-func.sh"
+  # Extract ONLY the guard decision function; never source or run the real postinstall.
+  awk '/^apm44_should_launch_app\(\)/{flag=1} flag{print} flag&&/^\}/{exit}' "$postinstall" >"$guard_src"
+  [[ -s "$guard_src" ]] || { echo "could not extract apm44_should_launch_app from $postinstall" >&2; exit 1; }
+  assert_contains "$guard_src" "org.sparkle-project.Sparkle"
+  # shellcheck disable=SC1090
+  . "$guard_src"
+
+  local sparkle_path="/private/var/root/Library/Caches/com.niko.apm44.menu/org.sparkle-project.Sparkle/Installation/ABC123/60BCC34D-1F6B-4E8A-993B-A30451E4BB44.pkg"
+  if apm44_should_launch_app "$sparkle_path"; then
+    echo "Sparkle path must skip launch: $sparkle_path" >&2
+    exit 1
+  fi
+  if ! apm44_should_launch_app "/Users/musician/Downloads/APM44Bridge-0.12.1.pkg"; then
+    echo "Downloads path must launch the app" >&2
+    exit 1
+  fi
+  if ! apm44_should_launch_app ""; then
+    echo "empty argument must launch the app" >&2
+    exit 1
+  fi
 }
 
 write_guard_test_plist() {
@@ -1677,6 +1706,8 @@ run_release_all_pkg_gate_sequence
 run_pkg_identity_gate_cases
 
 run_pkg_replacement_script_check
+
+run_postinstall_launch_guard_behavior_check
 
 run_preinstall_downgrade_guard_check
 

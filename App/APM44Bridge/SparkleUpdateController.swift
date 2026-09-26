@@ -74,7 +74,11 @@ extension Notification.Name {
 @MainActor
 func dismissMenuBarPanel() {
     for window in NSApp.windows {
-        if NSStringFromClass(type(of: window)).contains("MenuBarExtraWindow") {
+        let className = NSStringFromClass(type(of: window))
+        let isMenuBarExtraWindow = className.contains("MenuBarExtraWindow")
+        let isStatusBarPanel = (window.level == .statusBar || window.level == .popUpMenu) && window is NSPanel
+        if isMenuBarExtraWindow || isStatusBarPanel {
+            logger.debug("Dismissing menu bar panel class=\(className, privacy: .public)")
             window.orderOut(nil)
         }
     }
@@ -85,32 +89,61 @@ func dismissMenuBarPanel() {
 /// NSApp, starting a real SPUUpdater, or hitting the network.
 @MainActor
 final class UpdateActivationCoordinator {
-    var activationPolicySetter: @MainActor (NSApplication.ActivationPolicy) -> Void
+    var activationPolicySetter: @MainActor (NSApplication.ActivationPolicy) -> Bool
     var appActivator: @MainActor () -> Void
     var panelDismisser: @MainActor () -> Void
+    var deferredRunner: @MainActor (@escaping @MainActor () -> Void) -> Void
     private var didElevateActivationPolicy = false
 
     init(
-        activationPolicySetter: @escaping @MainActor (NSApplication.ActivationPolicy) -> Void,
+        activationPolicySetter: @escaping @MainActor (NSApplication.ActivationPolicy) -> Bool,
         appActivator: @escaping @MainActor () -> Void,
-        panelDismisser: @escaping @MainActor () -> Void
+        panelDismisser: @escaping @MainActor () -> Void,
+        deferredRunner: @escaping @MainActor (@escaping @MainActor () -> Void) -> Void = { work in
+            DispatchQueue.main.async {
+                Task { @MainActor in work() }
+            }
+        }
     ) {
         self.activationPolicySetter = activationPolicySetter
         self.appActivator = appActivator
         self.panelDismisser = panelDismisser
+        self.deferredRunner = deferredRunner
     }
 
     func bringUpdateUIToFront() {
         panelDismisser()
-        activationPolicySetter(.regular)
+        _ = activationPolicySetter(.regular)
         didElevateActivationPolicy = true
         appActivator()
+    }
+
+    /// Schedules one more activation on the next main-queue turn, so the
+    /// post-authorization "Install and Relaunch" status window is ordered
+    /// after Sparkle shows it.
+    func scheduleDeferredBringToFront() {
+        deferredRunner { [weak self] in
+            self?.bringUpdateUIToFront()
+        }
+    }
+
+    /// Post-extraction activation: immediately, plus once more on the next
+    /// main-queue turn so it also happens after Sparkle orders its window.
+    func bringUpdateUIToFrontAfterExtraction() {
+        bringUpdateUIToFront()
+        scheduleDeferredBringToFront()
     }
 
     func willFinishUpdateSession() {
         guard didElevateActivationPolicy else { return }
         didElevateActivationPolicy = false
-        activationPolicySetter(.accessory)
+        let restored = activationPolicySetter(.accessory)
+        if !restored {
+            deferredRunner { [weak self] in
+                guard let self else { return }
+                _ = self.activationPolicySetter(.accessory)
+            }
+        }
     }
 }
 
@@ -143,11 +176,16 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     private let launchDate: Date
     private var didEvaluateLaunchCheck = false
     private let activation: UpdateActivationCoordinator
+    /// Latched when `didAbortWithError` accepts an installation error as
+    /// "already installed", so the following `didFinishUpdateCycleFor` with
+    /// the same error does not fail. Reset at the start of the next check
+    /// and in `didFinishUpdateCycleFor` after handling.
+    var benignInstallationSuccessLatched = false
 
     init(
         currentVersion: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "0.0.0",
-        activationPolicySetter: @escaping @MainActor (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) },
+        activationPolicySetter: @escaping @MainActor (NSApplication.ActivationPolicy) -> Bool = { NSApp.setActivationPolicy($0) },
         appActivator: @escaping @MainActor () -> Void = {
             if #available(macOS 14, *) {
                 NSApp.activate()
@@ -156,6 +194,11 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             }
         },
         menuPanelDismisser: @escaping @MainActor () -> Void = { dismissMenuBarPanel() },
+        deferredRunner: @escaping @MainActor (@escaping @MainActor () -> Void) -> Void = { work in
+            DispatchQueue.main.async {
+                Task { @MainActor in work() }
+            }
+        },
         startUpdater: Bool = true
     ) {
         self.currentVersion = currentVersion
@@ -163,7 +206,8 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         self.activation = UpdateActivationCoordinator(
             activationPolicySetter: activationPolicySetter,
             appActivator: appActivator,
-            panelDismisser: menuPanelDismisser
+            panelDismisser: menuPanelDismisser,
+            deferredRunner: deferredRunner
         )
         super.init()
 
@@ -183,42 +227,57 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     var updater: SPUUpdater { updaterController.updater }
 
-    /// True while the generic manual check is allowed. Ready-to-install is
-    /// allowed so the footer link and the panel can reach showPendingUpdate;
-    /// checking and installing stay blocked because a new check would
-    /// overwrite that status.
+    /// True while the generic manual check is allowed. Available and
+    /// ready-to-install stay allowed even when `canCheckForUpdates` is false
+    /// (a deferred scheduled update keeps Sparkle's session open), so the
+    /// footer link and the panel can reach showPendingUpdate; checking and
+    /// installing stay blocked because a new check would overwrite status.
     var canStartManualCheck: Bool {
         Self.canStartManualCheck(canCheckForUpdates: canCheckForUpdates, state: state)
     }
 
     nonisolated static func canStartManualCheck(canCheckForUpdates: Bool, state: AppUpdateState) -> Bool {
-        guard canCheckForUpdates else { return false }
         switch state {
-        case .checking, .installing: return false
-        case .idle, .available, .readyToInstall, .cancelled, .failed: return true
+        case .available, .readyToInstall:
+            return true
+        case .checking, .installing:
+            return false
+        case .idle, .cancelled, .failed:
+            return canCheckForUpdates
         }
     }
 
-    /// Only the downloaded, ready-to-install state may bring Sparkle's
-    /// pending ready-to-install UI back into focus.
+    /// The available (possibly deferred scheduled update) and the
+    /// downloaded, ready-to-install states may bring Sparkle's pending UI
+    /// back into focus.
     nonisolated static func canShowPendingUpdate(state: AppUpdateState) -> Bool {
-        if case .readyToInstall = state { return true }
-        return false
+        switch state {
+        case .available, .readyToInstall:
+            return true
+        default:
+            return false
+        }
     }
 
     func checkForUpdates() {
-        if case .readyToInstall = state {
+        switch state {
+        case .available, .readyToInstall:
             showPendingUpdate()
             return
+        default:
+            break
         }
         guard updater.canCheckForUpdates, canStartManualCheck else { return }
+        benignInstallationSuccessLatched = false
         logger.info("Checking for updates")
         state = .checking
         updaterController.checkForUpdates(nil)
     }
 
-    /// Brings Sparkle's pending ready-to-install UI back into focus. Sparkle
-    /// shows the already-downloaded update when asked to check again.
+    /// Brings Sparkle's pending or deferred update back into focus. Sparkle's
+    /// `checkForUpdates` shows an in-progress or deferred update in focus
+    /// instead of failing, so this intentionally consults no
+    /// `canCheckForUpdates` guard.
     func showPendingUpdate() {
         guard Self.canShowPendingUpdate(state: state) else { return }
         guard updaterController != nil else { return }
@@ -228,6 +287,11 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     func bringUpdateUIToFront() {
         activation.bringUpdateUIToFront()
+    }
+
+    /// Test hook: seeds the state machine without involving Sparkle.
+    func seedStateForTests(_ newState: AppUpdateState) {
+        state = newState
     }
 
     // MARK: SPUStandardUserDriverDelegate (gentle reminders for accessory app)
@@ -255,6 +319,10 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         bringUpdateUIToFront()
     }
 
+    func standardUserDriverWillShowModalAlert() {
+        bringUpdateUIToFront()
+    }
+
     func standardUserDriverWillFinishUpdateSession() {
         activation.willFinishUpdateSession()
     }
@@ -273,6 +341,7 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             guard let self else { return }
             let liveUpdater = self.updaterController.updater
             guard !liveUpdater.sessionInProgress, liveUpdater.canCheckForUpdates else { return }
+            self.benignInstallationSuccessLatched = false
             logger.info("Checking for updates")
             self.state = .checking
             liveUpdater.checkForUpdatesInBackground()
@@ -331,13 +400,36 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         bringUpdateUIToFront()
     }
 
+    func updater(_ updater: SPUUpdater, didExtractUpdate item: SUAppcastItem) {
+        handleDidExtract()
+    }
+
+    /// Post-authorization activation: immediately, plus once more on the next
+    /// main-queue turn so it also happens after Sparkle orders its
+    /// "Ready to Install / Install and Relaunch" status window.
+    func handleDidExtract() {
+        bringUpdateUIToFront()
+        activation.scheduleDeferredBringToFront()
+    }
+
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        handleAbort(error: error)
+    }
+
+    func handleAbort(error: Error) {
+        if benignInstallationSuccessLatched {
+            logger.info("Update already installed")
+            state = .idle
+            lastOfferedVersion = nil
+            return
+        }
         let nsError = error as NSError
         if Self.shouldTreatInstallationErrorAsSuccess(
             state: state,
             error: error,
             currentVersion: currentVersion
         ) {
+            benignInstallationSuccessLatched = true
             logger.info("Update already installed")
             state = .idle
             lastOfferedVersion = nil
@@ -360,6 +452,17 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
         error: Error?
     ) {
+        handleFinish(error: error)
+    }
+
+    func handleFinish(error: Error?) {
+        defer { benignInstallationSuccessLatched = false }
+        if benignInstallationSuccessLatched {
+            logger.info("Update already installed")
+            state = .idle
+            lastOfferedVersion = nil
+            return
+        }
         if let error, Self.shouldTreatInstallationErrorAsSuccess(
             state: state,
             error: error,
@@ -386,11 +489,16 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
                  immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
         // The standard Sparkle UI owns the install-on-quit decision. Returning
         // false lets it request admin authorization and relaunch safely.
-        NotificationCenter.default.post(name: .apm44WillInstallUpdate, object: nil)
-        logger.info("Installing update on quit version=\(item.displayVersionString, privacy: .public)")
-        lastOfferedVersion = item.displayVersionString
-        state = .installing(version: item.displayVersionString)
+        // The update is waiting for quit, not installing yet, so only record
+        // readiness here; `willInstallUpdate` alone posts the resume signal.
+        handleWillInstallUpdateOnQuit(versionString: item.displayVersionString)
         return false
+    }
+
+    func handleWillInstallUpdateOnQuit(versionString: String) {
+        logger.info("Update ready to install on quit version=\(versionString, privacy: .public)")
+        lastOfferedVersion = versionString
+        state = .readyToInstall(version: versionString)
     }
 
     private func failCheck(_ error: Error) {
@@ -503,10 +611,13 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         return AppStrings.updateDownloadFailed(detail: description)
     }
 
-    /// A post-relaunch SUInstallationError (4005) or SUAgentInvalidationError
-    /// (4010) while installing a version that is not newer than the running
-    /// app means the install already succeeded (e.g. the app was launched a
-    /// moment too early). Treat it as success instead of a scary failure.
+    /// A post-relaunch installation error while installing a version that is
+    /// not newer than the running app means the install already succeeded
+    /// (e.g. the app was launched a moment too early). Accept 4010
+    /// (SUAgentInvalidationError) as before, but accept the generic 4005
+    /// (SUInstallationError) only when the error chain carries Sparkle's
+    /// "remote port connection was invalidated" text, which it appends in
+    /// English even in localized UIs.
     nonisolated static func shouldTreatInstallationErrorAsSuccess(
         state: AppUpdateState,
         error: Error,
@@ -516,7 +627,32 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         guard nsError.domain == SUSparkleErrorDomain else { return false }
         guard nsError.code == 4005 || nsError.code == 4010 else { return false }
         guard case let .installing(version: installingVersion) = state else { return false }
-        return !AppUpdateVersionComparator.isNewer(installingVersion, than: currentVersion)
+        guard !AppUpdateVersionComparator.isNewer(installingVersion, than: currentVersion) else { return false }
+        if nsError.code == 4010 { return true }
+        return containsRemotePortInvalidation(error)
+    }
+
+    /// True when the error or any NSUnderlyingError in its chain carries the
+    /// remote-port invalidation text in its localized description or failure
+    /// reason (case-insensitive).
+    nonisolated static func containsRemotePortInvalidation(_ error: Error) -> Bool {
+        let needle = "remote port connection was invalidated"
+        var current: Error? = error
+        var depth = 0
+        while depth < 10, let candidate = current {
+            let nsCandidate = candidate as NSError
+            if nsCandidate.localizedDescription.lowercased().contains(needle) {
+                return true
+            }
+            if let reason = nsCandidate.userInfo[NSLocalizedFailureReasonErrorKey] as? String,
+               reason.lowercased().contains(needle) {
+                return true
+            }
+            guard let underlying = nsCandidate.userInfo[NSUnderlyingErrorKey] as? Error else { break }
+            current = underlying
+            depth += 1
+        }
+        return false
     }
 
     nonisolated static func shouldRunLaunchCheck(
