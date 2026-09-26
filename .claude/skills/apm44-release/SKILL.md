@@ -37,14 +37,14 @@ Version: X.Y.Z
 
 ### Step 0. Locate the inputs
 
-1. Run `cat VERSION` and `git status --short`.
-2. Success = `VERSION` prints `X.Y.Z`; status output is empty.
+1. Run `cat VERSION`, `git describe --tags --abbrev=0` and `git status --short`.
+2. Success = status output is empty, and `VERSION` equals the latest tag without the `v` (the previous release). X.Y.Z is the NEXT version; you write it in Step 2.
 3. STOP: if status is not empty, do not build. Report the dirty paths and ask what to do.
 
 ### Step 1. PR/CI gate
 
 1. Run `gh pr checks <PR-number>` for the feature PR.
-2. Success = every check says `pass` or `skipping`, none says `pending` or `fail`. (`main` has no required checks, so `gh pr merge` would merge immediately even with pending CI.)
+2. Success = every check says `pass` or `skipping`, none says `pending` or `fail`. (`main` has no required checks, so `gh pr merge` would merge immediately even with pending CI.) The "Cursor …" bot checks often stay `pending` for several minutes after the real CI jobs pass; they still count, so wait for them.
 3. STOP: on any `pending`/`fail`, do not merge. Wait or fix, then re-run `gh pr checks <PR-number>`.
 4. Merge with `gh pr merge <PR-number> --rebase --delete-branch`, then run `git checkout main && git pull --ff-only && git fetch --prune`.
 
@@ -57,21 +57,26 @@ Version: X.Y.Z
 
 ### Step 3. Release build and log reading
 
-1. Run `git checkout -- docs/appcast.xml` (a leftover modified appcast appends `-dirty` to the build ID), then `rm -rf build && bash scripts/release-all.sh` (about 10 min).
-2. Success = ALL three hold in the log: exactly `3` lines with `status: Accepted`; one line `appcast signature: OK`; one line `build identity: X.Y.Z+<12-char SHA of HEAD>`.
-3. Confirm outputs exist: `build/signing/APM44Bridge-X.Y.Z.pkg`, `build/signing/APM44Bridge-X.Y.Z.dmg` (each with `.sha256`), plus a modified `docs/appcast.xml`.
-4. STOP: on any missing string or file, do not continue to E2E. Open `references/troubleshooting.md` (build-ID, dirty-appcast, notarization rows) and report.
+1. Run `git checkout -- docs/appcast.xml` (a leftover modified appcast appends `-dirty` to the build ID).
+2. Start the build DETACHED with a durable log, so a session restart or reboot cannot kill it (both happened):
+   `mkdir -p ~/Library/Logs/apm44-release && nohup bash -c 'rm -rf build && bash scripts/release-all.sh; echo RELEASE_ALL_EXIT=$?' > ~/Library/Logs/apm44-release/release-X.Y.Z.log 2>&1 < /dev/null & disown`
+3. Wait (about 10 min): `until grep -q RELEASE_ALL_EXIT= ~/Library/Logs/apm44-release/release-X.Y.Z.log; do sleep 15; done`.
+4. Success = ALL hold for that log: the line `RELEASE_ALL_EXIT=0`; `grep -c '^[[:space:]]*status: Accepted' <log>` prints `3` (do NOT count every line containing "status: Accepted": notary progress lines contain it too, giving 6); one line `appcast signature: OK`; one line `build identity: X.Y.Z+<first 12 chars of git rev-parse HEAD>`.
+5. Confirm outputs exist: `build/signing/APM44Bridge-X.Y.Z.pkg`, `build/signing/APM44Bridge-X.Y.Z.dmg` (each with `.sha256`), plus a modified `docs/appcast.xml`.
+6. STOP: on any missing string or file, do not continue to E2E. Open `references/troubleshooting.md` (interrupted build, build-ID, dirty-appcast, notarization rows) and report.
 
 ### Step 4. E2E installed-update test with the candidate, BEFORE publishing
 
 1. REQUIRED when `git diff --name-only v<previous>...HEAD` lists any path outside `VERSION`, `CHANGELOG.md`, `docs/appcast.xml`, `docs/*.md`. Otherwise OPTIONAL but recommended.
 2. Never run an older candidate over a newer install. Compare first; STOP if the candidate is older.
 3. This updates the REAL installed app and needs one human admin approval per run. Before starting, tell the user the "before E2E" sentence from section 4 and wait for a yes. Then run with `--yes`.
-4. Run 1 (installer and the previous version's updater): `bash scripts/e2e-update-roundtrip.sh --pkg build/signing/APM44Bridge-X.Y.Z.pkg --expect-version X.Y.Z --start-bridge --yes`. The installed app must be OLDER than X.Y.Z; STOP otherwise.
-5. Run 2 (the NEW app's own updater), required when app update code changed (`App/APM44Bridge/SparkleUpdateController.swift`, `MenuContentView.swift`, `APM44BridgeApp.swift`): after run 1 passes, the Mac runs X.Y.Z. Re-offer the same package under a higher label: `bash scripts/e2e-update-roundtrip.sh --pkg build/signing/APM44Bridge-X.Y.Z.pkg --expect-version X.Y.Z --label 99.0.0 --start-bridge --yes`. Reinstalling the same version is allowed by the installer guard; the app stays X.Y.Z.
+4. Run 1 (installer and the previous version's updater): `bash scripts/e2e-update-roundtrip.sh --pkg build/signing/APM44Bridge-X.Y.Z.pkg --expect-version X.Y.Z --start-bridge --yes 2>&1 | tee ~/Library/Logs/apm44-release/e2e-X.Y.Z-run1.log`. The installed app must be OLDER than X.Y.Z; STOP otherwise.
+   - `--start-bridge` needs the selected output (AirPods Max over USB-C, awake) connected. If the script stops with `FAIL: the selected output (…) is not connected`, ask the user to plug in and put on the AirPods, then rerun; nothing was changed.
+   - An installed app older than 0.12.15 has no automation hooks: the bridge checks print `NOT RUN` and the result says `PASS (all run checks passed; bridge checks NOT RUN …)`. That counts as a pass for run 1; run 2 covers the bridge checks.
+5. Run 2 (the NEW app's own updater, log to `e2e-X.Y.Z-run2.log`), required when app update code changed (`App/APM44Bridge/SparkleUpdateController.swift`, `MenuContentView.swift`, `APM44BridgeApp.swift`): after run 1 passes, the Mac runs X.Y.Z. Re-offer the same package under a higher label: `bash scripts/e2e-update-roundtrip.sh --pkg build/signing/APM44Bridge-X.Y.Z.pkg --expect-version X.Y.Z --label 99.0.0 --start-bridge --yes`. Reinstalling the same version is allowed by the installer guard; the app stays X.Y.Z.
 6. When the script prints its ACTION REQUIRED banner, tell the user the "admin prompt" sentence from section 4, then wait. Never type a password. Never click the prompt yourself.
 7. Success = the final PASS/FAIL table shows `PASS` on every row.
-8. STOP on any `FAIL`: do not publish. Open `references/troubleshooting.md` (ready-window, 4005, device-ID, timeout rows), save the table, and report.
+8. STOP on any `FAIL`: do not publish. Open `references/troubleshooting.md` (E2E rows), save the table, and report. If the FAIL happened AFTER the update installed (installed version already X.Y.Z), do not rerun run 1 (the candidate is no longer newer); verify with run 2 instead.
 9. Optional extra audio proof after a PASS: `bash scripts/e2e-check-audio-flow.sh --seconds 3`. Success = it reports flow OK.
 
 ### Step 5. Appcast commit, signed tag, publish
