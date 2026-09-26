@@ -328,6 +328,49 @@ SHA revisions and document the refresh procedure.
 
 <!-- CI-01 -->
 
+## End-to-end update test
+
+Run the installed-update round trip on every release whose app, updater,
+installer, or driver changed, BEFORE publishing, using the release candidate
+pkg produced by the build/signing pipeline (for example
+`build/signing/APM44Bridge-<version>.pkg`).
+
+Exact command:
+
+```bash
+bash scripts/e2e-update-roundtrip.sh \
+  --pkg build/signing/APM44Bridge-<version>.pkg \
+  --expect-version <version> \
+  --start-bridge \
+  --yes
+```
+
+`--label` defaults to `--expect-version`. Use `--port` (default 8765) only when
+the default is busy and `--auth-timeout` (default 900 s) to bound the admin
+approval wait. The helpers `scripts/e2e-local-update-feed.sh` (local signed
+feed) and `scripts/e2e-check-audio-flow.sh` (silent audio-flow proof) are
+invoked automatically; you normally run only the roundtrip script.
+
+What the human must do: approve exactly ONE macOS admin prompt (Touch ID or
+password) for APM44 Bridge when the script prints the boxed
+`ACTION REQUIRED` banner. The script never uses `sudo` and never types or
+handles passwords; if the prompt is not approved within `--auth-timeout` it
+fails clearly.
+
+How to read the output: each phase prints `STEP n: ...` (1 preflight, 2 feed +
+server, 3 quit + relaunch, 4 bridge before update, 5 update available,
+6 Install Update, 7 Install and Relaunch, 8 new PID + version + settle,
+9 checks, 10 summary). Step 9 prints one `CHECK <name>: PASS|FAIL (<evidence>)`
+line per gate (version, build-id equality across app/driver/helper/loaded
+driver, single app process, no windows, no `Update failed`, no persisted
+`SUFeedURL` / automation defaults, plus bridge-resuming/helper/audio-flow with
+`--start-bridge`). Step 10 prints the summary table and the run dir. Exit 0
+means every check passed.
+
+The test leaves the Mac on the candidate version it just installed, which is
+the version about to be published. Do not downgrade afterwards unless you
+intend to re-test.
+
 ## Related
 
 - [DAW validation matrix](daw-matrix.md)
