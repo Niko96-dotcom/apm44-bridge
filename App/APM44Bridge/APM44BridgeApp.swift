@@ -185,6 +185,7 @@ struct APM44BridgeApp: App {
         systemLifecycle.start()
         Task { @MainActor in
             await manager.refreshDevices()
+            manager.resumeAfterUpdateIfRequested(now: Date())
         }
     }
 

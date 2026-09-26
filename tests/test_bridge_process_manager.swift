@@ -1190,4 +1190,139 @@ final class BridgeProcessManagerTests: XCTestCase {
         )
         XCTAssertNil(manager.startBlockedReason)
     }
+
+    // (1) The remembered output name survives a relaunch: a new manager built
+    // on the same UserDefaults suite shows it while the device list is empty.
+    func testDeviceNamePersistsAcrossManagersForSameSuite() {
+        let suite = "com.niko.apm44.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+
+        let settings1 = BridgeSettings(defaults: defaults)
+        settings1.outputDeviceUid = testDevice.uid
+        let manager1 = BridgeProcessManager(
+            settings: settings1,
+            processLauncher: MockProcessLauncher(),
+            binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
+            applicationTerminator: {}
+        )
+        manager1.applyRefreshedDeviceListForTesting([testDevice])
+        XCTAssertEqual(settings1.outputDeviceName, testDevice.name)
+
+        let settings2 = BridgeSettings(defaults: defaults)
+        XCTAssertEqual(settings2.outputDeviceName, testDevice.name)
+        let manager2 = BridgeProcessManager(
+            settings: settings2,
+            processLauncher: MockProcessLauncher(),
+            binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
+            applicationTerminator: {}
+        )
+        manager2.setDevicesForTesting([])
+        XCTAssertEqual(manager2.deviceDisplayName, testDevice.name)
+    }
+
+    // (2) The remembered name belongs to its uid only: it is not shown for a
+    // different uid.
+    func testDeviceNameNotShownForDifferentUid() {
+        let (manager, settings, _) = makeManager()
+        manager.applyRefreshedDeviceListForTesting([testDevice])
+        XCTAssertEqual(settings.outputDeviceName, testDevice.name)
+
+        manager.setDevicesForTesting([])
+        settings.outputDeviceUid = "different-output-uid"
+
+        XCTAssertNil(settings.outputDeviceName)
+        XCTAssertEqual(manager.deviceDisplayName, AppStrings.selectedOutput)
+    }
+
+    // (3) A fresh resume request with an unblocked launch restarts the bridge
+    // and clears the flag.
+    func testResumeAfterUpdateStartsWhenFreshAndUnblocked() async {
+        let (manager, settings, launcher) = makeManager()
+        settings.resumeAfterUpdateRequestedAt = Date()
+
+        manager.resumeAfterUpdateIfRequested(now: Date())
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    // (4) A stale request never starts the bridge but is still cleared.
+    func testResumeAfterUpdateIgnoresStaleFlag() {
+        let (manager, settings, launcher) = makeManager()
+        settings.resumeAfterUpdateRequestedAt = Date().addingTimeInterval(-11 * 60)
+
+        manager.resumeAfterUpdateIfRequested(now: Date())
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+    }
+
+    // (5) No request never starts the bridge.
+    func testResumeAfterUpdateIgnoresMissingFlag() {
+        let (manager, settings, launcher) = makeManager()
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+
+        manager.resumeAfterUpdateIfRequested(now: Date())
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+    }
+
+    // A fresh request with a blocked launch (selected output absent) never
+    // starts the bridge but is still cleared.
+    func testResumeAfterUpdateDoesNotStartWhenBlocked() {
+        let (manager, settings, launcher) = makeManager()
+        manager.setDevicesForTesting([])
+        manager.testDeviceListOverride = []
+        XCTAssertNotNil(manager.startBlockedReason)
+        settings.resumeAfterUpdateRequestedAt = Date()
+
+        manager.resumeAfterUpdateIfRequested(now: Date())
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+    }
+
+    // (6a) Posting the will-install-update notification while running records
+    // the resume request. The literal name is used because the
+    // SparkleUpdateController declaration lands with the other worker.
+    func testWillInstallUpdateSetsResumeFlagWhileRunning() async {
+        let (manager, settings, launcher) = makeManager()
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        NotificationCenter.default.post(
+            name: Notification.Name("apm44.willInstallUpdate"),
+            object: nil
+        )
+
+        XCTAssertNotNil(settings.resumeAfterUpdateRequestedAt)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    // (6b) Posting while idle records nothing.
+    func testWillInstallUpdateLeavesFlagClearWhileIdle() {
+        let (manager, settings, _) = makeManager()
+        XCTAssertEqual(manager.state, .idle)
+
+        NotificationCenter.default.post(
+            name: Notification.Name("apm44.willInstallUpdate"),
+            object: nil
+        )
+
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+    }
 }

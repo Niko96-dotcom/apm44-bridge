@@ -4,6 +4,17 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+- Updates are easier to follow: update windows now come to the front (the app
+  shows a Dock icon while updating), the menu-bar panel closes so it no longer
+  covers them, and a downloaded update offers Install and Relaunch in the panel.
+- A successful update no longer ends with a false "update failed" message.
+- A download interrupted by the network now says so and offers Try Again, and
+  the panel keeps showing which update is available.
+- If the bridge was running when an update installs, it starts again after the
+  relaunch.
+- The app remembers your output device's name, so a disconnected device is
+  shown by name instead of "selected output".
+
 ## 0.12.12 - 2026-09-25
 
 - Fixed the installer deleting APM44 Bridge when an older package ran after a

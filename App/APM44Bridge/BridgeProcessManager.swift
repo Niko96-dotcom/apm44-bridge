@@ -88,6 +88,10 @@ final class BridgeProcessManager: ObservableObject {
     private var lastUnexpectedExitStatus: Int32?
     private var lastUnexpectedStderr: String?
     private var resumeAfterSystemWake = false
+    /// Lifetime observers; the manager outlives the app, so the tokens are
+    /// retained without explicit removal.
+    private var outputDeviceObserver: NSObjectProtocol?
+    private var willInstallUpdateObserver: NSObjectProtocol?
 
     private let processLauncher: ProcessLaunching
     private let binaryURLOverride: URL?
@@ -119,6 +123,36 @@ final class BridgeProcessManager: ObservableObject {
         self.binaryURLOverride = binaryURLOverride
         self.applicationTerminator = applicationTerminator
         self.cachedBinaryURL = binaryURLOverride ?? BridgeBinaryLocator.resolve()
+        // Restore the persisted device name so deviceDisplayName can show it
+        // while the selected output is absent (e.g. right after relaunch).
+        if let remembered = settings.outputDeviceName, !remembered.isEmpty {
+            lastKnownDeviceName = remembered
+            lastKnownDeviceUid = settings.outputDeviceUid
+        }
+        // BridgeSettings posts synchronously from its @Published didSet on
+        // the main thread, so queue:nil delivers synchronously and the cache
+        // stays in lockstep without an async hop.
+        outputDeviceObserver = NotificationCenter.default.addObserver(
+            forName: .apm44OutputDeviceChanged,
+            object: nil,
+            queue: nil
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                let raw = note.userInfo?["uid"] as? String
+                self?.handleOutputDeviceChange(uid: raw?.isEmpty == false ? raw : nil)
+            }
+        }
+        // Declared by SparkleUpdateController; posted when an in-app update
+        // starts installing so a running bridge can resume after relaunch.
+        willInstallUpdateObserver = NotificationCenter.default.addObserver(
+            forName: .apm44WillInstallUpdate,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleWillInstallUpdate()
+            }
+        }
     }
 
     var binaryURL: URL? { binaryURLOverride ?? cachedBinaryURL }
@@ -271,6 +305,7 @@ final class BridgeProcessManager: ObservableObject {
             if let row = list.first(where: { $0.uid == preferred.uid }) {
                 lastKnownDeviceName = row.name
                 lastKnownDeviceUid = row.uid
+                settings.outputDeviceName = row.name
             }
             if bannerMessage == AppStrings.previousOutputSelect {
                 // keep stale-selection banner until user picks a device
@@ -281,10 +316,56 @@ final class BridgeProcessManager: ObservableObject {
                   let row = list.first(where: { $0.uid == uid }) {
             lastKnownDeviceName = row.name
             lastKnownDeviceUid = uid
+            settings.outputDeviceName = row.name
             if bannerMessage != AppStrings.waitingForOutput(row.name) {
                 bannerMessage = nil
             }
         }
+    }
+
+    /// Keeps the remembered (and persisted) output-device name in lockstep
+    /// with uid changes. A uid that resolves in the current list refreshes
+    /// the name; a uid that changes to a device not in the list drops it so
+    /// deviceDisplayName falls back to AppStrings.selectedOutput. A
+    /// re-announced identical uid while absent keeps the memory.
+    private func handleOutputDeviceChange(uid: String?) {
+        guard let uid, !uid.isEmpty else {
+            lastKnownDeviceName = nil
+            lastKnownDeviceUid = nil
+            settings.outputDeviceName = nil
+            return
+        }
+        if let row = devices.first(where: { $0.uid == uid }) {
+            lastKnownDeviceName = row.name
+            lastKnownDeviceUid = uid
+            settings.outputDeviceName = row.name
+        } else if uid != lastKnownDeviceUid {
+            lastKnownDeviceName = nil
+            lastKnownDeviceUid = nil
+            settings.outputDeviceName = nil
+        }
+    }
+
+    private func handleWillInstallUpdate() {
+        if isRunning {
+            settings.resumeAfterUpdateRequestedAt = Date()
+        }
+    }
+
+    /// Relaunches the bridge after an in-app update when the pre-install
+    /// observer recorded a fresh request. The flag is cleared
+    /// unconditionally; start() runs only when the request is younger than
+    /// 10 minutes and launching is not blocked (missing output, driver
+    /// mismatch, ...).
+    func resumeAfterUpdateIfRequested(now: Date = Date()) {
+        let requestedAt = settings.resumeAfterUpdateRequestedAt
+        settings.resumeAfterUpdateRequestedAt = nil
+        guard let requestedAt else { return }
+        let age = now.timeIntervalSince(requestedAt)
+        guard age >= 0, age < 10 * 60 else { return }
+        guard startBlockedReason == nil else { return }
+        logger.info("Bridge resuming after update")
+        start()
     }
 
     func refreshRoutingMode() {

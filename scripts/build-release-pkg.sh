@@ -354,9 +354,15 @@ fi
 # first-run setup does not render during the load gap and wrongly report the
 # driver as missing.
 sleep 4
-CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
-if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && -d "/Applications/APM44 Bridge.app" ]]; then
-  sudo -u "$CONSOLE_USER" open "/Applications/APM44 Bridge.app" 2>/dev/null || true
+# Skip the relaunch for command-line installs (COMMAND_LINE_INSTALL=1):
+# Sparkle installs via /usr/sbin/installer and relaunches the app itself.
+# Launching the new app here, while Sparkle's install and relaunch session
+# is still in flight, makes Sparkle report a failed update.
+if [[ -z "${COMMAND_LINE_INSTALL:-}" ]]; then
+  CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
+  if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && -d "/Applications/APM44 Bridge.app" ]]; then
+    sudo -u "$CONSOLE_USER" open "/Applications/APM44 Bridge.app" 2>/dev/null || true
+  fi
 fi
 exit 0
 POST
