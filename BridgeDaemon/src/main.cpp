@@ -218,6 +218,8 @@ int RunShmStatus() {
   std::cout << "consumer_token="
             << header->consumer_token.load(std::memory_order_relaxed) << "\n";
   std::cout << "daemon_ready=" << header->daemon_ready.load(std::memory_order_relaxed) << "\n";
+  std::cout << "write_index=" << header->write_index.load(std::memory_order_acquire) << "\n";
+  std::cout << "read_index=" << header->read_index.load(std::memory_order_acquire) << "\n";
   const apm44::ShmProducerDiagnostics diagnostics = ring.producerDiagnostics();
   std::cout << "producer_overrun_events=" << diagnostics.overrunEvents << "\n";
   std::cout << "producer_dropped_frames=" << diagnostics.droppedFrames << "\n";

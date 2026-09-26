@@ -285,6 +285,7 @@ final class SparkleUpdaterTests: XCTestCase {
             appActivator: {},
             menuPanelDismisser: {},
             deferredRunner: { work in work() },
+            isAppActive: { true },
             startUpdater: false
         )
         controller.seedStateForTests(.installing(version: "0.12.12"))
@@ -312,6 +313,7 @@ final class SparkleUpdaterTests: XCTestCase {
             appActivator: {},
             menuPanelDismisser: {},
             deferredRunner: { work in work() },
+            isAppActive: { true },
             startUpdater: false
         )
         var notifications = 0
@@ -337,6 +339,7 @@ final class SparkleUpdaterTests: XCTestCase {
             appActivator: { activations += 1 },
             menuPanelDismisser: { dismissals += 1 },
             deferredRunner: { work in work() },
+            isAppActive: { true },
             startUpdater: false
         )
         controller.handleDidExtract()
@@ -354,7 +357,8 @@ final class SparkleUpdaterTests: XCTestCase {
             activationPolicySetter: { policies.append($0); return true },
             appActivator: { activations += 1 },
             panelDismisser: { dismissals += 1 },
-            deferredRunner: { work in work() }
+            deferredRunner: { work in work() },
+            isAppActive: { true }
         )
         coordinator.bringUpdateUIToFront()
         coordinator.willFinishUpdateSession()
@@ -370,7 +374,8 @@ final class SparkleUpdaterTests: XCTestCase {
             activationPolicySetter: { policies.append($0); return true },
             appActivator: {},
             panelDismisser: {},
-            deferredRunner: { work in work() }
+            deferredRunner: { work in work() },
+            isAppActive: { true }
         )
         coordinator.willFinishUpdateSession()
         XCTAssertTrue(policies.isEmpty)
@@ -389,7 +394,8 @@ final class SparkleUpdaterTests: XCTestCase {
             },
             appActivator: {},
             panelDismisser: {},
-            deferredRunner: { work in work() }
+            deferredRunner: { work in work() },
+            isAppActive: { true }
         )
         coordinator.bringUpdateUIToFront()
         coordinator.willFinishUpdateSession()
@@ -407,7 +413,8 @@ final class SparkleUpdaterTests: XCTestCase {
             deferredRunner: { work in
                 deferredCalls += 1
                 work()
-            }
+            },
+            isAppActive: { true }
         )
         coordinator.bringUpdateUIToFrontAfterExtraction()
         XCTAssertEqual(activations, 2)
@@ -419,5 +426,96 @@ final class SparkleUpdaterTests: XCTestCase {
         XCTAssertFalse(AppStrings.updateDownloadInterrupted.isEmpty)
         XCTAssertTrue(AppStrings.installUpdateAndRelaunch("0.12.12").contains("0.12.12"))
         XCTAssertTrue(AppStrings.updateDownloadFailed(detail: "boom").contains("boom"))
+    }
+
+    @MainActor
+    func testBringToFrontRequestsAttentionWhenInactive() {
+        var requests = 0
+        var cancels: [Int] = []
+        let coordinator = UpdateActivationCoordinator(
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            panelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { false },
+            attentionRequester: { requests += 1; return 42 },
+            attentionCanceller: { cancels.append($0) }
+        )
+        coordinator.bringUpdateUIToFront()
+        XCTAssertEqual(requests, 1)
+        XCTAssertTrue(cancels.isEmpty)
+    }
+
+    @MainActor
+    func testBringToFrontDoesNotRequestWhenActive() {
+        var requests = 0
+        let coordinator = UpdateActivationCoordinator(
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            panelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { true },
+            attentionRequester: { requests += 1; return 1 },
+            attentionCanceller: { _ in }
+        )
+        coordinator.bringUpdateUIToFront()
+        XCTAssertEqual(requests, 0)
+    }
+
+    @MainActor
+    func testFinishCancelsOutstandingAttentionRequest() {
+        var requests = 0
+        var cancels: [Int] = []
+        let coordinator = UpdateActivationCoordinator(
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            panelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { false },
+            attentionRequester: { requests += 1; return 42 },
+            attentionCanceller: { cancels.append($0) }
+        )
+        coordinator.bringUpdateUIToFront()
+        XCTAssertEqual(requests, 1)
+        coordinator.willFinishUpdateSession()
+        XCTAssertEqual(cancels, [42])
+    }
+
+    @MainActor
+    func testSecondBringDoesNotStackAttentionRequests() {
+        var requests = 0
+        var cancels: [Int] = []
+        let coordinator = UpdateActivationCoordinator(
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            panelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { false },
+            attentionRequester: { requests += 1; return 7 },
+            attentionCanceller: { cancels.append($0) }
+        )
+        coordinator.bringUpdateUIToFront()
+        coordinator.bringUpdateUIToFront()
+        XCTAssertEqual(requests, 1)
+        XCTAssertTrue(cancels.isEmpty)
+    }
+
+    @MainActor
+    func testBecomeActiveCancelsOutstandingAttentionRequest() {
+        var requests = 0
+        var cancels: [Int] = []
+        let coordinator = UpdateActivationCoordinator(
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            panelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { false },
+            attentionRequester: { requests += 1; return 7 },
+            attentionCanceller: { cancels.append($0) }
+        )
+        coordinator.bringUpdateUIToFront()
+        XCTAssertEqual(requests, 1)
+        coordinator.handleAppDidBecomeActive()
+        XCTAssertEqual(cancels, [7])
     }
 }
