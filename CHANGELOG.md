@@ -4,6 +4,8 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+## 0.12.15 - 2026-09-26
+
 - If an update window opens while you are working in another app, the APM44
   Bridge Dock icon now bounces until you look at it.
 
