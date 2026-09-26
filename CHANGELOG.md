@@ -4,6 +4,8 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+## 0.12.13 - 2026-09-26
+
 - Updates are easier to follow: update windows now come to the front (the app
   shows a Dock icon while updating), the menu-bar panel closes so it no longer
   covers them, and a downloaded update offers Install and Relaunch in the panel.
