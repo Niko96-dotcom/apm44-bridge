@@ -141,6 +141,18 @@ RUN_DIR="$(mktemp -d)"
 echo "run dir: $RUN_DIR"
 SERVER_PID=""
 cleanup() {
+  # Never leave the app pointed at the test feed: if it still runs with our
+  # -SUFeedURL (e.g. after a FAIL before the update), relaunch it normally.
+  if "$PGREP" -f "SUFeedURL http://127.0.0.1:${PORT}/appcast.xml" >/dev/null 2>&1; then
+    "$OSASCRIPT" -e 'tell application id "com.niko.apm44.menu" to quit' >/dev/null 2>&1 || true
+    local waited=0
+    while "$PGREP" -f "SUFeedURL http://127.0.0.1:${PORT}/appcast.xml" >/dev/null 2>&1 && [[ "$waited" -lt 20 ]]; do
+      sleep 0.5
+      waited=$((waited + 1))
+    done
+    "$OPEN_CMD" -a "$APP_PATH" >/dev/null 2>&1 || true
+    echo "cleanup: relaunched APM44 Bridge without test arguments"
+  fi
   if [[ -n "$SERVER_PID" ]]; then
     kill "$SERVER_PID" 2>/dev/null || true
   fi
@@ -154,7 +166,8 @@ cleanup() {
 trap cleanup EXIT
 
 e2e_app_pids() {
-  "$PGREP" -f "^${APP_EXEC}\$" 2>/dev/null || true
+  # Match with or without launch arguments (a relaunch for this test adds them).
+  "$PGREP" -f "^${APP_EXEC}( |\$)" 2>/dev/null || true
 }
 
 e2e_app_version_now() {
@@ -210,6 +223,42 @@ if [[ -z "$OLD_PID" ]]; then
   OLD_PID="none"
 fi
 echo "preflight: version=$OLD_VERSION build=$OLD_BUILD pid=$OLD_PID port=$PORT"
+# Launch-argument automation hooks exist from 0.12.15. An older installed app
+# still offers the update through its own launch check (0.12.11+), but cannot
+# start the bridge on request, so the resume and audio checks become NOT RUN.
+HOOKS_MIN_VERSION="0.12.15"
+e2e_version_ge() {
+  local IFS=.
+  local -a a=($1) b=($2)
+  local i x y
+  for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+    x="${a[i]:-0}"; y="${b[i]:-0}"
+    [[ "$x" =~ ^[0-9]+$ && "$y" =~ ^[0-9]+$ ]] || return 1
+    ((10#$x > 10#$y)) && return 0
+    ((10#$x < 10#$y)) && return 1
+  done
+  return 0
+}
+START_BRIDGE_NOT_RUN_REASON=""
+if [[ "$START_BRIDGE" -eq 1 ]] && ! e2e_version_ge "$OLD_VERSION" "$HOOKS_MIN_VERSION"; then
+  START_BRIDGE_NOT_RUN_REASON="installed $OLD_VERSION predates the automation hooks ($HOOKS_MIN_VERSION+)"
+  echo "note: --start-bridge ignored: $START_BRIDGE_NOT_RUN_REASON; bridge resume and audio checks will be NOT RUN"
+  START_BRIDGE=0
+fi
+if [[ "$START_BRIDGE" -eq 1 ]]; then
+  # The app refuses to start without its selected output, so check it here
+  # instead of timing out later with a vague "helper did not appear".
+  OUTPUT_UID="$("$DEFAULTS" read com.niko.apm44.menu apm44.outputDeviceUid 2>/dev/null || true)"
+  if [[ -z "$OUTPUT_UID" ]]; then
+    echo "FAIL: no output device is selected in APM44 Bridge; select one in the app or omit --start-bridge" >&2
+    exit 1
+  fi
+  if ! "$HELPER" --list-devices 2>/dev/null | awk -F'\t' -v uid="$OUTPUT_UID" '$1 == uid && $5 == 1 { found = 1 } END { exit found ? 0 : 1 }'; then
+    echo "FAIL: the selected output ($OUTPUT_UID) is not connected; connect and wake it (for AirPods Max: plug in USB-C and put them on) or omit --start-bridge" >&2
+    exit 1
+  fi
+  echo "preflight: selected output connected ($OUTPUT_UID)"
+fi
 echo "STEP 1: OK"
 
 # STEP 2: Local feed and server
@@ -217,7 +266,8 @@ echo "STEP 2: Local feed and server"
 FEED_DIR="$RUN_DIR/feed"
 mkdir -p "$FEED_DIR"
 bash "$FEED_SCRIPT" --pkg "$PKG" --version "$LABEL" --out "$FEED_DIR" --port "$PORT"
-( cd "$FEED_DIR" && "$PYTHON3" -m http.server "$PORT" --bind 127.0.0.1 >"$RUN_DIR/server.log" 2>&1 ) &
+# exec so $! is the server itself; killing a wrapper subshell would orphan it.
+( cd "$FEED_DIR" && exec "$PYTHON3" -m http.server "$PORT" --bind 127.0.0.1 >"$RUN_DIR/server.log" 2>&1 ) &
 SERVER_PID=$!
 printf '%s\n' "$SERVER_PID" >"$RUN_DIR/server.pid"
 FEED_OK=0
@@ -293,6 +343,8 @@ if [[ "$START_BRIDGE" -eq 1 ]]; then
     exit 1
   fi
   echo "STEP 4: OK (bridge was running)"
+elif [[ -n "$START_BRIDGE_NOT_RUN_REASON" ]]; then
+  echo "STEP 4: NOT RUN ($START_BRIDGE_NOT_RUN_REASON)"
 else
   echo "STEP 4: SKIPPED (no --start-bridge)"
 fi
@@ -325,11 +377,16 @@ I_CLICKED=0
 INSTALL_APPLESCRIPT='tell application "System Events"
   tell process "APM44 Bridge"
     repeat with w in every window
-      repeat with bname in {"Install Update", "Installieren"}
-        try
-          click button bname of w
+      repeat with bref in {"Install Update", "Installieren"}
+        set bname to contents of bref
+        if exists button bname of w then
+          try
+            click button bname of w
+          end try
+          -- Clicking closes the window, which can make the click call itself
+          -- report an error; the button existed, so count it as clicked.
           return "clicked:" & bname
-        end try
+        end if
       end repeat
     end repeat
     error "no install button yet"
@@ -337,6 +394,11 @@ INSTALL_APPLESCRIPT='tell application "System Events"
 end tell'
 while true; do
   if "$OSASCRIPT" -e "$INSTALL_APPLESCRIPT" >/dev/null 2>&1; then
+    I_CLICKED=1
+    break
+  fi
+  # The app log is the authority: a started download means Install was clicked.
+  if e2e_log_updates "5m" | grep -Fq "Update downloaded version=${LABEL}"; then
     I_CLICKED=1
     break
   fi
@@ -362,11 +424,16 @@ A_CLICKED=0
 RELAUNCH_APPLESCRIPT='tell application "System Events"
   tell process "APM44 Bridge"
     repeat with w in every window
-      repeat with bname in {"Install and Relaunch", "Installieren und App neu starten"}
-        try
-          click button bname of w
+      repeat with bref in {"Install and Relaunch", "Installieren und App neu starten"}
+        set bname to contents of bref
+        if exists button bname of w then
+          try
+            click button bname of w
+          end try
+          -- Clicking closes the window, which can make the click call itself
+          -- report an error; the button existed, so count it as clicked.
           return "clicked:" & bname
-        end try
+        end if
       end repeat
     end repeat
     error "no relaunch button yet"
@@ -374,6 +441,11 @@ RELAUNCH_APPLESCRIPT='tell application "System Events"
 end tell'
 while true; do
   if "$OSASCRIPT" -e "$RELAUNCH_APPLESCRIPT" >/dev/null 2>&1; then
+    A_CLICKED=1
+    break
+  fi
+  # Someone (the script or the human) already clicked Install and Relaunch.
+  if e2e_log_updates "10m" | grep -Fq "Installing update version=${LABEL}"; then
     A_CLICKED=1
     break
   fi
@@ -509,13 +581,21 @@ if [[ "$START_BRIDGE" -eq 1 ]]; then
   fi
 fi
 
+if [[ -n "$START_BRIDGE_NOT_RUN_REASON" ]]; then
+  for NR in bridge-resuming bridge-helper audio-flow; do
+    echo "CHECK $NR: NOT RUN ($START_BRIDGE_NOT_RUN_REASON)"
+  done
+fi
+
 # STEP 10: Summary
 echo "STEP 10: Summary"
 echo "===== E2E UPDATE SUMMARY ====="
 echo "pkg: $PKG"
 echo "expected: $EXPECT_VERSION label: $LABEL"
 echo "old pid: $OLD_PID new pid: ${NEW_PID:-?}"
-if [[ "$ALL_PASS" -eq 1 ]]; then
+if [[ "$ALL_PASS" -eq 1 && -n "$START_BRIDGE_NOT_RUN_REASON" ]]; then
+  echo "Result: PASS (all run checks passed; bridge checks NOT RUN: $START_BRIDGE_NOT_RUN_REASON)"
+elif [[ "$ALL_PASS" -eq 1 ]]; then
   echo "Result: PASS (all checks passed)"
 else
   echo "Result: FAIL (see CHECK lines above)"
