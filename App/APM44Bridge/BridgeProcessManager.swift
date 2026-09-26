@@ -353,17 +353,33 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     /// Relaunches the bridge after an in-app update when the pre-install
-    /// observer recorded a fresh request. The flag is cleared
-    /// unconditionally; start() runs only when the request is younger than
-    /// 10 minutes and launching is not blocked (missing output, driver
-    /// mismatch, ...).
+    /// observer recorded a fresh request. The flag is kept while the only
+    /// blocker is a selected output that Core Audio has not enumerated yet
+    /// (postinstall kickstarts coreaudiod, so the first refresh may miss it
+    /// or return false); it is cleared for stale requests, running/
+    /// transitioning states, and any other launch blocker.
     func resumeAfterUpdateIfRequested(now: Date = Date()) {
-        let requestedAt = settings.resumeAfterUpdateRequestedAt
-        settings.resumeAfterUpdateRequestedAt = nil
-        guard let requestedAt else { return }
+        guard let requestedAt = settings.resumeAfterUpdateRequestedAt else { return }
         let age = now.timeIntervalSince(requestedAt)
-        guard age >= 0, age < 10 * 60 else { return }
-        guard startBlockedReason == nil else { return }
+        guard age >= 0, age < 10 * 60 else {
+            settings.resumeAfterUpdateRequestedAt = nil
+            return
+        }
+        switch state {
+        case .idle, .error, .reconnecting: break
+        default:
+            settings.resumeAfterUpdateRequestedAt = nil
+            return
+        }
+        if let uid = settings.outputDeviceUid,
+           !devices.contains(where: { $0.uid == uid }) {
+            return
+        }
+        guard startBlockedReason == nil else {
+            settings.resumeAfterUpdateRequestedAt = nil
+            return
+        }
+        settings.resumeAfterUpdateRequestedAt = nil
         logger.info("Bridge resuming after update")
         start()
     }
@@ -755,7 +771,11 @@ final class BridgeProcessManager: ObservableObject {
             return
         }
 
-        // Idle: refresh only; never auto-start.
+        // Idle: refresh only; the only auto-start is a pending post-update
+        // resume once its selected output is enumerated.
+        if case .idle = state {
+            resumeAfterUpdateIfRequested(now: Date())
+        }
     }
 
     private func waitForTermination(timeout: Duration = .seconds(5)) async throws {

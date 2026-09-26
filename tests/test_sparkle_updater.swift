@@ -72,33 +72,47 @@ final class SparkleUpdaterTests: XCTestCase {
 
 
     func testManualCheckIsBlockedWhileBusyOrInstalling() {
-        let allowed: [AppUpdateState] = [
+        // Idle, cancelled, and failed follow canCheckForUpdates.
+        let gated: [AppUpdateState] = [
             .idle,
-            .available(version: "1.0"),
-            .readyToInstall(version: "1.0"),
             .cancelled,
             .failed(message: "x"),
         ]
-        for state in allowed {
+        for state in gated {
             XCTAssertTrue(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: state), "\(state)")
             XCTAssertFalse(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: false, state: state), "\(state)")
+        }
+        // Available and ready-to-install stay enabled even when Sparkle's
+        // session is open (deferred scheduled update), so the footer link
+        // can reach showPendingUpdate.
+        let pending: [AppUpdateState] = [
+            .available(version: "1.0"),
+            .readyToInstall(version: "1.0"),
+        ]
+        for state in pending {
+            XCTAssertTrue(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: state), "\(state)")
+            XCTAssertTrue(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: false, state: state), "\(state)")
         }
         let busy: [AppUpdateState] = [.checking, .installing(version: "1.0")]
         for state in busy {
             XCTAssertFalse(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: state), "\(state)")
+            XCTAssertFalse(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: false, state: state), "\(state)")
         }
     }
 
     func testReadyToInstallAllowsShowPendingUpdate() {
         XCTAssertTrue(SparkleUpdateController.canShowPendingUpdate(state: .readyToInstall(version: "0.12.12")))
+        XCTAssertTrue(SparkleUpdateController.canShowPendingUpdate(state: .available(version: "0.12.12")))
         XCTAssertFalse(SparkleUpdateController.canShowPendingUpdate(state: .idle))
-        XCTAssertFalse(SparkleUpdateController.canShowPendingUpdate(state: .available(version: "0.12.12")))
         XCTAssertFalse(SparkleUpdateController.canShowPendingUpdate(state: .checking))
         XCTAssertFalse(SparkleUpdateController.canShowPendingUpdate(state: .installing(version: "0.12.12")))
         XCTAssertFalse(SparkleUpdateController.canShowPendingUpdate(state: .cancelled))
         XCTAssertFalse(SparkleUpdateController.canShowPendingUpdate(state: .failed(message: "x")))
-        // Ready-to-install must reach showPendingUpdate via the generic check path.
+        // Both pending states must reach showPendingUpdate via the generic check path.
         XCTAssertTrue(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: .readyToInstall(version: "0.12.12")))
+        XCTAssertTrue(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: false, state: .readyToInstall(version: "0.12.12")))
+        XCTAssertTrue(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: .available(version: "0.12.12")))
+        XCTAssertTrue(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: false, state: .available(version: "0.12.12")))
         XCTAssertFalse(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: .checking))
         XCTAssertFalse(SparkleUpdateController.canStartManualCheck(canCheckForUpdates: true, state: .installing(version: "0.12.12")))
     }
@@ -216,15 +230,131 @@ final class SparkleUpdaterTests: XCTestCase {
         ))
     }
 
+    func testPlain4005WithoutRemotePortTextIsNotAccepted() {
+        let plain = NSError(
+            domain: "SUSparkleErrorDomain",
+            code: 4005,
+            userInfo: [NSLocalizedDescriptionKey: "Beim Ausführen des Aktualisierungsprogramms ist ein Fehler aufgetreten."]
+        )
+        XCTAssertFalse(SparkleUpdateController.shouldTreatInstallationErrorAsSuccess(
+            state: .installing(version: "0.12.12"),
+            error: plain,
+            currentVersion: "0.12.12"
+        ))
+        XCTAssertFalse(SparkleUpdateController.containsRemotePortInvalidation(plain))
+    }
+
+    func test4005WithRemotePortTextInUnderlyingErrorIsAccepted() {
+        let underlying = NSError(
+            domain: NSURLErrorDomain,
+            code: -1001,
+            userInfo: [NSLocalizedDescriptionKey: "The remote port connection was invalidated from the updater."]
+        )
+        let wrapped = NSError(
+            domain: "SUSparkleErrorDomain",
+            code: 4005,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Beim Ausführen des Aktualisierungsprogramms ist ein Fehler aufgetreten.",
+                NSUnderlyingErrorKey: underlying,
+            ]
+        )
+        XCTAssertTrue(SparkleUpdateController.containsRemotePortInvalidation(wrapped))
+        XCTAssertTrue(SparkleUpdateController.shouldTreatInstallationErrorAsSuccess(
+            state: .installing(version: "0.12.12"),
+            error: wrapped,
+            currentVersion: "0.12.12"
+        ))
+        // Failure reason carries the text as well.
+        let reasoned = NSError(
+            domain: "SUSparkleErrorDomain",
+            code: 4005,
+            userInfo: [NSLocalizedFailureReasonErrorKey: "REMOTE PORT CONNECTION WAS INVALIDATED"]
+        )
+        XCTAssertTrue(SparkleUpdateController.shouldTreatInstallationErrorAsSuccess(
+            state: .installing(version: "0.12.12"),
+            error: reasoned,
+            currentVersion: "0.12.12"
+        ))
+    }
+
+    @MainActor
+    func testBenignLatchPreventsSecondFailure() {
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            menuPanelDismisser: {},
+            deferredRunner: { work in work() },
+            startUpdater: false
+        )
+        controller.seedStateForTests(.installing(version: "0.12.12"))
+        let remotePortError = NSError(
+            domain: "SUSparkleErrorDomain",
+            code: 4005,
+            userInfo: [NSLocalizedDescriptionKey: "The remote port connection was invalidated from the updater."]
+        )
+        controller.handleAbort(error: remotePortError)
+        XCTAssertTrue(controller.benignInstallationSuccessLatched)
+        XCTAssertEqual(controller.state, .idle)
+        // The following finish with the same error must not fail; the latch
+        // covers the state change to .idle that would otherwise lose the
+        // .installing context.
+        controller.handleFinish(error: remotePortError)
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertFalse(controller.benignInstallationSuccessLatched)
+    }
+
+    @MainActor
+    func testWillInstallUpdateOnQuitSetsReadyToInstallWithoutNotification() {
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            menuPanelDismisser: {},
+            deferredRunner: { work in work() },
+            startUpdater: false
+        )
+        var notifications = 0
+        let observer = NotificationCenter.default.addObserver(
+            forName: .apm44WillInstallUpdate,
+            object: nil,
+            queue: nil
+        ) { _ in notifications += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        controller.handleWillInstallUpdateOnQuit(versionString: "0.12.13")
+        XCTAssertEqual(controller.state, .readyToInstall(version: "0.12.13"))
+        XCTAssertEqual(notifications, 0)
+    }
+
+    @MainActor
+    func testDidExtractBringsUIToFrontTwice() {
+        var policies: [NSApplication.ActivationPolicy] = []
+        var activations = 0
+        var dismissals = 0
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { policy in policies.append(policy); return true },
+            appActivator: { activations += 1 },
+            menuPanelDismisser: { dismissals += 1 },
+            deferredRunner: { work in work() },
+            startUpdater: false
+        )
+        controller.handleDidExtract()
+        XCTAssertEqual(policies, [.regular, .regular])
+        XCTAssertEqual(activations, 2)
+        XCTAssertEqual(dismissals, 2)
+    }
+
     @MainActor
     func testActivationPolicyTransitionsWithInjectedClosures() {
         var policies: [NSApplication.ActivationPolicy] = []
         var activations = 0
         var dismissals = 0
         let coordinator = UpdateActivationCoordinator(
-            activationPolicySetter: { policies.append($0) },
+            activationPolicySetter: { policies.append($0); return true },
             appActivator: { activations += 1 },
-            panelDismisser: { dismissals += 1 }
+            panelDismisser: { dismissals += 1 },
+            deferredRunner: { work in work() }
         )
         coordinator.bringUpdateUIToFront()
         coordinator.willFinishUpdateSession()
@@ -237,12 +367,51 @@ final class SparkleUpdaterTests: XCTestCase {
     func testWillFinishUpdateSessionAloneDoesNotChangePolicy() {
         var policies: [NSApplication.ActivationPolicy] = []
         let coordinator = UpdateActivationCoordinator(
-            activationPolicySetter: { policies.append($0) },
+            activationPolicySetter: { policies.append($0); return true },
             appActivator: {},
-            panelDismisser: {}
+            panelDismisser: {},
+            deferredRunner: { work in work() }
         )
         coordinator.willFinishUpdateSession()
         XCTAssertTrue(policies.isEmpty)
+    }
+
+    @MainActor
+    func testAccessoryRestoreFailureRetriesOnce() {
+        var policies: [NSApplication.ActivationPolicy] = []
+        var calls = 0
+        let coordinator = UpdateActivationCoordinator(
+            activationPolicySetter: { policy in
+                policies.append(policy)
+                calls += 1
+                // First restore fails, the scheduled retry succeeds.
+                return calls != 2
+            },
+            appActivator: {},
+            panelDismisser: {},
+            deferredRunner: { work in work() }
+        )
+        coordinator.bringUpdateUIToFront()
+        coordinator.willFinishUpdateSession()
+        XCTAssertEqual(policies, [.regular, .accessory, .accessory])
+    }
+
+    @MainActor
+    func testExtractionActivatesImmediatelyAndDeferred() {
+        var activations = 0
+        var deferredCalls = 0
+        let coordinator = UpdateActivationCoordinator(
+            activationPolicySetter: { _ in true },
+            appActivator: { activations += 1 },
+            panelDismisser: {},
+            deferredRunner: { work in
+                deferredCalls += 1
+                work()
+            }
+        )
+        coordinator.bringUpdateUIToFrontAfterExtraction()
+        XCTAssertEqual(activations, 2)
+        XCTAssertEqual(deferredCalls, 1)
     }
 
     func testNewUpdateStringsArePresent() {

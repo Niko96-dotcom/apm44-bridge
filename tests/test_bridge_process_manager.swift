@@ -1276,9 +1276,10 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 0)
     }
 
-    // A fresh request with a blocked launch (selected output absent) never
-    // starts the bridge but is still cleared.
-    func testResumeAfterUpdateDoesNotStartWhenBlocked() {
+    // A fresh request with the selected output not yet enumerated keeps the
+    // flag (Core Audio may still be rescanning after the update); once the
+    // device appears, resume starts the bridge and clears the flag.
+    func testResumeAfterUpdateKeepsFlagWhileDeviceMissingThenStarts() async {
         let (manager, settings, launcher) = makeManager()
         manager.setDevicesForTesting([])
         manager.testDeviceListOverride = []
@@ -1289,7 +1290,86 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .idle)
         XCTAssertEqual(launcher.makeCount, 0)
+        XCTAssertNotNil(settings.resumeAfterUpdateRequestedAt)
+
+        manager.applyRefreshedDeviceListForTesting([testDevice])
+        manager.testDeviceListOverride = [testDevice]
+        manager.resumeAfterUpdateIfRequested(now: Date())
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
         XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    // A fresh request blocked for another reason (driver build mismatch) is
+    // cleared without starting.
+    func testResumeAfterUpdateClearsWhenBlockedForOtherReason() {
+        let (manager, settings, launcher) = makeManager()
+        manager.halBuildCheckOverride = (
+            halPresent: true,
+            appID: fixtureBuildID,
+            driverID: "0.12.7+other-build-mismatch"
+        )
+        XCTAssertEqual(manager.startBlockedReason, AppStrings.driverBuildMismatch)
+        settings.resumeAfterUpdateRequestedAt = Date()
+
+        manager.resumeAfterUpdateIfRequested(now: Date())
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+    }
+
+    // A pending flag with the bridge already running is cleared without a
+    // second launch.
+    func testResumeAfterUpdateClearsWhenAlreadyRunning() async {
+        let (manager, settings, launcher) = makeManager()
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
+        settings.resumeAfterUpdateRequestedAt = Date()
+
+        manager.resumeAfterUpdateIfRequested(now: Date())
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    // The hotplug path starts a pending resume once the device appears.
+    func testResumeAfterUpdateStartsViaHotplugWhenDeviceAppears() async {
+        let (manager, settings, launcher) = makeManager()
+        manager.setDevicesForTesting([])
+        manager.testDeviceListOverride = []
+        settings.resumeAfterUpdateRequestedAt = Date()
+
+        await manager.handleHotplug()
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 0)
+        XCTAssertNotNil(settings.resumeAfterUpdateRequestedAt)
+
+        manager.testDeviceListOverride = [testDevice]
+        await manager.handleHotplug()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
     }
 
     // (6a) Posting the will-install-update notification while running records
