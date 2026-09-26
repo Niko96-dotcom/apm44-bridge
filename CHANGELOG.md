@@ -4,6 +4,9 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+- After the app closes its menu-bar panel for an update window, the next click
+  on the menu-bar icon opens the panel again right away.
+
 ## 0.12.13 - 2026-09-26
 
 - Updates are easier to follow: update windows now come to the front (the app
