@@ -3,15 +3,12 @@
 # preinstall by scripts/build-release-pkg.sh. Arguments, if any, prefix the
 # commands that need root: the uninstaller passes sudo, the preinstall nothing.
 apm44_stop_app_and_helper() {
-  local _apm44_as_root=()
+  local _apm44_as_root=("$@")
   local _apm44_console_user=""
   local _apm44_console_uid=""
   local _apm44_app_pattern=""
   local _apm44_helper_pattern=""
   local _apm44_i=""
-  if (( $# > 0 )); then
-    _apm44_as_root=("$@")
-  fi
   # Ask the existing app to quit, then terminate only helpers launched from the
   # installed app bundle. This avoids replacing a running old process image.
   _apm44_console_user="$(stat -f%Su /dev/console 2>/dev/null || true)"

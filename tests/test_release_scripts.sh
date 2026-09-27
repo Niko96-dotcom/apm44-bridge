@@ -433,16 +433,23 @@ case "${1:-}" in
   --expand-full)
     dest="$3"
     mkdir -p "$dest/Scripts"
+    # Expand the scripts build-release-pkg.sh generated, when a test asks for them.
+    if [[ -n "${APM44_FAKE_EXPANDED_SCRIPTS:-}" ]]; then
+      cp "$APM44_FAKE_EXPANDED_SCRIPTS/preinstall" "$APM44_FAKE_EXPANDED_SCRIPTS/postinstall" "$dest/Scripts/"
+    else
     cat >"$dest/Scripts/preinstall" <<'PRE'
 #!/bin/bash
 set -e
 # refusing to replace it with older - downgrade guard marker
-APP_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
-if pgrep -f "$APP_PATTERN" >/dev/null 2>&1; then
-  echo "Terminating running APM44 Bridge before replacing the app" >&2
-  pkill -TERM -f "$APP_PATTERN" 2>/dev/null || true
-  pkill -KILL -f "$APP_PATTERN" 2>/dev/null || true
-fi
+apm44_stop_app_and_helper() {
+  local _apm44_app_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
+  if pgrep -f "$_apm44_app_pattern" >/dev/null 2>&1; then
+    echo "Terminating running APM44 Bridge before replacing the app" >&2
+    pkill -TERM -f "$_apm44_app_pattern" 2>/dev/null || true
+    pkill -KILL -f "$_apm44_app_pattern" 2>/dev/null || true
+  fi
+}
+apm44_stop_app_and_helper
 rm -rf "/Applications/APM44 Bridge.app"
 rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 exit 0
@@ -459,6 +466,7 @@ if apm44_should_launch_app "$1"; then
   : # installs relaunch the app here
 fi
 POST
+    fi
     if [[ "${APM44_FAKE_PKGINFO_MODE:-good}" == "bad-version-checked" ]]; then
       cat >"$dest/PackageInfo" <<'PKGINFO'
 <?xml version="1.0" encoding="utf-8"?>
@@ -1178,50 +1186,15 @@ run_uninstall_case() {
 }
 
 run_uninstall_execution_cases() {
-  cat >"$TMP/uninstall-shims.bash" <<'EOF'
-apm44_test_log() {
-  local line
-  line="$(printf '%q ' "$@")"
-  printf '%s\n' "${line% }" >>"$APM44_TEST_CALLS"
-}
-apm44_test_pgrep_app=0
-apm44_test_pgrep_helper=0
-pgrep() {
-  local calls
-  case "$*" in
-    "-f ^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge"*)
-      apm44_test_pgrep_app=$((apm44_test_pgrep_app + 1))
-      calls="$apm44_test_pgrep_app"
-      ;;
-    "-f ^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge"*)
-      apm44_test_pgrep_helper=$((apm44_test_pgrep_helper + 1))
-      calls="$apm44_test_pgrep_helper"
-      ;;
-    *)
-      apm44_test_log pgrep "$@"
-      return 1
-      ;;
-  esac
-  (( calls <= APM44_TEST_PGREP_RUNNING ))
-}
-stat() {
-  case "$1" in
-    -f%Su) echo "$APM44_TEST_CONSOLE_USER" ;;
-    -f%u) [[ "$APM44_TEST_CONSOLE_USER" == root ]] && echo 0 || echo 501 ;;
-    *) apm44_test_log stat "$@"; return 1 ;;
-  esac
-}
-launchctl() { apm44_test_log launchctl "$@"; }
-osascript() { apm44_test_log osascript "$@"; }
-pkill() { apm44_test_log pkill "$@"; }
-killall() { apm44_test_log killall "$@"; }
-rm() { apm44_test_log rm "$@"; }
+  # Reuse the preinstall's pgrep and stat shims; the later definitions win, so
+  # sudo logs without running its arguments and pkgutil reports the receipt.
+  cp "$TMP/preinstall-shims.bash" "$TMP/uninstall-shims.bash"
+  cat >>"$TMP/uninstall-shims.bash" <<'EOF'
 sudo() { apm44_test_log sudo "$@"; return "$APM44_TEST_SUDO_STATUS"; }
 pkgutil() {
   apm44_test_log pkgutil "$@"
   [[ "$APM44_TEST_PKG_INSTALLED" == "1" ]]
 }
-sleep() { :; }
 EOF
   cat >"$TMP/uninstall-sandbox.sb" <<'EOF'
 (version 1)
@@ -1624,7 +1597,11 @@ BRIDGE
   chmod +x "$VERIFY_BRIDGE"
 }
 
+# expanded_scripts, when set, makes the fake pkgutil expand those install
+# scripts instead of its fixture, so the verifier's markers are checked against
+# what build-release-pkg.sh really generates.
 run_verify_release_pkg_check() {
+  local expanded_scripts="${1:-}"
   local out="$TMP/verify-release-pkg.out"
   rm -f "$PKG.sha256" "$PKG.provenance.txt"
   printf 'verify pkg\n' >"$PKG"
@@ -1635,11 +1612,15 @@ run_verify_release_pkg_check() {
   env \
     PATH="$FAKE_BIN:$PATH" \
     APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_EXPANDED_SCRIPTS="$expanded_scripts" \
     APM44_PKG_PATH="$PKG" \
     APM44_APP_PATH="$VERIFY_APP" \
     APM44_DRIVER_EXECUTABLE="$VERIFY_DRIVER_EXE" \
     APM44_BRIDGE_BIN="$VERIFY_BRIDGE" \
-    /bin/bash "$ROOT/scripts/verify-release-pkg.sh" >"$out" 2>&1
+    /bin/bash "$ROOT/scripts/verify-release-pkg.sh" >"$out" 2>&1 || {
+      cat "$out" >&2
+      exit 1
+    }
 
   assert_contains "$LOG" "pkgutil --payload-files $PKG"
   assert_contains "$LOG" "pkgutil --expand-full $PKG"
@@ -1649,6 +1630,14 @@ run_verify_release_pkg_check() {
   assert_contains "$PKG.provenance.txt" "helper_build_id=FAKEPKG123"
   assert_contains "$PKG.provenance.txt" "app_bundle_sha256="
   assert_contains "$PKG.provenance.txt" "driver_executable_sha256="
+}
+
+run_verify_release_pkg_generated_scripts_check() {
+  run_pkg_builder_case one success "pkg-verify-generated-scripts"
+  local scripts="$TMP/generated-pkg-scripts"
+  rm -rf "$scripts"
+  cp -R "$ROOT/build/signing/pkg-scripts" "$scripts"
+  run_verify_release_pkg_check "$scripts"
 }
 
 run_verify_release_pkg_relocate_reject_check() {
@@ -2143,6 +2132,7 @@ run_uninstall_script_check
 run_pkg_validation_order_check
 
 run_verify_release_pkg_check
+run_verify_release_pkg_generated_scripts_check
 
 run_verify_release_pkg_relocate_reject_check
 

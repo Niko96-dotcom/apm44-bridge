@@ -105,7 +105,8 @@ postinstall="$(find "$expanded" -type f -name postinstall | head -1)"
 require_script_marker "$preinstall" 'rm -rf "/Applications/APM44 Bridge.app"'
 require_script_marker "$preinstall" 'rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"'
 require_script_marker "$preinstall" 'Terminating running APM44 Bridge before replacing the app'
-require_script_marker "$preinstall" 'pkill -KILL -f "$APP_PATTERN"'
+require_script_marker "$preinstall" 'apm44_stop_app_and_helper() {'
+require_script_marker "$preinstall" 'pkill -KILL -f "$_apm44_app_pattern"'
 require_script_marker "$postinstall" "APM44 Bridge.app missing after install"
 require_script_marker "$postinstall" "APM44Bridge.driver missing after install"
 require_script_marker "$postinstall" "Installed app/driver/helper build ID mismatch"
