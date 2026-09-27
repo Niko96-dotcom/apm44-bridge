@@ -117,7 +117,12 @@ the local Sparkle Keychain item or the GitHub Actions `SPARKLE_PRIVATE_KEY`
 secret. Never put the private key in a plist, source file, appcast, log, or
 command-line argument. `scripts/generate-appcast.sh` accepts the secret via
 stdin and `scripts/validate-appcast.sh` fails closed on malformed, unsigned,
-non-HTTPS, or incorrectly typed package items.
+non-HTTPS, or incorrectly typed package items. With `--pkg <path>` it also
+requires the enclosure for that file name to carry the PKG's exact byte length
+and an EdDSA signature that `sign_update --verify` accepts.
+`publish-release.sh` runs it on the local PKG before upload and
+`verify-published-release.sh` on the downloaded PKG, so a PKG rebuilt or
+re-stapled after `generate-appcast.sh` fails before clients see it.
 
 After `release-all.sh` succeeds with Apple credentials, commit the generated
 appcast and release notes on `main`, create and push a new signed tag, then

@@ -56,6 +56,6 @@ PY
 
 APM44_APPCAST_PATH="$APPCAST" \
   SPARKLE_SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-}" \
-  bash "$ROOT/scripts/validate-appcast.sh"
+  bash "$ROOT/scripts/validate-appcast.sh" --pkg "$TMP/APM44Bridge-${VERSION}.pkg"
 
 echo "verify-published-release: OK (v$VERSION, unauthenticated downloads)"
