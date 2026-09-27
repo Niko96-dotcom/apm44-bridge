@@ -135,30 +135,44 @@ EOF
 
 chmod +x "$FAKE_BIN/ps" "$FAKE_BIN/kill" "$FAKE_BIN/pkill" "$FAKE_BIN/pgrep" "$FAKE_BIN/sleep" "$FAKE_BIN/bash" "$FAKE_BIN/open"
 
+# bash's builtin kill bypasses PATH fakes, but a function from BASH_ENV takes
+# precedence over the builtin in non-interactive /bin/bash "$SCRIPT" runs.
+cat >"$TMP/kill-shim.bash" <<EOF
+kill() {
+  "$FAKE_BIN/kill" "\$@"
+}
+# Only the script under test needs the shim; keep it out of the fakes it runs.
+unset BASH_ENV
+EOF
+
 run_isolated_stop_leaves_installed_app() {
   : >"$KILL_LOG"
   cat >"$PS_TABLE" <<EOF
+ 1111 $ISOLATED_EXE -SUEnableAutomaticChecks NO -SUAutomaticallyUpdate NO
  2222 $INSTALLED_EXE
 EOF
 
   env \
     PATH="$FAKE_BIN:/usr/bin:/bin" \
+    BASH_ENV="$TMP/kill-shim.bash" \
     APM44_FAKE_PS_TABLE="$PS_TABLE" \
     APM44_FAKE_KILL_LOG="$KILL_LOG" \
     /bin/bash "$SCRIPT" --isolated-stop
 
+  assert_contains "$KILL_LOG" "kill -TERM 1111"
+  assert_not_contains "$KILL_LOG" "2222"
   assert_not_contains "$KILL_LOG" "pkill"
   assert_contains "$PS_TABLE" "$INSTALLED_EXE"
 }
 
 run_help_and_usage() {
   local out="$TMP/help.out"
-  /bin/bash "$SCRIPT" --help >"$out" 2>&1
+  BASH_ENV="$TMP/kill-shim.bash" /bin/bash "$SCRIPT" --help >"$out" 2>&1
   assert_contains "$out" "--isolated"
   assert_contains "$out" "--isolated-stop"
 
   local status=0
-  /bin/bash "$SCRIPT" --not-a-mode >"$out" 2>&1 || status=$?
+  BASH_ENV="$TMP/kill-shim.bash" /bin/bash "$SCRIPT" --not-a-mode >"$out" 2>&1 || status=$?
   [[ "$status" -eq 2 ]] || { echo "invalid mode should exit 2, got $status" >&2; cat "$out" >&2; exit 1; }
 }
 
@@ -201,6 +215,7 @@ run_stubbed_default_run_stops_before_build() {
 
   env \
     PATH="$FAKE_BIN:/usr/bin:/bin" \
+    BASH_ENV="$TMP/kill-shim.bash" \
     APM44_FAKE_PS_TABLE="$PS_TABLE" \
     APM44_FAKE_KILL_LOG="$KILL_LOG" \
     APM44_FAKE_STARTED="$started" \
@@ -235,6 +250,7 @@ run_stubbed_no_launch_skips_stop() {
 
   env \
     PATH="$FAKE_BIN:/usr/bin:/bin" \
+    BASH_ENV="$TMP/kill-shim.bash" \
     APM44_FAKE_PS_TABLE="$PS_TABLE" \
     APM44_FAKE_KILL_LOG="$KILL_LOG" \
     APM44_FAKE_STARTED="$TMP/started-no-launch" \
