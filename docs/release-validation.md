@@ -179,7 +179,8 @@ changes and admin authorization is available:
 bash scripts/uninstall-apm44.sh --yes
 ```
 
-The destructive mode removes `/Applications/APM44 Bridge.app`,
+The destructive mode first quits the app and stops its bridge helper, then
+removes `/Applications/APM44 Bridge.app`,
 `/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver`, forgets the
 `com.niko.apm44.pkg` package receipt when present, and reloads Core Audio
 best-effort.

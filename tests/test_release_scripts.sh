@@ -433,16 +433,23 @@ case "${1:-}" in
   --expand-full)
     dest="$3"
     mkdir -p "$dest/Scripts"
+    # Expand the scripts build-release-pkg.sh generated, when a test asks for them.
+    if [[ -n "${APM44_FAKE_EXPANDED_SCRIPTS:-}" ]]; then
+      cp "$APM44_FAKE_EXPANDED_SCRIPTS/preinstall" "$APM44_FAKE_EXPANDED_SCRIPTS/postinstall" "$dest/Scripts/"
+    else
     cat >"$dest/Scripts/preinstall" <<'PRE'
 #!/bin/bash
 set -e
 # refusing to replace it with older - downgrade guard marker
-APP_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
-if pgrep -f "$APP_PATTERN" >/dev/null 2>&1; then
-  echo "Terminating running APM44 Bridge before replacing the app" >&2
-  pkill -TERM -f "$APP_PATTERN" 2>/dev/null || true
-  pkill -KILL -f "$APP_PATTERN" 2>/dev/null || true
-fi
+apm44_stop_app_and_helper() {
+  local _apm44_app_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
+  if pgrep -f "$_apm44_app_pattern" >/dev/null 2>&1; then
+    echo "Terminating running APM44 Bridge before replacing the app" >&2
+    pkill -TERM -f "$_apm44_app_pattern" 2>/dev/null || true
+    pkill -KILL -f "$_apm44_app_pattern" 2>/dev/null || true
+  fi
+}
+apm44_stop_app_and_helper
 rm -rf "/Applications/APM44 Bridge.app"
 rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 exit 0
@@ -459,6 +466,7 @@ if apm44_should_launch_app "$1"; then
   : # installs relaunch the app here
 fi
 POST
+    fi
     if [[ "${APM44_FAKE_PKGINFO_MODE:-good}" == "bad-version-checked" ]]; then
       cat >"$dest/PackageInfo" <<'PKGINFO'
 <?xml version="1.0" encoding="utf-8"?>
@@ -1152,6 +1160,95 @@ EOF
     "$rm_app" "$rm_driver"
 }
 
+# Run the uninstaller with shims replacing every side-effecting command, under a
+# sandbox that keeps a missing shim from deleting the install or signalling a
+# process. The sudo shim logs its arguments without running them. The pgrep and
+# stat shims match the preinstall ones; pkg_installed is what pkgutil reports.
+run_uninstall_case() {
+  local label="$1"
+  local mode="$2"
+  local pgrep_running="$3"
+  local console_user="$4"
+  local sudo_status="$5"
+  local pkg_installed="$6"
+  : >"$TMP/$label.calls"
+  local status=0
+  env -u SHELLOPTS \
+    APM44_TEST_CALLS="$TMP/$label.calls" \
+    APM44_TEST_PGREP_RUNNING="$pgrep_running" \
+    APM44_TEST_CONSOLE_USER="$console_user" \
+    APM44_TEST_SUDO_STATUS="$sudo_status" \
+    APM44_TEST_PKG_INSTALLED="$pkg_installed" \
+    BASH_ENV="$TMP/uninstall-shims.bash" \
+    sandbox-exec -f "$TMP/uninstall-sandbox.sb" \
+    /bin/bash "$ROOT/scripts/uninstall-apm44.sh" "$mode" >"$TMP/$label.out" 2>"$TMP/$label.err" || status=$?
+  printf '%s\n' "$status" >"$TMP/$label.status"
+}
+
+run_uninstall_execution_cases() {
+  # Reuse the preinstall's pgrep and stat shims; the later definitions win, so
+  # sudo logs without running its arguments and pkgutil reports the receipt.
+  cp "$TMP/preinstall-shims.bash" "$TMP/uninstall-shims.bash"
+  cat >>"$TMP/uninstall-shims.bash" <<'EOF'
+sudo() { apm44_test_log sudo "$@"; return "$APM44_TEST_SUDO_STATUS"; }
+pkgutil() {
+  apm44_test_log pkgutil "$@"
+  [[ "$APM44_TEST_PKG_INSTALLED" == "1" ]]
+}
+EOF
+  cat >"$TMP/uninstall-sandbox.sb" <<'EOF'
+(version 1)
+(allow default)
+(deny file-read* (subpath "/Applications/APM44 Bridge.app") (subpath "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"))
+(deny file-write* (subpath "/Applications") (subpath "/Library/Audio"))
+(deny process-exec* (literal "/bin/rm") (literal "/usr/bin/pkill") (literal "/usr/bin/pgrep") (literal "/usr/bin/killall") (literal "/bin/launchctl") (literal "/usr/bin/sudo") (literal "/usr/bin/osascript") (literal "/usr/sbin/pkgutil"))
+(deny signal (target others))
+EOF
+
+  local app_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
+  local helper_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge([[:space:]]|$)'
+  local sudo_true quit_call app_term app_kill helper_term helper_kill rm_app rm_driver pkg_info pkg_forget killall_call
+  sudo_true="$(installer_call sudo -n true)"
+  quit_call="$(installer_call sudo launchctl asuser 501 sudo -u musician osascript -e 'tell application id "com.niko.apm44.menu" to quit')"
+  app_term="$(installer_call sudo pkill -TERM -f "$app_pattern")"
+  app_kill="$(installer_call sudo pkill -KILL -f "$app_pattern")"
+  helper_term="$(installer_call sudo pkill -TERM -f "$helper_pattern")"
+  helper_kill="$(installer_call sudo pkill -KILL -f "$helper_pattern")"
+  rm_app="$(installer_call sudo rm -rf "/Applications/APM44 Bridge.app")"
+  rm_driver="$(installer_call sudo rm -rf /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver)"
+  pkg_info="$(installer_call pkgutil --pkg-info com.niko.apm44.pkg)"
+  pkg_forget="$(installer_call sudo pkgutil --forget com.niko.apm44.pkg)"
+  killall_call="$(installer_call sudo killall coreaudiod)"
+
+  # Still running: quit, TERM then KILL for the app and the helper, then remove and forget.
+  run_uninstall_case "uninstall-kill" --yes 1000 musician 0 1
+  assert_installer_status "uninstall-kill" 0
+  assert_installer_calls "uninstall-kill" "$sudo_true" "$quit_call" "$app_term" "$app_kill" \
+    "$helper_term" "$helper_kill" "$rm_app" "$rm_driver" "$pkg_info" "$pkg_forget" "$killall_call"
+  assert_contains "$TMP/uninstall-kill.out" "uninstall-apm44: OK"
+
+  # The app quits within the polite wait: no signals, then both bundles go.
+  run_uninstall_case "uninstall-quits-in-time" --yes 5 musician 0 0
+  assert_installer_status "uninstall-quits-in-time" 0
+  assert_installer_calls "uninstall-quits-in-time" "$sudo_true" "$quit_call" "$rm_app" "$rm_driver" "$pkg_info" "$killall_call"
+
+  # At the login window the console user is root: nobody to ask, so no quit.
+  run_uninstall_case "uninstall-root-console" --yes 0 root 0 0
+  assert_installer_status "uninstall-root-console" 0
+  assert_installer_calls "uninstall-root-console" "$sudo_true" "$rm_app" "$rm_driver" "$pkg_info" "$killall_call"
+
+  # Without sudo the uninstaller stops before touching anything.
+  run_uninstall_case "uninstall-no-sudo" --yes 0 musician 1 0
+  assert_installer_status "uninstall-no-sudo" 1
+  assert_installer_calls "uninstall-no-sudo" "$sudo_true"
+  assert_contains "$TMP/uninstall-no-sudo.err" "sudo is required for uninstall"
+
+  # Dry-run changes nothing, even with shims watching every command.
+  run_uninstall_case "uninstall-dry-run-shims" --dry-run 1000 musician 0 1
+  assert_installer_status "uninstall-dry-run-shims" 0
+  assert_installer_calls "uninstall-dry-run-shims"
+}
+
 run_notary_case() {
   local script="$1"
   local artifact_env="$2"
@@ -1408,6 +1505,7 @@ run_final_install_artifact_verifier_check() {
 run_uninstall_script_check() {
   local out="$TMP/uninstall-dry-run.out"
   /bin/bash "$ROOT/scripts/uninstall-apm44.sh" --dry-run >"$out" 2>&1
+  assert_contains "$out" "dry-run: would quit APM44 Bridge and stop its bridge helper"
   assert_contains "$out" "dry-run: would remove /Applications/APM44 Bridge.app"
   assert_contains "$out" "dry-run: would remove /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
   assert_contains "$out" "dry-run: would forget package receipt com.niko.apm44.pkg"
@@ -1499,7 +1597,11 @@ BRIDGE
   chmod +x "$VERIFY_BRIDGE"
 }
 
+# expanded_scripts, when set, makes the fake pkgutil expand those install
+# scripts instead of its fixture, so the verifier's markers are checked against
+# what build-release-pkg.sh really generates.
 run_verify_release_pkg_check() {
+  local expanded_scripts="${1:-}"
   local out="$TMP/verify-release-pkg.out"
   rm -f "$PKG.sha256" "$PKG.provenance.txt"
   printf 'verify pkg\n' >"$PKG"
@@ -1510,11 +1612,15 @@ run_verify_release_pkg_check() {
   env \
     PATH="$FAKE_BIN:$PATH" \
     APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_EXPANDED_SCRIPTS="$expanded_scripts" \
     APM44_PKG_PATH="$PKG" \
     APM44_APP_PATH="$VERIFY_APP" \
     APM44_DRIVER_EXECUTABLE="$VERIFY_DRIVER_EXE" \
     APM44_BRIDGE_BIN="$VERIFY_BRIDGE" \
-    /bin/bash "$ROOT/scripts/verify-release-pkg.sh" >"$out" 2>&1
+    /bin/bash "$ROOT/scripts/verify-release-pkg.sh" >"$out" 2>&1 || {
+      cat "$out" >&2
+      exit 1
+    }
 
   assert_contains "$LOG" "pkgutil --payload-files $PKG"
   assert_contains "$LOG" "pkgutil --expand-full $PKG"
@@ -1524,6 +1630,14 @@ run_verify_release_pkg_check() {
   assert_contains "$PKG.provenance.txt" "helper_build_id=FAKEPKG123"
   assert_contains "$PKG.provenance.txt" "app_bundle_sha256="
   assert_contains "$PKG.provenance.txt" "driver_executable_sha256="
+}
+
+run_verify_release_pkg_generated_scripts_check() {
+  run_pkg_builder_case one success "pkg-verify-generated-scripts"
+  local scripts="$TMP/generated-pkg-scripts"
+  rm -rf "$scripts"
+  cp -R "$ROOT/build/signing/pkg-scripts" "$scripts"
+  run_verify_release_pkg_check "$scripts"
 }
 
 run_verify_release_pkg_relocate_reject_check() {
@@ -1997,6 +2111,7 @@ run_postinstall_execution_cases
 
 run_preinstall_downgrade_guard_check
 run_preinstall_execution_cases
+run_uninstall_execution_cases
 
 run_dmg_checksum_artifact_check        # [DOC-04]
 
@@ -2017,6 +2132,7 @@ run_uninstall_script_check
 run_pkg_validation_order_check
 
 run_verify_release_pkg_check
+run_verify_release_pkg_generated_scripts_check
 
 run_verify_release_pkg_relocate_reject_check
 

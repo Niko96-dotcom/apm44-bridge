@@ -280,39 +280,11 @@ fi
 if [[ "${APM44_PREINSTALL_GUARD_ONLY:-}" == "1" ]]; then
   exit 0
 fi
-# Ask the existing app to quit, then terminate only helpers launched from the
-# installed app bundle. This avoids replacing a running old process image.
-CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
-CONSOLE_UID="$(stat -f%u /dev/console 2>/dev/null || true)"
-if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && "$CONSOLE_UID" =~ ^[0-9]+$ ]]; then
-  launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" \
-    osascript -e 'tell application id "com.niko.apm44.menu" to quit' 2>/dev/null || true
-fi
-APP_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
-for _ in {1..20}; do
-  pgrep -f "$APP_PATTERN" >/dev/null 2>&1 || break
-  sleep 0.1
-done
-if pgrep -f "$APP_PATTERN" >/dev/null 2>&1; then
-  echo "Terminating running APM44 Bridge before replacing the app" >&2
-  pkill -TERM -f "$APP_PATTERN" 2>/dev/null || true
-  sleep 1
-fi
-if pgrep -f "$APP_PATTERN" >/dev/null 2>&1; then
-  pkill -KILL -f "$APP_PATTERN" 2>/dev/null || true
-fi
-HELPER_PATTERN='^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge([[:space:]]|$)'
-for _ in {1..20}; do
-  pgrep -f "$HELPER_PATTERN" >/dev/null 2>&1 || break
-  sleep 0.1
-done
-if pgrep -f "$HELPER_PATTERN" >/dev/null 2>&1; then
-  pkill -TERM -f "$HELPER_PATTERN" 2>/dev/null || true
-  sleep 1
-fi
-if pgrep -f "$HELPER_PATTERN" >/dev/null 2>&1; then
-  pkill -KILL -f "$HELPER_PATTERN" 2>/dev/null || true
-fi
+PRE
+cat "$ROOT/scripts/lib/apm44-stop-running.sh" >> "$SCRIPTS/preinstall"
+cat >> "$SCRIPTS/preinstall" <<'PRE'
+# Stop any running app and helper before replacing the bundles.
+apm44_stop_app_and_helper
 rm -rf "/Applications/APM44 Bridge.app"
 rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 exit 0

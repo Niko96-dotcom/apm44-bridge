@@ -2,6 +2,10 @@
 # Remove APM44 Bridge app, HAL driver, and package receipt when explicitly approved.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/apm44-stop-running.sh
+source "$SCRIPT_DIR/lib/apm44-stop-running.sh"
+
 YES=0
 DRY_RUN=1
 
@@ -43,6 +47,7 @@ DRIVER="/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 PKG_ID="com.niko.apm44.pkg"
 
 if [[ "$DRY_RUN" == "1" ]]; then
+  echo "dry-run: would quit APM44 Bridge and stop its bridge helper"
   echo "dry-run: would remove $APP"
   echo "dry-run: would remove $DRIVER"
   echo "dry-run: would forget package receipt $PKG_ID when present"
@@ -59,6 +64,9 @@ if ! sudo -n true 2>/dev/null; then
   echo "error: sudo is required for uninstall; run interactively once or configure sudo, then retry" >&2
   exit 1
 fi
+
+# A running app or daemon keeps executing the deleted bundle and can relaunch the bridge.
+apm44_stop_app_and_helper sudo
 
 sudo rm -rf "$APP"
 sudo rm -rf "$DRIVER"
