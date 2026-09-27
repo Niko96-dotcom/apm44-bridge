@@ -7,6 +7,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/App/APM44Bridge"
 STRINGS="$APP/AppStrings.swift"
 MENU="$APP/MenuContentView.swift"
+MENU_STATUS="$APP/MenuStatusViews.swift"
+MENU_CONTROLS="$APP/MenuControlCard.swift"
+MENU_UPDATE="$APP/MenuUpdateSectionView.swift"
+MENU_FOOTER="$APP/MenuFooterViews.swift"
 SETUP="$APP/FirstRunPreflightView.swift"
 MANAGER="$APP/BridgeProcessManager.swift"
 GERMAN="$APP/de.lproj/Localizable.strings"
@@ -16,17 +20,23 @@ fail() {
   exit 1
 }
 
-[[ -f "$STRINGS" && -f "$MENU" && -f "$SETUP" && -f "$MANAGER" && -f "$GERMAN" ]] \
+[[ -f "$STRINGS" && -f "$MENU" && -f "$MENU_STATUS" && -f "$MENU_CONTROLS" && -f "$MENU_UPDATE" && -f "$MENU_FOOTER" && -f "$SETUP" && -f "$MANAGER" && -f "$GERMAN" ]] \
   || fail "missing AppStrings or view sources"
 
-python3 - "$STRINGS" "$MENU" "$SETUP" "$MANAGER" "$GERMAN" <<'PY'
+python3 - "$STRINGS" "$MENU" "$SETUP" "$MANAGER" "$GERMAN" "$MENU_STATUS" "$MENU_CONTROLS" "$MENU_UPDATE" "$MENU_FOOTER" <<'PY'
 import re
 import sys
 from pathlib import Path
 
-strings_path, menu_path, setup_path, manager_path, german_path = map(Path, sys.argv[1:])
+strings_path, menu_path, setup_path, manager_path, german_path, menu_status_path, menu_controls_path, menu_update_path, menu_footer_path = map(Path, sys.argv[1:])
 strings = strings_path.read_text()
-menu = menu_path.read_text()
+menu = (
+    menu_path.read_text()
+    + "\n" + menu_status_path.read_text()
+    + "\n" + menu_controls_path.read_text()
+    + "\n" + menu_update_path.read_text()
+    + "\n" + menu_footer_path.read_text()
+)
 setup = setup_path.read_text()
 manager = manager_path.read_text()
 german = german_path.read_text()
