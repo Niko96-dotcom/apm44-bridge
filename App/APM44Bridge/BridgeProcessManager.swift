@@ -45,7 +45,7 @@ enum BridgeProcessHealth: Equatable {
 
 @MainActor
 final class BridgeProcessManager: ObservableObject {
-    static let loadedDriverBuildMismatchExitStatus: Int32 = 44
+    static let loadedDriverBuildMismatchExitStatus = BridgeTerminationPolicy.loadedDriverBuildMismatchExitStatus
     @Published private(set) var state: BridgeRunState = .idle
     @Published private(set) var latestMetrics: BridgeMetricsSnapshot?
     @Published private(set) var glitchFlash = false
@@ -78,13 +78,12 @@ final class BridgeProcessManager: ObservableObject {
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
     private var parentWatchPipe: Pipe?
-    private var stdoutBuffer = Data()
-    private let stdoutCap = 64 * 1024
+    private var stdoutBuffer = DaemonStdoutLineBuffer()
     private var lastKnownFrameLoss: UInt64 = 0
     private var glitchTask: Task<Void, Never>?
     private var staleTask: Task<Void, Never>?
     private var lastMetricsAt: Date?
-    private var stderrLines: [String] = []
+    private var stderrTail = DaemonStderrTail()
     private var terminationContinuations: [CheckedContinuation<Void, Never>] = []
     private var restartTask: Task<Void, Never>?
     private var pendingRestartReason: StopReason?
@@ -446,8 +445,8 @@ final class BridgeProcessManager: ObservableObject {
         state = .starting
         processHealth = .spawning
         connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
-        stderrLines.removeAll()
-        stdoutBuffer.removeAll(keepingCapacity: true)
+        stderrTail.removeAll()
+        stdoutBuffer.reset()
         resetMetricsState()
         lastKnownFrameLoss = 0
 
@@ -512,7 +511,7 @@ final class BridgeProcessManager: ObservableObject {
             clearPipeHandlers()
             let nsError = error as NSError
             logger.error("Bridge launch failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code)")
-            let detail = sanitizedDiagnostic(error.localizedDescription)
+            let detail = BridgeDiagnostics.sanitized(error.localizedDescription)
             if !resetRetryAttempt {
                 lastUnexpectedStderr = detail
                 scheduleAutoRetry()
@@ -779,32 +778,16 @@ final class BridgeProcessManager: ObservableObject {
     private func buildArguments(outputUid: String) -> [String] {
         let ms = settings.effectiveTargetFillMs(halMode: routingMode == .halVirtualDevice)
         let quality = settings.effectiveSrcQuality.cliArgument
-        var args: [String] = [
-            "--output-device", outputUid,
-            "--target-fill-ms", String(format: "%.0f", ms),
-            "--src-quality", quality,
-            "--metrics-json",
-            "--parent-watch-stdin",
-        ]
-        if routingMode == .halVirtualDevice {
-            args.insert("--virtual-device", at: 0)
-        }
-        return args
+        return BridgeLaunchArguments.make(
+            outputUid: outputUid,
+            targetFillMs: ms,
+            srcQuality: quality,
+            halMode: routingMode == .halVirtualDevice
+        )
     }
 
     private func consumeStdout(_ chunk: Data) {
-        stdoutBuffer.append(chunk)
-        if stdoutBuffer.count > stdoutCap {
-            stdoutBuffer.removeFirst(stdoutBuffer.count - stdoutCap)
-        }
-        guard let text = String(data: stdoutBuffer, encoding: .utf8) else { return }
-        var lines = text.components(separatedBy: "\n")
-        if !text.hasSuffix("\n"), let last = lines.popLast() {
-            stdoutBuffer = Data(last.utf8)
-        } else {
-            stdoutBuffer = Data()
-        }
-        for line in lines where !line.isEmpty {
+        for line in stdoutBuffer.append(chunk) {
             if let snapshot = MetricsParser.parse(line: line) {
                 applyMetrics(snapshot)
             }
@@ -827,27 +810,11 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func updateConnectionPhase() {
-        switch state {
-        case .idle, .stopping, .reconnecting:
-            connectionPhase = .stopped
-        case .starting:
-            connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
-        case .error:
-            connectionPhase = .stopped
-        case .running:
-            guard let metrics = latestMetrics else {
-                connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .running
-                return
-            }
-            let target = max(metrics.targetFillMs, 1.0)
-            if metrics.fillMs < 2.0 {
-                connectionPhase = .waitingForDAW
-            } else if metrics.fillMs < target * 0.5 {
-                connectionPhase = .connected
-            } else {
-                connectionPhase = .running
-            }
-        }
+        connectionPhase = BridgeConnectionPhase.derive(
+            state: state,
+            halMode: routingMode == .halVirtualDevice,
+            metrics: latestMetrics
+        )
     }
 
     private func triggerGlitchFlash() {
@@ -879,27 +846,7 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func appendStderr(_ text: String) {
-        for line in text.split(separator: "\n") {
-            stderrLines.append(String(line))
-            if stderrLines.count > 20 {
-                stderrLines.removeFirst()
-            }
-        }
-    }
-
-    private func isRecoverableStaleRingExit(status: Int32, stderr: String) -> Bool {
-        status == 42 && stderr.localizedCaseInsensitiveContains("stale shm ring")
-    }
-
-    private func bridgeFailureMessage(defaultMessage: String) -> String {
-        let stderr = stderrLines.joined(separator: "\n")
-        if stderr.localizedCaseInsensitiveContains("shm") {
-            return AppStrings.ipcFailed()
-        }
-        if let last = stderrLines.last, !last.isEmpty {
-            return last
-        }
-        return defaultMessage
+        stderrTail.append(text)
     }
 
     private func clearPipeHandlers() {
@@ -910,19 +857,6 @@ final class BridgeProcessManager: ObservableObject {
         parentWatchPipe?.fileHandleForWriting.closeFile()
         parentWatchPipe?.fileHandleForReading.closeFile()
         parentWatchPipe = nil
-    }
-
-    private func sanitizedDiagnostic(_ value: String) -> String {
-        let normalized = value
-            .replacingOccurrences(of: "\r", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-        let printableScalars = normalized.unicodeScalars.filter {
-            $0.value >= 0x20 && $0.value != 0x7f
-        }
-        let singleLine = String(String.UnicodeScalarView(printableScalars))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if singleLine.isEmpty { return AppStrings.noDiagnostic }
-        return String(singleLine.prefix(240))
     }
 
     private func resetMetricsState() {
@@ -1096,17 +1030,21 @@ final class BridgeProcessManager: ObservableObject {
             return
         }
         let exitStatus = processLauncher.terminationStatus(of: proc)
-        let stderr = stderrLines.joined(separator: "\n")
-        let recoverableStale = isRecoverableStaleRingExit(status: exitStatus, stderr: stderr)
+        let stderr = stderrTail.joined
 
         if exitStatus != 0 {
             lastUnexpectedExitStatus = exitStatus
-            lastUnexpectedStderr = sanitizedDiagnostic(stderr)
+            lastUnexpectedStderr = BridgeDiagnostics.sanitized(stderr)
             logger.error("Bridge unexpected exit status=\(exitStatus)")
         }
 
-        if exitStatus == Self.loadedDriverBuildMismatchExitStatus,
-           state == .running || state == .starting {
+        switch BridgeTerminationPolicy.classify(
+            state: state,
+            exitStatus: exitStatus,
+            stderr: stderr,
+            lastStopReason: lastStopReason
+        ) {
+        case .loadedDriverMismatch:
             cancelRetryTask()
             retryAttempt = 0
             lastStopReason = nil
@@ -1116,30 +1054,27 @@ final class BridgeProcessManager: ObservableObject {
             connectionPhase = .stopped
             resumeTerminationWaiters()
             return
-        }
-
-        if exitStatus != 0, case .running = state {
-            if lastStopReason != .user {
-                scheduleAutoRetry()
-            } else {
-                lastStopReason = nil
-                let message = bridgeFailureMessage(defaultMessage: AppStrings.couldNotStart)
-                state = .error(message)
-                bannerMessage = message
-            }
+        case .autoRetry:
+            scheduleAutoRetry()
             connectionPhase = .stopped
             resumeTerminationWaiters()
             return
-        } else if case .running = state {
+        case .failWhileRunning:
+            lastStopReason = nil
+            let message = stderrTail.failureMessage(default: AppStrings.couldNotStart)
+            state = .error(message)
+            bannerMessage = message
+            connectionPhase = .stopped
+            resumeTerminationWaiters()
+            return
+        case .cleanExitWhileRunning:
             transitionToIdle()
             return
-        } else if case .starting = state {
-            if recoverableStale, lastStopReason != .user {
-                scheduleAutoRetry()
-            } else {
-                lastStopReason = nil
-                state = .error(bridgeFailureMessage(defaultMessage: AppStrings.couldNotStart))
-            }
+        case .failWhileStarting:
+            lastStopReason = nil
+            state = .error(stderrTail.failureMessage(default: AppStrings.couldNotStart))
+        case .ignore:
+            break
         }
         connectionPhase = .stopped
         resumeTerminationWaiters()
