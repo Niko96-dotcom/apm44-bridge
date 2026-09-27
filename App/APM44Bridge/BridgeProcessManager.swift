@@ -683,8 +683,9 @@ final class BridgeProcessManager: ObservableObject {
         resumeAfterSystemWake = false
         guard shouldResume else { return }
         if case .stopping = state {
-            logger.info("Bridge stop unfinished after wake")
-            parkAfterWake(banner: AppStrings.waitingForDevicesAfterWake)
+            // A hotplug or settings restart began during the refresh and
+            // relaunches by itself; parking would overwrite its .stopping.
+            logger.info("Bridge restart in flight after wake")
             return
         }
         guard refreshed else {
