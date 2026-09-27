@@ -171,7 +171,11 @@ driver_build_id=ABC'
     cat "$out" >&2
     exit 1
   fi
-  assert_contains "$out" "PASS"
+  assert_contains "$out" "CHECK shm_status: PASS"
+  assert_contains "$out" "CHECK daemon_ready: PASS"
+  assert_contains "$out" "CHECK write_index: PASS"
+  assert_contains "$out" "CHECK read_index: PASS"
+  assert_contains "$out" "CHECK producer_dropped_frames: PASS"
 
   status=0
   if e2e_audio_flow_check_texts "$before_good" "$after_stalled" 3 >"$out" 2>&1; then
@@ -184,7 +188,11 @@ driver_build_id=ABC'
     cat "$out" >&2
     exit 1
   fi
-  assert_contains "$out" "FAIL"
+  assert_contains "$out" "CHECK read_index: FAIL"
+  assert_contains "$out" "CHECK shm_status: PASS"
+  assert_contains "$out" "CHECK daemon_ready: PASS"
+  assert_contains "$out" "CHECK write_index: PASS"
+  assert_contains "$out" "CHECK producer_dropped_frames: PASS"
 
   status=0
   if e2e_audio_flow_check_texts "$before_good" "$after_dropped" 3 >"$out" 2>&1; then
@@ -197,7 +205,11 @@ driver_build_id=ABC'
     cat "$out" >&2
     exit 1
   fi
-  assert_contains "$out" "FAIL"
+  assert_contains "$out" "CHECK producer_dropped_frames: FAIL"
+  assert_contains "$out" "CHECK shm_status: PASS"
+  assert_contains "$out" "CHECK daemon_ready: PASS"
+  assert_contains "$out" "CHECK write_index: PASS"
+  assert_contains "$out" "CHECK read_index: PASS"
 
   status=0
   if e2e_audio_flow_check_texts "$before_good" "$after_notready" 3 >"$out" 2>&1; then
@@ -210,7 +222,11 @@ driver_build_id=ABC'
     cat "$out" >&2
     exit 1
   fi
-  assert_contains "$out" "FAIL"
+  assert_contains "$out" "CHECK daemon_ready: FAIL"
+  assert_contains "$out" "CHECK shm_status: PASS"
+  assert_contains "$out" "CHECK write_index: PASS"
+  assert_contains "$out" "CHECK read_index: PASS"
+  assert_contains "$out" "CHECK producer_dropped_frames: PASS"
 
   status=0
   if e2e_audio_flow_check_texts "$before_good" "$after_badshm" 3 >"$out" 2>&1; then
@@ -223,7 +239,11 @@ driver_build_id=ABC'
     cat "$out" >&2
     exit 1
   fi
-  assert_contains "$out" "FAIL"
+  assert_contains "$out" "CHECK shm_status: FAIL"
+  assert_contains "$out" "CHECK daemon_ready: PASS"
+  assert_contains "$out" "CHECK write_index: PASS"
+  assert_contains "$out" "CHECK read_index: PASS"
+  assert_contains "$out" "CHECK producer_dropped_frames: PASS"
 
   # Audio script help works without audio.
   /bin/bash "$ROOT/scripts/e2e-check-audio-flow.sh" --help >"$lib_out" 2>&1
