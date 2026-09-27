@@ -10,21 +10,22 @@ struct FirstRunPreflightView: View {
     @State private var didAttemptReload = false
 
     var body: some View {
+        let checklist = makeChecklist()
         VStack(alignment: .leading, spacing: 14) {
             Text(AppStrings.setupTitle)
                 .font(.title3.weight(.semibold))
 
-            driverCheckRow
+            driverCheckRow(checklist)
 
             checkRow(
                 title: AppStrings.halRateTitle,
-                ok: halRateOk,
-                detail: halRateDetail
+                ok: checklist.halRateOk,
+                detail: checklist.halRateDetail
             )
             checkRow(
                 title: AppStrings.airPodsRateTitle,
-                ok: airPodsRateOk,
-                detail: airPodsRateDetail
+                ok: checklist.airPodsRateOk,
+                detail: checklist.airPodsRateDetail
             )
 
             Text(AppStrings.cubaseControlRoom)
@@ -37,7 +38,7 @@ struct FirstRunPreflightView: View {
                 Link(AppStrings.cubaseSetupGuide, destination: HelpLinks.cubaseSetup)
                     .accessibilityLabel(AppStrings.cubaseSetupGuide)
                 Spacer()
-                if setupComplete {
+                if checklist.setupComplete {
                     Button(AppStrings.done) {
                         finishSetup()
                     }
@@ -56,24 +57,35 @@ struct FirstRunPreflightView: View {
         .onAppear { refreshDriverStatus() }
     }
 
-    private var setupComplete: Bool {
-        driverStatus == .ready && halRateOk && airPodsRateOk
+    /// Built once per body: `halNominalRate()` enumerates Core Audio
+    /// devices, and the build IDs (two plist reads) only matter for the
+    /// mismatch detail.
+    private func makeChecklist() -> FirstRunChecklist {
+        let mismatch = driverStatus == .buildMismatch
+        return FirstRunChecklist(
+            driverStatus: driverStatus,
+            didAttemptReload: didAttemptReload,
+            halNominalRate: HalDriverDetector.halNominalRate(),
+            devices: manager.devices,
+            appBuildID: mismatch ? HalDriverDetector.appBuildID() : nil,
+            driverBuildID: mismatch ? HalDriverDetector.driverBuildID() : nil
+        )
     }
 
     @ViewBuilder
-    private var driverCheckRow: some View {
+    private func driverCheckRow(_ checklist: FirstRunChecklist) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            checkRow(title: AppStrings.halDriver, ok: driverStatus == .ready, detail: driverDetail)
+            checkRow(title: AppStrings.halDriver, ok: checklist.driverReady, detail: checklist.driverDetail)
 
-            switch driverStatus {
-            case .ready:
+            switch checklist.driverAction {
+            case .none:
                 EmptyView()
-            case .buildMismatch:
+            case .downloadInstaller:
                 Link(AppStrings.downloadInstaller, destination: HelpLinks.releases)
                     .font(.caption)
                     .padding(.leading, 24)
                     .accessibilityLabel(AppStrings.downloadInstaller)
-            case .installedNotLoaded:
+            case .reloadDriver:
                 HStack(spacing: 8) {
                     Button(action: reloadDriver) {
                         if isReloading {
@@ -89,34 +101,8 @@ struct FirstRunPreflightView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.leading, 24)
-            case .notInstalled:
-                Link(AppStrings.downloadInstaller, destination: HelpLinks.releases)
-                    .font(.caption)
-                    .padding(.leading, 24)
-                    .accessibilityLabel(AppStrings.downloadInstaller)
             }
         }
-    }
-
-    private var driverDetail: String {
-        switch driverStatus {
-        case .ready:
-            return AppStrings.driverReadyDetail
-        case .buildMismatch:
-            return buildMismatchDetail
-        case .installedNotLoaded:
-            return didAttemptReload ? AppStrings.driverRestartHint : AppStrings.driverReloadHint
-        case .notInstalled:
-            return AppStrings.driverMissingDetail
-        }
-    }
-
-    private var buildMismatchDetail: String {
-        let appID = HalDriverDetector.normalizedBuildID(HalDriverDetector.appBuildID())
-            ?? AppStrings.buildIDMissingPlaceholder
-        let driverID = HalDriverDetector.normalizedBuildID(HalDriverDetector.driverBuildID())
-            ?? AppStrings.buildIDMissingPlaceholder
-        return AppStrings.driverBuildMismatchDetail(app: appID, driver: driverID)
     }
 
     private func reloadDriver() {
@@ -142,37 +128,6 @@ struct FirstRunPreflightView: View {
     private func finishSetup() {
         UserDefaults.standard.set(true, forKey: FirstRunKeys.completed)
         isPresented = false
-    }
-
-    private var halRateOk: Bool {
-        guard let rate = HalDriverDetector.halNominalRate() else { return false }
-        return abs(rate - 44100) < 1
-    }
-
-    private var halRateDetail: String {
-        if let rate = HalDriverDetector.halNominalRate() {
-            if abs(rate - 44100) < 1 {
-                return ""
-            }
-            return AppStrings.nominalRateHint(Int(rate))
-        }
-        return AppStrings.driverNotDetected
-    }
-
-    private var airPodsRow: AudioDeviceRow? {
-        manager.devices.first { $0.name.localizedCaseInsensitiveContains("AirPods") }
-    }
-
-    private var airPodsRateOk: Bool {
-        guard let row = airPodsRow else { return false }
-        return abs(row.nominalRate - 48000) < 1
-    }
-
-    private var airPodsRateDetail: String {
-        if let row = airPodsRow {
-            return AppStrings.deviceRate(row.name, rate: Int(row.nominalRate))
-        }
-        return AppStrings.connectAirPods
     }
 
     private func checkRow(title: String, ok: Bool, detail: String) -> some View {

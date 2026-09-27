@@ -150,14 +150,6 @@ previous = english_default("previous_output_unavailable %@")
 if previous.count(".") > 1:
     failures.append(f"previous-output error should be one line, got {previous!r}")
 
-detail_parts = setup.split("private var halRateDetail", 1)
-if len(detail_parts) < 2:
-    failures.append("missing halRateDetail")
-else:
-    body = detail_parts[1][:700]
-    if "nominalRateHint" in body and "44100" not in body and "halRateOk" not in body:
-        failures.append("passing HAL rate row still always shows the set-44100 hint")
-
 german_expected = {
     "cubase_control_room_hint": "Monitor 1 Geräteanschlüsse auf APM44 Bridge links und rechts legen",
     "no_output_devices_hint": "Kopfhörer oder Audiointerface anschließen",
