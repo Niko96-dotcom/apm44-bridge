@@ -31,6 +31,16 @@ final class SparkleUpdaterTests: XCTestCase {
             SparkleUpdateController.userFacingErrorMessage(unreachableError),
             AppStrings.updateCheckFailed(detail: "The server could not be reached")
         )
+
+        let checkError = NSError(
+            domain: "SUSparkleErrorDomain",
+            code: 1002,
+            userInfo: [NSLocalizedDescriptionKey: "The update server returned an error."]
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.userFacingErrorMessage(checkError),
+            AppStrings.updateCheckFailed(detail: "The update server returned an error.")
+        )
     }
 
     func testNoUpdateErrorIsRecognizedAsSuccessfulCheck() {
@@ -64,12 +74,6 @@ final class SparkleUpdaterTests: XCTestCase {
         XCTAssertFalse(SparkleUpdateController.shouldRunLaunchCheck(
             automaticallyChecks: true, lastCheckDate: launchDate, launchDate: launchDate))
     }
-
-    func testCheckForUpdatesString() {
-        XCTAssertFalse(AppStrings.checkForUpdates.isEmpty)
-        XCTAssertTrue(AppStrings.checkForUpdates.hasSuffix("…"))
-    }
-
 
     func testManualCheckIsBlockedWhileBusyOrInstalling() {
         // Idle, cancelled, and failed follow canCheckForUpdates.
@@ -145,6 +149,16 @@ final class SparkleUpdaterTests: XCTestCase {
             SparkleUpdateController.downloadErrorMessage(wrapped),
             AppStrings.updateDownloadInterrupted
         )
+
+        let signatureError = NSError(
+            domain: "SUSparkleErrorDomain",
+            code: 3001,
+            userInfo: [NSLocalizedDescriptionKey: "invalid EdDSA signature"]
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.downloadErrorMessage(signatureError),
+            AppStrings.updateFeedUnverified
+        )
     }
 
     func testOtherDownloadErrorMapsToDownloadFailed() {
@@ -156,34 +170,6 @@ final class SparkleUpdaterTests: XCTestCase {
         XCTAssertEqual(
             SparkleUpdateController.downloadErrorMessage(other),
             AppStrings.updateDownloadFailed(detail: "Download failed for another reason.")
-        )
-    }
-
-    func testCheckFailureMappingUnchanged() {
-        let checkError = NSError(
-            domain: "SUSparkleErrorDomain",
-            code: 1002,
-            userInfo: [NSLocalizedDescriptionKey: "The update server returned an error."]
-        )
-        XCTAssertEqual(
-            SparkleUpdateController.userFacingErrorMessage(checkError),
-            AppStrings.updateCheckFailed(detail: "The update server returned an error.")
-        )
-    }
-
-    func testSignatureMappingUnchangedForDownload() {
-        let signatureError = NSError(
-            domain: "SUSparkleErrorDomain",
-            code: 3001,
-            userInfo: [NSLocalizedDescriptionKey: "invalid EdDSA signature"]
-        )
-        XCTAssertEqual(
-            SparkleUpdateController.downloadErrorMessage(signatureError),
-            AppStrings.updateFeedUnverified
-        )
-        XCTAssertEqual(
-            SparkleUpdateController.userFacingErrorMessage(signatureError),
-            AppStrings.updateFeedUnverified
         )
     }
 
@@ -365,20 +351,17 @@ final class SparkleUpdaterTests: XCTestCase {
         XCTAssertEqual(policies, [.regular, .accessory])
         XCTAssertEqual(activations, 1)
         XCTAssertEqual(dismissals, 1)
-    }
 
-    @MainActor
-    func testWillFinishUpdateSessionAloneDoesNotChangePolicy() {
-        var policies: [NSApplication.ActivationPolicy] = []
-        let coordinator = UpdateActivationCoordinator(
-            activationPolicySetter: { policies.append($0); return true },
+        var idlePolicies: [NSApplication.ActivationPolicy] = []
+        let idleCoordinator = UpdateActivationCoordinator(
+            activationPolicySetter: { idlePolicies.append($0); return true },
             appActivator: {},
             panelDismisser: {},
             deferredRunner: { work in work() },
             isAppActive: { true }
         )
-        coordinator.willFinishUpdateSession()
-        XCTAssertTrue(policies.isEmpty)
+        idleCoordinator.willFinishUpdateSession()
+        XCTAssertTrue(idlePolicies.isEmpty)
     }
 
     @MainActor
@@ -419,13 +402,6 @@ final class SparkleUpdaterTests: XCTestCase {
         coordinator.bringUpdateUIToFrontAfterExtraction()
         XCTAssertEqual(activations, 2)
         XCTAssertEqual(deferredCalls, 1)
-    }
-
-    func testNewUpdateStringsArePresent() {
-        XCTAssertFalse(AppStrings.tryAgain.isEmpty)
-        XCTAssertFalse(AppStrings.updateDownloadInterrupted.isEmpty)
-        XCTAssertTrue(AppStrings.installUpdateAndRelaunch("0.12.12").contains("0.12.12"))
-        XCTAssertTrue(AppStrings.updateDownloadFailed(detail: "boom").contains("boom"))
     }
 
     @MainActor

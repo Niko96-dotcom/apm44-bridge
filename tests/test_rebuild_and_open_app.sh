@@ -151,25 +151,6 @@ EOF
   assert_contains "$PS_TABLE" "$INSTALLED_EXE"
 }
 
-run_local_pid_matcher() {
-  local out="$TMP/pids.out"
-  cat >"$PS_TABLE" <<EOF
- 1111 $ISOLATED_EXE -SUEnableAutomaticChecks NO -SUAutomaticallyUpdate NO
- 2222 $INSTALLED_EXE
-EOF
-  awk -v target="$ISOLATED_EXE" '
-    {
-      pid=$1
-      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "")
-      if ($0 == target || index($0, target " ") == 1) print pid
-    }' "$PS_TABLE" >"$out"
-  [[ "$(tr -d '[:space:]' <"$out")" == "1111" ]] || {
-    echo "local pid matcher should select only the isolated executable" >&2
-    cat "$out" >&2
-    exit 1
-  }
-}
-
 run_help_and_usage() {
   local out="$TMP/help.out"
   /bin/bash "$SCRIPT" --help >"$out" 2>&1
@@ -267,7 +248,6 @@ run_stubbed_no_launch_skips_stop() {
 
 run_help_and_usage
 run_source_contracts
-run_local_pid_matcher
 run_isolated_stop_leaves_installed_app
 run_stubbed_default_run_stops_before_build
 run_stubbed_no_launch_skips_stop

@@ -4,28 +4,18 @@ import XCTest
 
 final class AppKitMainMenuTests: XCTestCase {
     func testHelpTitledSubmenuWinsOverLaterWindowMenu() {
-        let main = NSMenu()
-        let helpMenu = NSMenu(title: "Help")
-        helpMenu.addItem(NSMenuItem(title: "Existing", action: nil, keyEquivalent: ""))
-        let helpItem = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
-        helpItem.submenu = helpMenu
-        main.addItem(helpItem)
-        main.addItem(windowMenuItem())
+        for title in ["Help", "Hilfe"] {
+            let main = NSMenu()
+            let helpMenu = NSMenu(title: title)
+            helpMenu.addItem(NSMenuItem(title: "Existing", action: nil, keyEquivalent: ""))
+            let helpItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            helpItem.submenu = helpMenu
+            main.addItem(helpItem)
+            main.addItem(windowMenuItem())
 
-        let resolved = AppKitMainMenu.helpSubmenu(in: main, applicationHelpMenu: nil)
-        XCTAssertTrue(resolved === helpMenu)
-    }
-
-    func testHilfeTitledSubmenuWins() {
-        let main = NSMenu()
-        let helpMenu = NSMenu(title: "Hilfe")
-        helpMenu.addItem(NSMenuItem(title: "Existing", action: nil, keyEquivalent: ""))
-        let helpItem = NSMenuItem(title: "Hilfe", action: nil, keyEquivalent: "")
-        helpItem.submenu = helpMenu
-        main.addItem(helpItem)
-
-        let resolved = AppKitMainMenu.helpSubmenu(in: main, applicationHelpMenu: nil)
-        XCTAssertTrue(resolved === helpMenu)
+            let resolved = AppKitMainMenu.helpSubmenu(in: main, applicationHelpMenu: nil)
+            XCTAssertTrue(resolved === helpMenu, "\(title)")
+        }
     }
 
     func testDoesNotFallBackToLastMainMenuItem() {
@@ -63,15 +53,11 @@ final class ControlsWindowPresenterBridgeTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testUnconfiguredShowControlsDoesNotCreateWindow() {
-        let presenter = ControlsWindowPresenter()
-        presenter.showControls()
-        XCTAssertFalse(presenter.hasWindowForTesting)
-    }
-
     func testShowSetupRecordsRequestWithoutCreatingWindowWhenUnconfigured() {
         SetupCoordinator.shared.resetForTesting()
         let presenter = ControlsWindowPresenter()
+        presenter.showControls()
+        XCTAssertFalse(presenter.hasWindowForTesting)
         presenter.showSetup()
         XCTAssertFalse(presenter.hasWindowForTesting)
         XCTAssertTrue(SetupCoordinator.shared.isSetupRequested)

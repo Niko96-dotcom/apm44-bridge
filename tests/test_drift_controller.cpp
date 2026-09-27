@@ -7,33 +7,31 @@
 #include <cmath>
 #include <vector>
 
-TEST_CASE("DriftController fill above target lowers SRC ratio", "[drift_controller]") {
-  apm44::DriftController drift;
-  drift.setTargetFillFrames(662);
-  drift.update(900, 512);
-  REQUIRE(drift.currentPpm() < 0.0);
-  REQUIRE(drift.currentPpm() >= -apm44::DriftController::kMaxPpm);
-}
+TEST_CASE("DriftController ratio moves toward target fill", "[drift_controller]") {
+  apm44::DriftController above;
+  above.setTargetFillFrames(662);
+  above.update(900, 512);
+  REQUIRE(above.currentPpm() < 0.0);
+  REQUIRE(above.currentPpm() >= -apm44::DriftController::kMaxPpm);
 
-TEST_CASE("DriftController fill below target raises SRC ratio", "[drift_controller]") {
-  apm44::DriftController drift;
-  drift.setTargetFillFrames(662);
-  drift.update(200, 512);
-  REQUIRE(drift.currentPpm() > 0.0);
-  REQUIRE(drift.currentPpm() <= apm44::DriftController::kMaxPpm);
-}
-
-TEST_CASE("DriftController ppm clamp", "[drift_controller]") {
-  apm44::DriftController drift;
-  drift.setTargetFillFrames(100);
-  for (int i = 0; i < 5000; ++i) {
-    drift.update(100000, 512);
-  }
-  REQUIRE(std::abs(drift.currentPpm()) <= apm44::DriftController::kMaxPpm);
+  apm44::DriftController below;
+  below.setTargetFillFrames(662);
+  below.update(200, 512);
+  REQUIRE(below.currentPpm() > 0.0);
+  REQUIRE(below.currentPpm() <= apm44::DriftController::kMaxPpm);
 }
 
 TEST_CASE("DriftController max ppm can be widened for virtual source pacing",
           "[drift_controller]") {
+  // Merged from `DriftController ppm clamp`: a default controller
+  // driven far above target stays within the default clamp.
+  apm44::DriftController clamped;
+  clamped.setTargetFillFrames(100);
+  for (int i = 0; i < 5000; ++i) {
+    clamped.update(100000, 512);
+  }
+  REQUIRE(std::abs(clamped.currentPpm()) <= apm44::DriftController::kMaxPpm);
+
   apm44::DriftController drift;
   drift.setTargetFillFrames(5000);
   drift.setMaxPpm(3000.0);

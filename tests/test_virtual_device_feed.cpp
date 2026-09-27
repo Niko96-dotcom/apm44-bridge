@@ -116,16 +116,6 @@ TEST_CASE("VirtualDeviceFeed drains a complete 4096-frame DAW burst in one pass"
   shm_unlink(ringName.c_str());
 }
 
-TEST_CASE("ShmMismatchDebounce turns fatal on third identical mismatch", "[debounce]") {
-  apm44::ShmMismatchDebounce debounce;
-  const std::string detail = "invalid shm ring header version=3 expected_version=4";
-  REQUIRE_FALSE(
-      debounce.observe(apm44::ShmRingErrorCode::ProducerBuildMismatch, detail));
-  REQUIRE_FALSE(
-      debounce.observe(apm44::ShmRingErrorCode::ProducerBuildMismatch, detail));
-  REQUIRE(debounce.observe(apm44::ShmRingErrorCode::ProducerBuildMismatch, detail));
-}
-
 TEST_CASE("ShmMismatchDebounce needs three identical details in a row", "[debounce]") {
   apm44::ShmMismatchDebounce debounce;
   constexpr auto kMismatch = apm44::ShmRingErrorCode::ProducerBuildMismatch;

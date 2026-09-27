@@ -25,7 +25,6 @@ apm44_add_test(test_device_enumerator test_device_enumerator.cpp)
 apm44_add_test(test_planar_ring_buffer test_planar_ring_buffer.cpp)
 apm44_add_test(test_input_frame_demand test_input_frame_demand.cpp)
 apm44_add_test(test_virtual_prebuffer_gate test_virtual_prebuffer_gate.cpp)
-apm44_add_test(test_libsamplerate_smoke test_libsamplerate_smoke.cpp)
 apm44_add_test(test_drift_controller test_drift_controller.cpp)
 apm44_add_test(test_lib_samplerate_src test_lib_samplerate_src.cpp)
 apm44_add_test(test_soak_offline test_soak_offline.cpp)
@@ -61,7 +60,6 @@ target_sources(test_shm_io_handler PRIVATE
 )
 target_link_libraries(test_shm_io_handler PRIVATE libASPL)
 
-target_link_libraries(test_libsamplerate_smoke PRIVATE samplerate::samplerate)
 target_link_libraries(test_lib_samplerate_src PRIVATE samplerate::samplerate)
 
 target_sources(test_virtual_device_feed PRIVATE

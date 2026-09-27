@@ -6,11 +6,12 @@
 // Note on platform defenses: macOS rounds shm object sizes to a
 // full page (typically 16 KiB) and `ftruncate` cannot shrink or
 // grow the reported `st_size` once the page is allocated. The
-// defensive `HeaderTruncated` (SHM-01) and size-change staleness
-// (SHM-03) checks are correct in principle but cannot be exercised
-// functionally on this platform. We verify them via source-level
-// guard tests (`Shm01SourceCodeChecksSizeBeforeHeader` and
-// `Shm03SourceCodeComparesSize`) instead. SHM-02 and SHM-04 are
+// defensive `HeaderTruncated` (SHM-01) check is correct in principle
+// but cannot be exercised functionally on this platform; SHM-01 is
+// guarded by the source-order test
+// (`Shm01SourceCodeChecksSizeBeforeHeader`) below. SHM-03's size
+// branch is proved functionally in
+// tests/test_shm_object_identity.cpp. SHM-02 and SHM-04 are
 // functionally tested below.
 
 #include "apm44/MmapShmRing.h"
@@ -84,15 +85,6 @@ void WriteValidHeader(void* base, uint32_t capacityFrames) {
 }
 
 }  // namespace
-
-TEST_CASE("OpenRejectsTruncatedObject", "[mmap_shm][validation][SHM-01]") {
-  // macOS rounds shm sizes up to a full page, so fstat will report
-  // a much larger size than we ftruncate'd to. The functional
-  // `HeaderTruncated` path cannot be reached on this platform. We
-  // verify the source-level invariant separately in
-  // `Shm01SourceCodeChecksSizeBeforeHeader`.
-  SUCCEED("SHM-01 fstat-size check is platform-defensive; see source-level test.");
-}
 
 TEST_CASE("OpenRejectsValidHeaderWithHugeCapacity", "[mmap_shm][validation][SHM-02]") {
   const std::string name = IsolatedName("huge_cap");
@@ -216,52 +208,91 @@ TEST_CASE("HeaderMismatchDiagnosticHandlesUnterminatedBuildId",
   CleanupShmObject(name);
 }
 
-TEST_CASE("OpenRejectsMismatchedSampleRate", "[mmap_shm][validation][SHM-03]") {
-  const std::string name = IsolatedName("rate");
-  const std::size_t totalSize = apm44::ShmTotalSize(64);
-  const int fd = CreateRawShmObject(name, totalSize);
-  REQUIRE(fd >= 0);
+TEST_CASE("Open rejects single-field header corruption", "[mmap_shm][validation]") {
+  // Folded from `OpenRejectsBadMagicAsInvalidHeader`,
+  // `OpenRejectsWrongChannelsAsInvalidHeader`, and
+  // `OpenRejectsMismatchedSampleRate`: each row mutates exactly one
+  // header field and asserts the same per-case expectations the
+  // original made (open returns false, InvalidHeader; the sample-rate
+  // row additionally checks the expected_sample_rate diagnostic).
+  struct Row {
+    const char* tag;
+    const char* nameTag;
+    void (*mutate)(apm44::ShmRingHeader*);
+    bool checkRateText;
+  };
+  const Row rows[] = {
+      {"magic", "mag",
+       [](apm44::ShmRingHeader* header) { header->magic = 0xDEADBEEFu; }, false},
+      {"channels", "ch",
+       [](apm44::ShmRingHeader* header) {
+         header->channels = apm44::kShmChannels + 1;
+       },
+       false},
+      {"sample_rate", "rate",
+       [](apm44::ShmRingHeader* header) { header->sample_rate = 48000; }, true},
+  };
+  for (const Row& row : rows) {
+    DYNAMIC_SECTION("field=" << row.tag) {
+      INFO("mutated field=" << row.tag);
+      const std::string name = IsolatedName(row.nameTag);
+      const std::size_t totalSize = apm44::ShmTotalSize(64);
+      const int fd = CreateRawShmObject(name, totalSize);
+      REQUIRE(fd >= 0);
 
-  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  REQUIRE(base != MAP_FAILED);
-  std::memset(base, 0, totalSize);
-  WriteValidHeader(base, 64);
-  auto* header = static_cast<apm44::ShmRingHeader*>(base);
-  header->sample_rate = 48000;
-  ::munmap(base, totalSize);
-  ::close(fd);
+      void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+      REQUIRE(base != MAP_FAILED);
+      std::memset(base, 0, totalSize);
+      WriteValidHeader(base, 64);
+      auto* header = static_cast<apm44::ShmRingHeader*>(base);
+      row.mutate(header);
+      ::munmap(base, totalSize);
+      ::close(fd);
 
-  apm44::MmapShmRing ring(name);
-  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
-  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
-  REQUIRE(ring.lastError().find("expected_sample_rate=44100") != std::string::npos);
+      apm44::MmapShmRing ring(name);
+      REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
+      REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+      if (row.checkRateText) {
+        REQUIRE(ring.lastError().find("expected_sample_rate=44100") != std::string::npos);
+      }
 
-  CleanupShmObject(name);
+      CleanupShmObject(name);
+    }
+  }
 }
 
 TEST_CASE("OpenRejectsMismatchedProducerBuildId", "[mmap_shm][validation][SHM-02]") {
-  const std::string name = IsolatedName("build");
-  const std::size_t totalSize = apm44::ShmTotalSize(64);
-  const int fd = CreateRawShmObject(name, totalSize);
-  REQUIRE(fd >= 0);
+  // Folded from `ObserverRejectsMismatchedProducerBuildId`: the same
+  // stale-build-id check runs for both Consumer and Observer roles.
+  const apm44::ShmRingRole roles[] = {apm44::ShmRingRole::Consumer,
+                                      apm44::ShmRingRole::Observer};
+  for (const apm44::ShmRingRole role : roles) {
+    DYNAMIC_SECTION("role=" << (role == apm44::ShmRingRole::Consumer ? "consumer" : "observer")) {
+      const std::string name = IsolatedName(role == apm44::ShmRingRole::Consumer ? "build" : "obsb");
+      const std::size_t totalSize = apm44::ShmTotalSize(64);
+      const int fd = CreateRawShmObject(name, totalSize);
+      REQUIRE(fd >= 0);
 
-  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  REQUIRE(base != MAP_FAILED);
-  std::memset(base, 0, totalSize);
-  WriteValidHeader(base, 64);
-  auto* header = static_cast<apm44::ShmRingHeader*>(base);
-  std::memset(header->producer_build_id, 0, apm44::kShmBuildIdBytes);
-  std::strncpy(header->producer_build_id, "stale-build", apm44::kShmBuildIdBytes - 1);
-  ::munmap(base, totalSize);
-  ::close(fd);
+      void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+      REQUIRE(base != MAP_FAILED);
+      std::memset(base, 0, totalSize);
+      WriteValidHeader(base, 64);
+      auto* header = static_cast<apm44::ShmRingHeader*>(base);
+      std::memset(header->producer_build_id, 0, apm44::kShmBuildIdBytes);
+      std::strncpy(header->producer_build_id, "stale-build", apm44::kShmBuildIdBytes - 1);
+      ::munmap(base, totalSize);
+      ::close(fd);
 
-  apm44::MmapShmRing ring(name);
-  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
-  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
-  REQUIRE(ring.lastError().find("producer_build_id='stale-build'") != std::string::npos);
-  REQUIRE(ring.lastError().find("expected_consumer_build_id='") != std::string::npos);
+      apm44::MmapShmRing ring(name);
+      INFO("role=" << (role == apm44::ShmRingRole::Consumer ? "consumer" : "observer"));
+      REQUIRE_FALSE(ring.open(role));
+      REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
+      REQUIRE(ring.lastError().find("producer_build_id='stale-build'") != std::string::npos);
+      REQUIRE(ring.lastError().find("expected_consumer_build_id='") != std::string::npos);
 
-  CleanupShmObject(name);
+      CleanupShmObject(name);
+    }
+  }
 }
 
 TEST_CASE("OpenRejectsZeroVersionAsInvalidHeader", "[mmap_shm][validation]") {
@@ -356,73 +387,7 @@ TEST_CASE("OpenRejectsVersionMismatchAsBuildMismatch", "[mmap_shm][validation]")
   apm44::MmapShmRing ring(name);
   REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
   REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
-
-  CleanupShmObject(name);
-}
-
-TEST_CASE("ObserverRejectsMismatchedProducerBuildId", "[mmap_shm][validation]") {
-  const std::string name = IsolatedName("obsb");
-  const std::size_t totalSize = apm44::ShmTotalSize(64);
-  const int fd = CreateRawShmObject(name, totalSize);
-  REQUIRE(fd >= 0);
-
-  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  REQUIRE(base != MAP_FAILED);
-  std::memset(base, 0, totalSize);
-  WriteValidHeader(base, 64);
-  auto* header = static_cast<apm44::ShmRingHeader*>(base);
-  std::memset(header->producer_build_id, 0, apm44::kShmBuildIdBytes);
-  std::strncpy(header->producer_build_id, "stale-build", apm44::kShmBuildIdBytes - 1);
-  ::munmap(base, totalSize);
-  ::close(fd);
-
-  apm44::MmapShmRing ring(name);
-  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Observer));
-  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
-
-  CleanupShmObject(name);
-}
-
-TEST_CASE("OpenRejectsBadMagicAsInvalidHeader", "[mmap_shm][validation]") {
-  const std::string name = IsolatedName("mag");
-  const std::size_t totalSize = apm44::ShmTotalSize(64);
-  const int fd = CreateRawShmObject(name, totalSize);
-  REQUIRE(fd >= 0);
-
-  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  REQUIRE(base != MAP_FAILED);
-  std::memset(base, 0, totalSize);
-  WriteValidHeader(base, 64);
-  auto* header = static_cast<apm44::ShmRingHeader*>(base);
-  header->magic = 0xDEADBEEFu;
-  ::munmap(base, totalSize);
-  ::close(fd);
-
-  apm44::MmapShmRing ring(name);
-  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
-  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
-
-  CleanupShmObject(name);
-}
-
-TEST_CASE("OpenRejectsWrongChannelsAsInvalidHeader", "[mmap_shm][validation]") {
-  const std::string name = IsolatedName("ch");
-  const std::size_t totalSize = apm44::ShmTotalSize(64);
-  const int fd = CreateRawShmObject(name, totalSize);
-  REQUIRE(fd >= 0);
-
-  void* base = ::mmap(nullptr, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  REQUIRE(base != MAP_FAILED);
-  std::memset(base, 0, totalSize);
-  WriteValidHeader(base, 64);
-  auto* header = static_cast<apm44::ShmRingHeader*>(base);
-  header->channels = apm44::kShmChannels + 1;
-  ::munmap(base, totalSize);
-  ::close(fd);
-
-  apm44::MmapShmRing ring(name);
-  REQUIRE_FALSE(ring.open(apm44::ShmRingRole::Consumer));
-  REQUIRE(ring.lastErrorCode() == apm44::ShmRingErrorCode::InvalidHeader);
+  REQUIRE(ring.lastError().find("expected_version") != std::string::npos);
 
   CleanupShmObject(name);
 }
@@ -491,38 +456,4 @@ TEST_CASE("MmapShmRingUsesCachedCapacityAfterHeaderMutation",
   producer.close();
   consumer.close();
   CleanupShmObject(name);
-}
-
-TEST_CASE("LiveSizeChangeTriggersStale", "[mmap_shm][validation][SHM-03]") {
-  // SHM-03 cannot be exercised on macOS: shm objects report a
-  // page-rounded `st_size` that does not change in response to
-  // `ftruncate` shrinking or growing. We verify the size-comparison
-  // logic via a source-level guard test below.
-  SUCCEED("SHM-03 size-change detection is platform-defensive; see source-level test.");
-}
-
-TEST_CASE("Shm03SourceCodeComparesSize", "[mmap_shm][validation][SHM-03]") {
-  // Regression guard: the size-change detection in
-  // `isMappedObjectStale()` must compare the currently-fstat'd
-  // size against the size captured at `open()` time. A future
-  // refactor that drops the size check would let a hostile or
-  // truncated object go undetected.
-  std::ifstream in(LocateSource("Shared/src/MmapShmRing.cpp"));
-  REQUIRE(in.good());
-  std::stringstream ss;
-  ss << in.rdbuf();
-  const std::string src = ss.str();
-
-  // Look for a size comparison in the staleness path.
-  const bool hasSizeCheck =
-      src.find("st.st_size") != std::string::npos &&
-      src.find("isMappedObjectStale") != std::string::npos;
-  REQUIRE(hasSizeCheck);
-  // The ShmObjectIdentity struct must carry a size field.
-  std::ifstream idIn(LocateSource("Shared/include/apm44/ShmObjectIdentity.h"));
-  REQUIRE(idIn.good());
-  std::stringstream idss;
-  idss << idIn.rdbuf();
-  const std::string idSrc = idss.str();
-  REQUIRE(idSrc.find("std::size_t size") != std::string::npos);
 }

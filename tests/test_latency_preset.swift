@@ -20,14 +20,10 @@ final class LatencyPresetTests: XCTestCase {
     }
 
     func testHalEffectiveTargetFill() {
+        // The ms floor lives in the daemon arguments, not in UI copy.
         XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: true), 20)
         XCTAssertEqual(LatencyPreset.balanced.effectiveTargetFillMs(halMode: true), 20)
         XCTAssertEqual(LatencyPreset.safe.effectiveTargetFillMs(halMode: true), 100)
         XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: false), 8)
-    }
-
-    func testHalFloorStaysInModel() {
-        // The ms floor lives in the daemon arguments, not in UI copy.
-        XCTAssertEqual(LatencyPreset.low.effectiveTargetFillMs(halMode: true), 20)
     }
 }

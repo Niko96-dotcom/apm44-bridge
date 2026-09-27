@@ -18,36 +18,6 @@ bool Contains(const std::string& haystack, const std::string& needle) {
 
 }  // namespace
 
-TEST_CASE("BridgeMetrics JSON contains required fields") {
-  const auto metrics = apm44::MakeBridgeMetrics(15.2, 1.088435, 12.0, 1, 2, 3, 15.0, "medium");
-  const std::string line = apm44::ToJsonLine(metrics);
-
-  REQUIRE(Contains(line, "\"fill_ms\""));
-  REQUIRE(Contains(line, "\"xruns\""));
-  REQUIRE(Contains(line, "\"ratio\""));
-  REQUIRE(Contains(line, "\"underruns\""));
-  REQUIRE(Contains(line, "\"overruns\""));
-  REQUIRE(Contains(line, "\"ppm\""));
-  REQUIRE(Contains(line, "\"estimated_rt_ms\""));
-  REQUIRE(Contains(line, "\"target_fill_ms\""));
-  REQUIRE(Contains(line, "\"src_quality\""));
-  REQUIRE(Contains(line, "\"input_dropped_frames\""));
-  REQUIRE(Contains(line, "\"producer_overrun_events\""));
-  REQUIRE(Contains(line, "\"producer_dropped_frames\""));
-  REQUIRE(Contains(line, "\"producer_not_ready_dropped_frames\""));
-  REQUIRE(Contains(line, "\"lane_queue_drops\""));
-  REQUIRE(Contains(line, "\"lane_timestamp_mismatches\""));
-  REQUIRE(Contains(line, "\"lane_frame_mismatch_dropped_frames\""));
-  REQUIRE(Contains(line, "\"consumer_resets\""));
-  REQUIRE(Contains(line, "\"output_starvation_frames\""));
-  REQUIRE(Contains(line, "\"partial_shortage_events\""));
-  REQUIRE(Contains(line, "\"converter_reset_events\""));
-  REQUIRE(Contains(line, "\"rebuffer_events\""));
-  REQUIRE(Contains(line, "\"recovery_fade_events\""));
-  REQUIRE(Contains(line, "15.200"));
-  REQUIRE(line.find('\n') == std::string::npos);
-}
-
 TEST_CASE("BridgeMetrics exposes every known frame-loss counter", "[metrics][F-05]") {
   apm44::MetricsSnapshot snapshot;
   snapshot.fillMs = 15.2;
@@ -81,6 +51,20 @@ TEST_CASE("BridgeMetrics exposes every known frame-loss counter", "[metrics][F-0
   REQUIRE(Contains(line, "\"converter_reset_events\":31"));
   REQUIRE(Contains(line, "\"rebuffer_events\":37"));
   REQUIRE(Contains(line, "\"recovery_fade_events\":41"));
+  // Carried over from the removed `BridgeMetrics JSON contains
+  // required fields`: the keys this test alone asserted, the fill
+  // value text, and the single-line invariant.
+  REQUIRE(Contains(line, "\"fill_ms\""));
+  REQUIRE(Contains(line, "\"xruns\""));
+  REQUIRE(Contains(line, "\"ratio\""));
+  REQUIRE(Contains(line, "\"underruns\""));
+  REQUIRE(Contains(line, "\"overruns\""));
+  REQUIRE(Contains(line, "\"ppm\""));
+  REQUIRE(Contains(line, "\"estimated_rt_ms\""));
+  REQUIRE(Contains(line, "\"target_fill_ms\""));
+  REQUIRE(Contains(line, "\"src_quality\""));
+  REQUIRE(Contains(line, "15.200"));
+  REQUIRE(line.find('\n') == std::string::npos);
 }
 
 TEST_CASE("BridgeMetrics JSON truncation fails closed without overreading buffer",

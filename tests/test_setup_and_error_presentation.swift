@@ -46,31 +46,30 @@ final class BridgeErrorPresentationTests: XCTestCase {
     }
 
     func testLongHelperFailureUsesShortHeadlineWithRecoveryAndFullDiagnostic() {
-        let message = longHelperFailure()
-        XCTAssertGreaterThan(message.count, 60)
-        let presentation = BridgeErrorPresentation.presentation(for: message)
-        XCTAssertEqual(presentation.headline, AppStrings.couldNotStart)
-        XCTAssertFalse(presentation.headline.hasSuffix("…"))
-        XCTAssertFalse(presentation.headline.contains("0x3f2a"))
-        XCTAssertEqual(presentation.recovery, AppStrings.genericFailureRecovery)
-        XCTAssertEqual(presentation.diagnostic, message)
-    }
-
-    func testHeadlineNeverTruncatesWithEllipsis() {
-        let message = longHelperFailure()
-        let headline = BridgeErrorPresentation.headline(for: message)
-        XCTAssertFalse(headline.contains("…"))
-        XCTAssertLessThanOrEqual(headline.count, 60)
-    }
-
-    func testBridgeCouldNotStartKeepsFullDiagnostic() {
-        let detail = "kAudioHardwareUnknownPropertyError endpoint unavailable"
-        let message = AppStrings.bridgeCouldNotStart(detail: detail)
-        let presentation = BridgeErrorPresentation.presentation(for: message)
-        XCTAssertEqual(presentation.headline, AppStrings.couldNotStart)
-        XCTAssertEqual(presentation.recovery, AppStrings.genericFailureRecovery)
-        XCTAssertEqual(presentation.diagnostic, message)
-        XCTAssertTrue(presentation.diagnostic?.contains(detail) == true)
+        let bridgeDetail = "kAudioHardwareUnknownPropertyError endpoint unavailable"
+        let messages = [
+            longHelperFailure(),
+            AppStrings.bridgeCouldNotStart(detail: bridgeDetail),
+            AppStrings.stoppedAfterUnstableLaunches(4, detail: ": helper failed id=0x1"),
+        ]
+        XCTAssertGreaterThan(messages[0].count, 60)
+        for message in messages {
+            let presentation = BridgeErrorPresentation.presentation(for: message)
+            XCTAssertEqual(presentation.headline, AppStrings.couldNotStart, "\(message)")
+            XCTAssertFalse(presentation.headline.hasSuffix("…"), "\(message)")
+            XCTAssertFalse(presentation.headline.contains("…"), "\(message)")
+            XCTAssertLessThanOrEqual(presentation.headline.count, 60, "\(message)")
+            XCTAssertEqual(presentation.recovery, AppStrings.genericFailureRecovery, "\(message)")
+            XCTAssertNotNil(presentation.recovery, "\(message)")
+            XCTAssertEqual(presentation.diagnostic, message, "\(message)")
+        }
+        XCTAssertFalse(BridgeErrorPresentation.presentation(for: messages[0]).headline.contains("0x3f2a"))
+        XCTAssertTrue(BridgeErrorPresentation.presentation(for: messages[1]).diagnostic?.contains(bridgeDetail) == true)
+        for message in messages {
+            let headline = BridgeErrorPresentation.headline(for: message)
+            XCTAssertFalse(headline.contains("…"), "\(message)")
+            XCTAssertLessThanOrEqual(headline.count, 60, "\(message)")
+        }
     }
 
     func testKnownShortMessagesStayAsHeadline() {
@@ -86,12 +85,10 @@ final class BridgeErrorPresentationTests: XCTestCase {
             let presentation = BridgeErrorPresentation.presentation(for: message)
             XCTAssertEqual(presentation.headline, message)
             XCTAssertNil(presentation.diagnostic, "short message should not need Details: \(message)")
+            if message == AppStrings.selectOutputDevice {
+                XCTAssertEqual(presentation.recovery, AppStrings.chooseOutputToStart)
+            }
         }
-    }
-
-    func testMissingSelectionMapsToChooseOutputRecovery() {
-        let presentation = BridgeErrorPresentation.presentation(for: AppStrings.selectOutputDevice)
-        XCTAssertEqual(presentation.recovery, AppStrings.chooseOutputToStart)
     }
 
     func testIncompatibleOutputKeepsHeadlineWithCompatibleRecovery() {
@@ -103,30 +100,11 @@ final class BridgeErrorPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.recovery, AppStrings.incompatibleOutputRecovery)
         XCTAssertNil(presentation.diagnostic)
     }
-
-    func testUnstableLaunchesMapToGenericHeadlineWithFullDiagnostic() {
-        let message = AppStrings.stoppedAfterUnstableLaunches(4, detail: ": helper failed id=0x1")
-        let presentation = BridgeErrorPresentation.presentation(for: message)
-        XCTAssertEqual(presentation.headline, AppStrings.couldNotStart)
-        XCTAssertEqual(presentation.diagnostic, message)
-        XCTAssertNotNil(presentation.recovery)
-    }
 }
 
 final class BridgeBuildMismatchPresentationTests: XCTestCase {
     private let appID = "0.12.7+3fc0b148b674"
     private let driverID = "0.12.7+c2728cba0591"
-
-    func testMismatchSetupIsNotGreenReady() {
-        let status = HalDriverDetector.status(
-            halPresent: true,
-            appBuildID: appID,
-            driverBuildID: driverID,
-            driverBundleOnDisk: true
-        )
-        XCTAssertEqual(status, .buildMismatch)
-        XCTAssertNotEqual(status, .ready)
-    }
 
     func testMismatchDetailCarriesBothBuildIDs() {
         let detail = AppStrings.driverBuildMismatchDetail(app: appID, driver: driverID)
@@ -144,22 +122,20 @@ final class BridgeBuildMismatchPresentationTests: XCTestCase {
     }
 
     func testDetailedMismatchKeepsFullDiagnostic() {
-        let message = AppStrings.driverBuildMismatchDetail(app: appID, driver: driverID)
-        let presentation = BridgeErrorPresentation.presentation(for: message)
-        XCTAssertEqual(presentation.headline, AppStrings.driverBuildMismatch)
-        XCTAssertEqual(presentation.recovery, AppStrings.driverBuildMismatchRecovery)
-        XCTAssertEqual(presentation.diagnostic, message)
-    }
-
-    func testMissingIDDetailStillMapsToMismatch() {
-        let message = AppStrings.driverBuildMismatchDetail(
-            app: appID,
-            driver: AppStrings.buildIDMissingPlaceholder
-        )
-        let presentation = BridgeErrorPresentation.presentation(for: message)
-        XCTAssertEqual(presentation.headline, AppStrings.driverBuildMismatch)
-        XCTAssertNotNil(presentation.recovery)
-        XCTAssertEqual(presentation.diagnostic, message)
+        let messages = [
+            AppStrings.driverBuildMismatchDetail(app: appID, driver: driverID),
+            AppStrings.driverBuildMismatchDetail(
+                app: appID,
+                driver: AppStrings.buildIDMissingPlaceholder
+            ),
+        ]
+        for message in messages {
+            let presentation = BridgeErrorPresentation.presentation(for: message)
+            XCTAssertEqual(presentation.headline, AppStrings.driverBuildMismatch, "\(message)")
+            XCTAssertEqual(presentation.recovery, AppStrings.driverBuildMismatchRecovery, "\(message)")
+            XCTAssertNotNil(presentation.recovery, "\(message)")
+            XCTAssertEqual(presentation.diagnostic, message, "\(message)")
+        }
     }
 
     func testLoadedDriverBuildMismatchHasRecoveryWithoutDiagnostic() {

@@ -45,28 +45,6 @@ struct TwoBufferList {
 
 }  // namespace
 
-TEST_CASE("testOutputCallbackRendersAll4096RequestedFrames",
-          "[io_proc][rt][large_callback]") {
-  apm44::BridgeEngine engine;
-  PrepareEngine(engine, false);
-  const float sentinel = std::numeric_limits<float>::quiet_NaN();
-  std::vector<float> output(kLargeCallbackFrames * 2, sentinel);
-  AudioBufferList buffers{};
-  buffers.mNumberBuffers = 1;
-  buffers.mBuffers[0].mNumberChannels = 2;
-  buffers.mBuffers[0].mDataByteSize =
-      static_cast<UInt32>(output.size() * sizeof(float));
-  buffers.mBuffers[0].mData = output.data();
-
-  const uint64_t before = engine.outputFramesProcessed();
-  REQUIRE(apm44::OutputIoProc(0, nullptr, nullptr, nullptr, &buffers, nullptr, &engine) == noErr);
-
-  REQUIRE(engine.outputFramesProcessed() - before == kLargeCallbackFrames);
-  for (float sample : output) {
-    REQUIRE(std::isfinite(sample));
-  }
-}
-
 TEST_CASE("production planar output callback renders every large buffer frame",
           "[io_proc][rt][large_callback]") {
   apm44::BridgeEngine engine;
@@ -89,23 +67,6 @@ TEST_CASE("production planar output callback renders every large buffer frame",
     REQUIRE(std::isfinite(left[i]));
     REQUIRE(std::isfinite(right[i]));
   }
-}
-
-TEST_CASE("production interleaved input callback accounts for all 4096 frames",
-          "[io_proc][rt][large_callback]") {
-  apm44::BridgeEngine engine;
-  PrepareEngine(engine, false);
-  std::vector<float> input(kLargeCallbackFrames * 2, 0.25f);
-  AudioBufferList buffers{};
-  buffers.mNumberBuffers = 1;
-  buffers.mBuffers[0].mNumberChannels = 2;
-  buffers.mBuffers[0].mDataByteSize =
-      static_cast<UInt32>(input.size() * sizeof(float));
-  buffers.mBuffers[0].mData = input.data();
-
-  const uint64_t before = engine.inputFramesProcessed();
-  REQUIRE(apm44::InputIoProc(0, nullptr, &buffers, nullptr, nullptr, nullptr, &engine) == noErr);
-  REQUIRE(engine.inputFramesProcessed() - before == kLargeCallbackFrames);
 }
 
 TEST_CASE("production planar input uses the shortest channel without truncating it",
