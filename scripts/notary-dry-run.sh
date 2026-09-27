@@ -52,7 +52,20 @@ for artifact in "$APP" "$DAEMON" "$DRIVER"; do
   fi
 done
 
-rm -rf "$STAGING"
+LSREGISTER="${APM44_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
+
+# The staged app carries the production bundle ID. Left on disk, Launch
+# Services can pick it over /Applications for a launch by bundle ID, so the
+# staging dir only exists while the zip is built.
+apm44_remove_staging() {
+  if [[ -x "$LSREGISTER" ]]; then
+    "$LSREGISTER" -u "$STAGING/APM44 Bridge.app" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$STAGING"
+}
+
+apm44_remove_staging
+trap apm44_remove_staging EXIT
 mkdir -p "$STAGING"
 ditto "$APP" "$STAGING/APM44 Bridge.app"
 cp "$DAEMON" "$STAGING/apm44-bridge"
@@ -62,6 +75,7 @@ mkdir -p "$(dirname "$ZIP")"
 rm -f "$ZIP"
 echo "Creating release zip: $ZIP"
 ditto -c -k --keepParent "$STAGING" "$ZIP"
+apm44_remove_staging
 
 if [[ "${APM44_NOTARY_CHECK_ONLY:-0}" == "1" ]]; then
   echo ""

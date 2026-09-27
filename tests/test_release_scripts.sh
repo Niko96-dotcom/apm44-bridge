@@ -6,6 +6,8 @@ SOURCE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 FAKE_BIN="$TMP/bin"
 LOG="$TMP/fake-xcrun.log"
+LSREGISTER_LOG="$TMP/fake-lsregister.log"
+: >"$LSREGISTER_LOG" 2>/dev/null || true
 
 cleanup() {
   rm -rf "$TMP"
@@ -234,6 +236,10 @@ for arg in "$@"; do
     break
   fi
 done
+if [[ "$is_analyze" == "1" && "${APM44_FAKE_PKGBUILD_FAIL_ANALYZE:-0}" == "1" ]]; then
+  echo "fake pkgbuild --analyze failure" >&2
+  exit 1
+fi
 if [[ "$is_analyze" == "1" ]]; then
   out="${@: -1}"
   mkdir -p "$(dirname "$out")"
@@ -313,6 +319,10 @@ args=("$@")
 src="${args[$((${#args[@]} - 2))]}"
 dest="${args[$((${#args[@]} - 1))]}"
 if printf '%s\n' "$*" | grep -q -- '--keepParent'; then
+  if [[ "${APM44_FAKE_DITTO_FAIL_ARCHIVE:-0}" == "1" ]]; then
+    echo "fake ditto archive failure" >&2
+    exit 1
+  fi
   mkdir -p "$(dirname "$dest")"
   printf 'fake archive for %s\n' "$src" >"$dest"
 else
@@ -347,6 +357,16 @@ if [[ -z "$out" ]]; then
 fi
 mkdir -p "$(dirname "$out")"
 printf 'fake cert\n' >"$out"
+EOF
+
+cat >"$FAKE_BIN/lsregister" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+log="${APM44_FAKE_LSREGISTER_LOG:?}"
+printf '%s\n' "lsregister $*" >>"$log"
+if [[ -n "${APM44_FAKE_XCRUN_LOG:-}" ]]; then
+  printf '%s\n' "lsregister $*" >>"$APM44_FAKE_XCRUN_LOG"
+fi
 EOF
 
 cat >"$FAKE_BIN/hdiutil" <<'EOF'
@@ -530,7 +550,7 @@ set -euo pipefail
 echo "fake ls $*"
 EOF
 
-chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/codesign" "$FAKE_BIN/xcodegen" "$FAKE_BIN/pkgbuild" "$FAKE_BIN/productsign" "$FAKE_BIN/ditto" "$FAKE_BIN/curl" "$FAKE_BIN/hdiutil" "$FAKE_BIN/pkgutil" "$FAKE_BIN/spctl" "$FAKE_BIN/bash" "$FAKE_BIN/ls"
+chmod +x "$FAKE_BIN/xcrun" "$FAKE_BIN/security" "$FAKE_BIN/codesign" "$FAKE_BIN/xcodegen" "$FAKE_BIN/pkgbuild" "$FAKE_BIN/productsign" "$FAKE_BIN/ditto" "$FAKE_BIN/curl" "$FAKE_BIN/lsregister" "$FAKE_BIN/hdiutil" "$FAKE_BIN/pkgutil" "$FAKE_BIN/spctl" "$FAKE_BIN/bash" "$FAKE_BIN/ls"
 
 DMG="$TMP/APM44Bridge.dmg"
 PKG="$TMP/APM44Bridge.pkg"
@@ -540,6 +560,7 @@ mkdir -p "$DRIVER"
 
 reset_log() {
   : >"$LOG"
+  : >"$LSREGISTER_LOG"
 }
 
 assert_contains() {
@@ -589,6 +610,8 @@ run_pkg_builder_case() {
     APM44_FAKE_INSTALLER_IDENTITIES="$mode"
     APM44_PKG_PATH="$PKG"
     APM44_DEVID_G2_CA="$TMP/DeveloperIDG2CA.cer"
+    APM44_LSREGISTER="$FAKE_BIN/lsregister"
+    APM44_FAKE_LSREGISTER_LOG="$LSREGISTER_LOG"
   )
   if [[ "$expected" == "local-unsigned" ]]; then
     env_args+=(APM44_ALLOW_UNSIGNED_PKG=1)
@@ -630,6 +653,23 @@ run_pkg_builder_case() {
       ;;
   esac
 
+  local payload_dir="$ROOT/build/signing/pkg-root"
+  local payload_app="$payload_dir/Applications/APM44 Bridge.app"
+  if [[ -e "$payload_dir" ]]; then
+    echo "$label: expected payload dir to be removed: $payload_dir" >&2
+    exit 1
+  fi
+  assert_contains "$LSREGISTER_LOG" "-u $payload_app"
+  local pkgbuild_line lsregister_line
+  pkgbuild_line="$(grep -nF "pkgbuild --root" "$LOG" | head -1 | cut -d: -f1)"
+  lsregister_line="$(grep -nF "lsregister -u $payload_app" "$LOG" | tail -1 | cut -d: -f1)"
+  if [[ -z "$pkgbuild_line" || -z "$lsregister_line" || "$lsregister_line" -le "$pkgbuild_line" ]]; then
+    echo "$label: expected lsregister unregister after pkgbuild (pkgbuild=$pkgbuild_line lsregister=$lsregister_line)" >&2
+    cat "$LOG" >&2
+    cat "$LSREGISTER_LOG" >&2
+    exit 1
+  fi
+
   LAST_PKG_CASE_OUT="$out"
 }
 
@@ -649,6 +689,39 @@ run_pkg_identity_gate_cases() {
   assert_contains "$LAST_PKG_CASE_OUT" "not publishable"
 
   run_pkg_builder_case one success "pkg-identity-one"
+}
+
+# A failure after the payload is staged but before pkgbuild --root must still
+# unregister and delete the production-ID app copy (the EXIT trap path).
+run_pkg_early_failure_cleanup_case() {
+  local out="$TMP/pkg-early-failure.out"
+  local payload_dir="$ROOT/build/signing/pkg-root"
+
+  prepare_pkg_inputs
+  rm -f "$PKG"
+  reset_log
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_INSTALLER_IDENTITIES=one \
+    APM44_FAKE_PKGBUILD_FAIL_ANALYZE=1 \
+    APM44_PKG_PATH="$PKG" \
+    APM44_DEVID_G2_CA="$TMP/DeveloperIDG2CA.cer" \
+    APM44_LSREGISTER="$FAKE_BIN/lsregister" \
+    APM44_FAKE_LSREGISTER_LOG="$LSREGISTER_LOG" \
+    /bin/bash "$ROOT/scripts/build-release-pkg.sh" >"$out" 2>&1; then
+    echo "pkg-early-failure: expected failure when pkgbuild --analyze fails" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "fake pkgbuild --analyze failure"
+  assert_not_contains "$LOG" "pkgbuild --root"
+  [[ ! -e "$payload_dir" ]] || { echo "pkg-early-failure: payload dir left behind: $payload_dir" >&2; exit 1; }
+  [[ "$(grep -cF -- "-u $payload_dir/Applications/APM44 Bridge.app" "$LSREGISTER_LOG")" -ge 2 ]] || {
+    echo "pkg-early-failure: expected the exit trap to unregister the staged app" >&2
+    cat "$LSREGISTER_LOG" >&2
+    exit 1
+  }
 }
 
 run_pkg_replacement_script_check() {
@@ -1461,6 +1534,8 @@ run_notary_dry_run_cases() {
     APM44_DAEMON_PATH="$daemon" \
     APM44_DRIVER_PATH="$driver" \
     APM44_RELEASE_STAGING="$staging" \
+    APM44_LSREGISTER="$FAKE_BIN/lsregister" \
+    APM44_FAKE_LSREGISTER_LOG="$LSREGISTER_LOG" \
     APM44_RELEASE_ZIP="$zip" \
     /bin/bash "$ROOT/scripts/notary-dry-run.sh" >"$out" 2>&1
 
@@ -1468,6 +1543,8 @@ run_notary_dry_run_cases() {
   assert_contains "$out" "Notarization is not required for local debug"
   assert_not_contains "$LOG" "notarytool submit"
   [[ -f "$zip" ]] || { echo "check-only should write $zip" >&2; cat "$out" >&2; exit 1; }
+  [[ ! -e "$staging" ]] || { echo "check-only should remove staging dir $staging" >&2; exit 1; }
+  assert_contains "$LSREGISTER_LOG" "-u $staging/APM44 Bridge.app"
 
   rm -f "$zip"
   reset_log
@@ -1480,11 +1557,37 @@ run_notary_dry_run_cases() {
     APM44_DAEMON_PATH="$daemon" \
     APM44_DRIVER_PATH="$driver" \
     APM44_RELEASE_STAGING="$staging" \
+    APM44_LSREGISTER="$FAKE_BIN/lsregister" \
+    APM44_FAKE_LSREGISTER_LOG="$LSREGISTER_LOG" \
     APM44_RELEASE_ZIP="$zip" \
     /bin/bash "$ROOT/scripts/notary-dry-run.sh" >"$out" 2>&1
 
   assert_contains "$LOG" "notarytool submit"
   assert_contains "$out" "Notary dry-run complete"
+  [[ ! -e "$staging" ]] || { echo "notary dry-run should remove staging dir $staging" >&2; exit 1; }
+
+  # A failed zip leaves the staged app behind unless the exit trap runs.
+  rm -f "$zip"
+  reset_log
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    APM44_FAKE_XCRUN_LOG="$LOG" \
+    APM44_FAKE_DITTO_FAIL_ARCHIVE=1 \
+    APM44_NOTARY_CHECK_ONLY=1 \
+    APM44_APP_PATH="$app" \
+    APM44_DAEMON_PATH="$daemon" \
+    APM44_DRIVER_PATH="$driver" \
+    APM44_RELEASE_STAGING="$staging" \
+    APM44_RELEASE_ZIP="$zip" \
+    APM44_LSREGISTER="$FAKE_BIN/lsregister" \
+    APM44_FAKE_LSREGISTER_LOG="$LSREGISTER_LOG" \
+    /bin/bash "$ROOT/scripts/notary-dry-run.sh" >"$out" 2>&1; then
+    echo "notary dry-run should fail when the zip cannot be written" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "fake ditto archive failure"
+  [[ ! -e "$staging" ]] || { echo "failed notary dry-run left staging dir $staging" >&2; exit 1; }
 }
 
 run_codesign_verify_sparkle_nested_cases() {
@@ -1635,6 +1738,7 @@ run_release_all_unnotarized_override     # [REL-02]
 run_release_all_ready_sequence      # [DIST-01][REL-01]
 
 run_pkg_identity_gate_cases
+run_pkg_early_failure_cleanup_case
 
 run_pkg_replacement_script_check
 
