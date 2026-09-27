@@ -1,14 +1,31 @@
 import Foundation
 
-/// Injected retry timing for BridgeProcessManager. Production uses `.live`.
-struct BridgeRetryTiming: Equatable, Sendable {
+/// Injected retry, stability, stale-metrics and glitch-flash timing for
+/// BridgeProcessManager. Production uses `.live`.
+struct BridgeTiming: Equatable, Sendable {
     var retryDelays: [TimeInterval]
     var stabilityWindow: TimeInterval
+    var staleCheckInterval: TimeInterval = 0.5
+    var staleAfter: TimeInterval = 2.0
+    var glitchFlashDuration: TimeInterval = 2.0
 
-    static let live = BridgeRetryTiming(
+    static let live = BridgeTiming(
         retryDelays: [1.0, 2.0, 4.0, 4.0],
-        stabilityWindow: 15.0
+        stabilityWindow: 15.0,
+        staleCheckInterval: 0.5,
+        staleAfter: 2.0,
+        glitchFlashDuration: 2.0
     )
+}
+
+/// Injectable wall-clock for BridgeProcessManager's time-based UI state
+/// (the stale-metrics watch). Production uses `LiveBridgeClock`.
+protocol BridgeClock: Sendable {
+    func now() -> Date
+}
+
+struct LiveBridgeClock: BridgeClock {
+    func now() -> Date { Date() }
 }
 
 /// Injectable HAL build check. When the HAL virtual device is enumerated,
