@@ -329,45 +329,57 @@ fi
 cat > "$SCRIPTS/postinstall" <<'POST'
 #!/bin/bash
 set -e
-chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
-xattr -d com.apple.quarantine /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver 2>/dev/null || true
-[[ -d "/Applications/APM44 Bridge.app" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
-[[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
-APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' '/Applications/APM44 Bridge.app/Contents/Info.plist')"
-DRIVER_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' '/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist')"
-[[ "$APP_VERSION" == "$DRIVER_VERSION" ]] || {
-  echo "Installed app/driver version mismatch: app=$APP_VERSION driver=$DRIVER_VERSION" >&2
-  exit 1
-}
-HELPER_VERSION="$(/Applications/APM44\ Bridge.app/Contents/MacOS/apm44-bridge --version 2>/dev/null || true)"
-[[ "$HELPER_VERSION" == "apm44-bridge $APP_VERSION "* ]] || {
-  echo "Installed helper version mismatch: $HELPER_VERSION" >&2
-  exit 1
-}
-APP_BUILD_ID="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' '/Applications/APM44 Bridge.app/Contents/Info.plist' 2>/dev/null || true)"
-DRIVER_BUILD_ID="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' '/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist' 2>/dev/null || true)"
-HELPER_BUILD_ID="$(printf '%s\n' "$HELPER_VERSION" | sed -n 's/.*build=\([^[:space:]]*\).*/\1/p')"
-[[ -n "$APP_BUILD_ID" && "$APP_BUILD_ID" == "$DRIVER_BUILD_ID" && "$APP_BUILD_ID" == "$HELPER_BUILD_ID" ]] || {
-  echo "Installed app/driver/helper build ID mismatch: app=$APP_BUILD_ID driver=$DRIVER_BUILD_ID helper=$HELPER_BUILD_ID" >&2
-  exit 1
-}
-DRIVER_BIN="$(find /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/MacOS -maxdepth 1 -type f | head -1)"
-if [[ -z "$DRIVER_BIN" ]]; then
-  echo "APM44Bridge.driver executable missing after install" >&2
-  exit 1
-fi
+# Tests point this at a fixture tree; PackageKit never sets it.
+INSTALL_ROOT="${APM44_INSTALL_ROOT:-}"
+APP="$INSTALL_ROOT/Applications/APM44 Bridge.app"
+DRIVER="$INSTALL_ROOT/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
 # Reload Core Audio so the freshly installed HAL driver is picked up without a
 # reboot in the common case. launchctl kickstart -k is more reliable than a bare
 # killall; fall back to killall on systems where it is unavailable. Best effort:
 # the app also surfaces a "Reload audio driver" / restart-once path if a
 # first-time install still needs a reboot to enumerate the device.
-if ! launchctl kickstart -k system/com.apple.audio.coreaudiod 2>/dev/null; then
-  killall coreaudiod 2>/dev/null || true
-fi
 # Let coreaudiod respawn and rescan HAL plug-ins before opening the app, so
 # first-run setup does not render during the load gap and wrongly report the
 # driver as missing.
-sleep 4
+apm44_reload_coreaudio() {
+  if ! launchctl kickstart -k system/com.apple.audio.coreaudiod 2>/dev/null; then
+    killall coreaudiod 2>/dev/null || true
+  fi
+  sleep 4
+}
+# Preinstall already deleted the old driver, so a failed check below must still
+# reload Core Audio. Otherwise coreaudiod keeps running the deleted driver.
+trap apm44_reload_coreaudio EXIT
+chown -R root:wheel "$DRIVER"
+xattr -d com.apple.quarantine "$DRIVER" 2>/dev/null || true
+[[ -d "$APP" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
+[[ -d "$DRIVER" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
+APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+DRIVER_VERSION="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' "$DRIVER/Contents/Info.plist")"
+[[ "$APP_VERSION" == "$DRIVER_VERSION" ]] || {
+  echo "Installed app/driver version mismatch: app=$APP_VERSION driver=$DRIVER_VERSION" >&2
+  exit 1
+}
+HELPER_VERSION="$("$APP/Contents/MacOS/apm44-bridge" --version 2>/dev/null || true)"
+[[ "$HELPER_VERSION" == "apm44-bridge $APP_VERSION "* ]] || {
+  echo "Installed helper version mismatch: $HELPER_VERSION" >&2
+  exit 1
+}
+APP_BUILD_ID="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' "$APP/Contents/Info.plist" 2>/dev/null || true)"
+DRIVER_BUILD_ID="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' "$DRIVER/Contents/Info.plist" 2>/dev/null || true)"
+HELPER_BUILD_ID="$(printf '%s\n' "$HELPER_VERSION" | sed -n 's/.*build=\([^[:space:]]*\).*/\1/p')"
+[[ -n "$APP_BUILD_ID" && "$APP_BUILD_ID" == "$DRIVER_BUILD_ID" && "$APP_BUILD_ID" == "$HELPER_BUILD_ID" ]] || {
+  echo "Installed app/driver/helper build ID mismatch: app=$APP_BUILD_ID driver=$DRIVER_BUILD_ID helper=$HELPER_BUILD_ID" >&2
+  exit 1
+}
+DRIVER_BIN="$(find "$DRIVER/Contents/MacOS" -maxdepth 1 -type f | head -1)"
+if [[ -z "$DRIVER_BIN" ]]; then
+  echo "APM44Bridge.driver executable missing after install" >&2
+  exit 1
+fi
+# Every check passed: reload now, before opening the app, instead of on exit.
+trap - EXIT
+apm44_reload_coreaudio
 # Launch unless this is a Sparkle-driven install. Sparkle stages the package
 # under a path containing /org.sparkle-project.Sparkle/ (passed as $1) and
 # relaunches the app itself. Launching the new app here, while Sparkle's
@@ -382,8 +394,8 @@ apm44_should_launch_app() {
 }
 if apm44_should_launch_app "$1"; then
   CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
-  if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && -d "/Applications/APM44 Bridge.app" ]]; then
-    sudo -u "$CONSOLE_USER" open "/Applications/APM44 Bridge.app" 2>/dev/null || true
+  if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && -d "$APP" ]]; then
+    sudo -u "$CONSOLE_USER" open "$APP" 2>/dev/null || true
   fi
 fi
 exit 0

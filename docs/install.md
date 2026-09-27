@@ -40,7 +40,8 @@ notarized DMG release.
 
 The PKG installs `/Applications/APM44 Bridge.app` and
 `/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver`, reloads Core Audio, and
-opens the app.
+opens the app. If a post-install check fails, the installer still reloads Core
+Audio, so it does not keep running the driver it just removed.
 
 ## Verify installation
 

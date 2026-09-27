@@ -734,24 +734,8 @@ run_pkg_replacement_script_check() {
 
   assert_contains "$preinstall" 'rm -rf "/Applications/APM44 Bridge.app"'
   assert_contains "$preinstall" 'rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"'
-  assert_contains "$postinstall" 'chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver'
   assert_contains "$postinstall" 'APM44 Bridge.app missing after install'
   assert_contains "$postinstall" 'APM44Bridge.driver missing after install'
-
-  assert_contains "$postinstall" "org.sparkle-project.Sparkle"
-  assert_contains "$postinstall" "apm44_should_launch_app"
-  local sparkle_guard_line cli_open_line cli_close_line
-  sparkle_guard_line="$(grep -n "org.sparkle-project.Sparkle" "$postinstall" | head -1 | cut -d: -f1)"
-  cli_open_line="$(grep -n 'open "/Applications/APM44 Bridge.app"' "$postinstall" | head -1 | cut -d: -f1)"
-  [[ -n "$sparkle_guard_line" && -n "$cli_open_line" && "$sparkle_guard_line" -lt "$cli_open_line" ]] || {
-    echo "postinstall must guard the relaunch open for Sparkle paths (guard=$sparkle_guard_line open=$cli_open_line)" >&2
-    exit 1
-  }
-  cli_close_line="$(awk -v open_line="$cli_open_line" 'NR > open_line && $0 ~ /^fi/ { print NR; exit }' "$postinstall")"
-  [[ -n "$cli_close_line" ]] || {
-    echo "postinstall relaunch open at line $cli_open_line is not followed by a closing fi" >&2
-    exit 1
-  }
 
   assert_contains "$LOG" "--component-plist"
   local component_plist="$ROOT/build/signing/pkg-components.plist"
@@ -808,6 +792,141 @@ run_postinstall_launch_guard_behavior_check() {
     echo "empty argument must launch the app" >&2
     exit 1
   fi
+}
+
+# Build an installed-layout fixture under $1 for the postinstall checks.
+make_postinstall_root() {
+  local root="$1"
+  local app_build="$2"
+  local driver_build="$3"
+  local app="$root/Applications/APM44 Bridge.app"
+  local driver="$root/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+  rm -rf "$root"
+  mkdir -p "$app/Contents/MacOS" "$driver/Contents/MacOS"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 9.9.9" -c "Add :APM44BuildID string $app_build" "$app/Contents/Info.plist" >/dev/null
+  /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 9.9.9" -c "Add :APM44BuildID string $driver_build" "$driver/Contents/Info.plist" >/dev/null
+  printf '#!/bin/bash\necho "apm44-bridge 9.9.9 build=%s"\n' "$app_build" >"$app/Contents/MacOS/apm44-bridge"
+  chmod +x "$app/Contents/MacOS/apm44-bridge"
+  printf 'driver' >"$driver/Contents/MacOS/APM44Bridge"
+}
+
+# Run the generated postinstall against a fixture root. BASH_ENV functions
+# replace every side-effecting command, and the sandbox makes a missing shim
+# unable to write the real install locations or signal a real process.
+run_postinstall_case() {
+  local postinstall="$1"
+  local root="$2"
+  local label="$3"
+  local pkg_path="$4"
+  local launchctl_status="$5"
+  : >"$TMP/$label.calls"
+  local status=0
+  env \
+    APM44_INSTALL_ROOT="$root" \
+    APM44_TEST_CALLS="$TMP/$label.calls" \
+    APM44_TEST_LAUNCHCTL_STATUS="$launchctl_status" \
+    BASH_ENV="$TMP/postinstall-shims.bash" \
+    sandbox-exec -f "$TMP/installer-sandbox.sb" \
+    /bin/bash "$postinstall" "$pkg_path" / / >"$TMP/$label.out" 2>"$TMP/$label.err" || status=$?
+  printf '%s\n' "$status" >"$TMP/$label.status"
+}
+
+assert_postinstall_status() {
+  local label="$1"
+  local expected="$2"
+  local actual
+  actual="$(cat "$TMP/$label.status")"
+  [[ "$actual" == "$expected" ]] || {
+    echo "$label: expected postinstall exit $expected, got $actual" >&2
+    cat "$TMP/$label.err" "$TMP/$label.calls" >&2
+    exit 1
+  }
+}
+
+# Assert that the call log holds exactly these lines, in this order.
+assert_postinstall_calls() {
+  local label="$1"
+  shift
+  local expected="$TMP/$label.expected-calls"
+  printf '%s\n' "$@" >"$expected"
+  diff -u "$expected" "$TMP/$label.calls" >&2 || {
+    echo "$label: unexpected postinstall calls" >&2
+    exit 1
+  }
+}
+
+run_postinstall_execution_cases() {
+  run_pkg_builder_case one success "pkg-postinstall-exec"
+
+  local postinstall="$TMP/postinstall-under-test"
+  cp "$ROOT/build/signing/pkg-scripts/postinstall" "$postinstall"
+  cat >"$TMP/postinstall-shims.bash" <<'EOF'
+apm44_test_log() { printf '%s\n' "$*" >>"$APM44_TEST_CALLS"; }
+chown() { apm44_test_log "chown $*"; }
+xattr() { apm44_test_log "xattr $*"; }
+launchctl() { apm44_test_log "launchctl $*"; return "$APM44_TEST_LAUNCHCTL_STATUS"; }
+killall() { apm44_test_log "killall $*"; }
+sleep() { apm44_test_log "sleep $*"; }
+sudo() { apm44_test_log "sudo $*"; }
+open() { apm44_test_log "open $*"; }
+stat() { apm44_test_log "stat $*"; echo musician; }
+EOF
+  cat >"$TMP/installer-sandbox.sb" <<'EOF'
+(version 1)
+(allow default)
+(deny file-write* (subpath "/Applications") (subpath "/Library/Audio"))
+(deny signal)
+EOF
+
+  local root="$TMP/postinstall-root"
+  local app="$root/Applications/APM44 Bridge.app"
+  local driver="$root/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+  local kickstart="launchctl kickstart -k system/com.apple.audio.coreaudiod"
+  local sparkle_pkg="/private/var/root/Library/Caches/com.niko.apm44.menu/org.sparkle-project.Sparkle/Installation/ABC/APM44Bridge-9.9.9.pkg"
+
+  # A failed check still reloads Core Audio, after preinstall deleted the old driver.
+  make_postinstall_root "$root" "9.9.9+abc" "9.9.9+def"
+  run_postinstall_case "$postinstall" "$root" "postinstall-build-id-mismatch" "/Users/musician/Downloads/APM44Bridge-9.9.9.pkg" 0
+  assert_postinstall_status "postinstall-build-id-mismatch" 1
+  assert_contains "$TMP/postinstall-build-id-mismatch.err" "build ID mismatch: app=9.9.9+abc driver=9.9.9+def"
+  assert_postinstall_calls "postinstall-build-id-mismatch" \
+    "chown -R root:wheel $driver" \
+    "xattr -d com.apple.quarantine $driver" \
+    "$kickstart" \
+    "sleep 4"
+
+  # A command failing under set -e takes the same path as an explicit exit 1.
+  make_postinstall_root "$root" "9.9.9+abc" "9.9.9+abc"
+  rm "$app/Contents/Info.plist"
+  run_postinstall_case "$postinstall" "$root" "postinstall-app-plist-missing" "" 0
+  assert_postinstall_status "postinstall-app-plist-missing" 1
+  assert_postinstall_calls "postinstall-app-plist-missing" \
+    "chown -R root:wheel $driver" \
+    "xattr -d com.apple.quarantine $driver" \
+    "$kickstart" \
+    "sleep 4"
+
+  # Success under Sparkle: fall back to killall, wait, and leave the relaunch to Sparkle.
+  make_postinstall_root "$root" "9.9.9+abc" "9.9.9+abc"
+  run_postinstall_case "$postinstall" "$root" "postinstall-sparkle-success" "$sparkle_pkg" 1
+  assert_postinstall_status "postinstall-sparkle-success" 0
+  assert_postinstall_calls "postinstall-sparkle-success" \
+    "chown -R root:wheel $driver" \
+    "xattr -d com.apple.quarantine $driver" \
+    "$kickstart" \
+    "killall coreaudiod" \
+    "sleep 4"
+
+  # Success from a manual install: reload once, then open the app as the console user.
+  run_postinstall_case "$postinstall" "$root" "postinstall-manual-success" "/Users/musician/Downloads/APM44Bridge-9.9.9.pkg" 0
+  assert_postinstall_status "postinstall-manual-success" 0
+  assert_postinstall_calls "postinstall-manual-success" \
+    "chown -R root:wheel $driver" \
+    "xattr -d com.apple.quarantine $driver" \
+    "$kickstart" \
+    "sleep 4" \
+    "stat -f%Su /dev/console" \
+    "sudo -u musician open $app"
 }
 
 write_guard_test_plist() {
@@ -1743,6 +1862,8 @@ run_pkg_early_failure_cleanup_case
 run_pkg_replacement_script_check
 
 run_postinstall_launch_guard_behavior_check
+
+run_postinstall_execution_cases
 
 run_preinstall_downgrade_guard_check
 
