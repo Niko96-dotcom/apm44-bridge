@@ -1033,17 +1033,20 @@ run_preinstall_downgrade_guard_check() {
 # functions replace every side-effecting command. The sandbox hides the real
 # installed bundles from the downgrade guard, and a missing shim can neither
 # run the real command, write the install locations nor signal a process.
-# APM44_TEST_PGREP_RUNNING is how many pgrep calls per pattern report a match.
+# APM44_TEST_PGREP_RUNNING is how many pgrep calls per pattern report a match,
+# and APM44_TEST_CONSOLE_USER is who stat reports on /dev/console.
 run_preinstall_case() {
   local preinstall="$1"
   local target="$2"
   local label="$3"
   local pgrep_running="$4"
+  local console_user="${5:-musician}"
   : >"$TMP/$label.calls"
   local status=0
   env -u SHELLOPTS -u APM44_PREINSTALL_GUARD_ONLY \
     APM44_TEST_CALLS="$TMP/$label.calls" \
     APM44_TEST_PGREP_RUNNING="$pgrep_running" \
+    APM44_TEST_CONSOLE_USER="$console_user" \
     BASH_ENV="$TMP/preinstall-shims.bash" \
     sandbox-exec -f "$TMP/preinstall-sandbox.sb" \
     /bin/bash "$preinstall" "$PKG" / "$target" >"$TMP/$label.out" 2>"$TMP/$label.err" || status=$?
@@ -1083,8 +1086,8 @@ pgrep() {
 }
 stat() {
   case "$1" in
-    -f%Su) echo musician ;;
-    -f%u) echo 501 ;;
+    -f%Su) echo "$APM44_TEST_CONSOLE_USER" ;;
+    -f%u) [[ "$APM44_TEST_CONSOLE_USER" == root ]] && echo 0 || echo 501 ;;
     *) apm44_test_log stat "$@"; return 1 ;;
   esac
 }
@@ -1122,6 +1125,11 @@ EOF
   run_preinstall_case "$preinstall" / "preinstall-quits-in-time" 5
   assert_installer_status "preinstall-quits-in-time" 0
   assert_installer_calls "preinstall-quits-in-time" "$quit_call" "$rm_app" "$rm_driver"
+
+  # At the login window the console user is root: nobody to ask, so no quit.
+  run_preinstall_case "$preinstall" / "preinstall-root-console" 0 root
+  assert_installer_status "preinstall-root-console" 0
+  assert_installer_calls "preinstall-root-console" "$rm_app" "$rm_driver"
 
   # Still running after the 20-poll wait: TERM each, and both exit before KILL.
   run_preinstall_case "$preinstall" / "preinstall-term" 21
