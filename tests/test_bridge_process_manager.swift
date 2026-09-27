@@ -7,6 +7,9 @@ final class MockProcessLauncher: ProcessLaunching {
     var terminationDelayNanoseconds: UInt64 = 0
     var shouldFailLaunch = false
     var failLaunchesAfterFirstSuccess = false
+    /// One-shot stub for the exit status the manager observes on the next
+    /// termination, mirroring the previous override-hook semantics.
+    var nextTerminationStatus: Int32?
     private var successfulLaunches = 0
     private var running = Set<ObjectIdentifier>()
 
@@ -32,12 +35,71 @@ final class MockProcessLauncher: ProcessLaunching {
         running.contains(ObjectIdentifier(process))
     }
 
+    func terminationStatus(of process: Process) -> Int32 {
+        if let stubbed = nextTerminationStatus {
+            nextTerminationStatus = nil
+            return stubbed
+        }
+        return process.terminationStatus
+    }
+
     func fireTermination(for proc: Process) async {
         if terminationDelayNanoseconds > 0 {
             try? await Task.sleep(nanoseconds: terminationDelayNanoseconds)
         }
         running.remove(ObjectIdentifier(proc))
         proc.terminationHandler?(proc)
+    }
+}
+
+/// Fake BridgeDeviceSource with lock-protected mutable state: tests mutate
+/// it from @MainActor while the manager reads it from `Task.detached`.
+final class FakeBridgeDeviceSource: BridgeDeviceSource, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _halCheck: HalBuildCheck
+    private var _devices: [AudioDeviceRow]
+
+    init(halCheck: HalBuildCheck, devices: [AudioDeviceRow]) {
+        self._halCheck = halCheck
+        self._devices = devices
+    }
+
+    var halCheck: HalBuildCheck {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _halCheck
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _halCheck = newValue
+        }
+    }
+
+    var devices: [AudioDeviceRow] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _devices
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _devices = newValue
+        }
+    }
+
+    func halBuildCheck() -> HalBuildCheck {
+        lock.lock()
+        defer { lock.unlock() }
+        return _halCheck
+    }
+
+    func listDevices(binaryURL: URL) throws -> [AudioDeviceRow] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _devices
     }
 }
 
@@ -76,21 +138,32 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     private func makeManager(
         launcher: MockProcessLauncher? = nil,
+        timing: BridgeRetryTiming = .live,
+        halCheck: HalBuildCheck? = nil,
+        devices: [AudioDeviceRow]? = nil,
         applicationTerminator: @escaping @MainActor () -> Void = {}
-    ) -> (BridgeProcessManager, BridgeSettings, MockProcessLauncher) {
+    ) async -> (BridgeProcessManager, BridgeSettings, MockProcessLauncher, FakeBridgeDeviceSource) {
         let mockLauncher = launcher ?? MockProcessLauncher()
         let settings = makeSettings()
         settings.outputDeviceUid = testDevice.uid
+        let source = FakeBridgeDeviceSource(
+            halCheck: halCheck ?? HalBuildCheck(
+                halPresent: true,
+                appBuildID: fixtureBuildID,
+                driverBuildID: fixtureBuildID
+            ),
+            devices: devices ?? [testDevice]
+        )
         let manager = BridgeProcessManager(
             settings: settings,
             processLauncher: mockLauncher,
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
+            retryTiming: timing,
+            deviceSource: source,
             applicationTerminator: applicationTerminator
         )
-        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
-        manager.setDevicesForTesting([testDevice])
-        manager.testDeviceListOverride = [testDevice]
-        return (manager, settings, mockLauncher)
+        await manager.refreshDevices()
+        return (manager, settings, mockLauncher, source)
     }
 
     private func assertStoppedAfterUnstableLaunches(_ message: String, launches: Int = 4, lastExit: Int) {
@@ -121,13 +194,21 @@ final class BridgeProcessManagerTests: XCTestCase {
         let launcher = MockProcessLauncher()
         let settings = makeSettings()
         settings.outputDeviceUid = testDevice.uid
+        let source = FakeBridgeDeviceSource(
+            halCheck: HalBuildCheck(
+                halPresent: true,
+                appBuildID: fixtureBuildID,
+                driverBuildID: fixtureBuildID
+            ),
+            devices: [testDevice]
+        )
         let manager = BridgeProcessManager(
             settings: settings,
             processLauncher: launcher,
-            binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge")
+            binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
+            deviceSource: source
         )
-        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
-        manager.setDevicesForTesting([testDevice])
+        await manager.refreshDevices()
 
         manager.start()
 
@@ -139,8 +220,8 @@ final class BridgeProcessManagerTests: XCTestCase {
         await launcher.fireTermination(for: process)
     }
 
-    func testStartResetsMetricsStateAndTimestamp() {
-        let (manager, _, _) = makeManager()
+    func testStartResetsMetricsStateAndTimestamp() async {
+        let (manager, _, _, _) = await makeManager()
         manager.applyMetricsForTesting(sampleMetrics())
         manager.markMetricsStaleForTesting()
         XCTAssertNotNil(manager.latestMetrics)
@@ -155,7 +236,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testRunningToIdleViaUserStop() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
@@ -174,7 +255,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testIdleTransitionResetsMetricsStateAndTimestamp() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
 
         manager.start()
         manager.applyMetricsForTesting(sampleMetrics())
@@ -195,7 +276,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testCleanRunningTerminationUsesIdleTransition() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
 
         manager.start()
         manager.applyMetricsForTesting(sampleMetrics())
@@ -204,7 +285,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertNotNil(manager.latestMetrics)
         XCTAssertTrue(manager.hasLastMetricsTimestampForTesting)
 
-        manager.testTerminationStatus = 0
+        launcher.nextTerminationStatus = 0
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -217,14 +298,15 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testRunningUnexpectedExit() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testRetryDelays = [60]
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+        )
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
 
         let generationBefore = manager.retryGeneration
-        manager.testTerminationStatus = 1
+        launcher.nextTerminationStatus = 1
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -242,7 +324,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testRestartFromErrorActuallyRelaunches() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
         manager.setStateForTesting(.error("lost connection"))
 
         await manager.restart(reason: .user)
@@ -257,7 +339,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testSleepStopsAndWakeResumesRunningBridge() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
         manager.start()
 
         let sleepTask = Task { await manager.handleSystemWillSleep() }
@@ -284,7 +366,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testWakeDoesNotAutostartBridgeThatWasIdleBeforeSleep() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
 
         await manager.handleSystemWillSleep()
         await manager.handleSystemDidWake()
@@ -294,8 +376,9 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testUserStopNoAutoRetry() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testRetryDelays = [0.01]
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [0.01], stabilityWindow: 15)
+        )
 
         manager.start()
         let generationBefore = manager.retryGeneration
@@ -303,7 +386,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         // A recoverable stale-ring exit must not override the user's stop.
         manager.appendStderrForTesting("stale shm ring: invalid header")
-        manager.testTerminationStatus = 42
+        launcher.nextTerminationStatus = 42
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -316,7 +399,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testQuitApplicationStopsRunningBridgeBeforeTerminating() async {
         var didTerminate = false
-        let (manager, _, launcher) = makeManager {
+        let (manager, _, launcher, _) = await makeManager {
             didTerminate = true
         }
 
@@ -344,13 +427,14 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testQuitApplicationCancelsReconnectWithoutLaunchingOrReloadingDriver() async {
         var didTerminate = false
-        let (manager, _, launcher) = makeManager {
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+        ) {
             didTerminate = true
         }
-        manager.testRetryDelays = [60]
 
         manager.start()
-        manager.testTerminationStatus = 1
+        launcher.nextTerminationStatus = 1
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -369,8 +453,9 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testHotplugWhileIdleRefreshesDevices() async {
-        let (manager, _, _) = makeManager()
-        manager.setDevicesForTesting([])
+        let (manager, _, _, source) = await makeManager()
+        source.devices = []
+        await manager.refreshDevices()
         let generationBefore = manager.hotplugRefreshGeneration
 
         await manager.handleHotplug()
@@ -379,7 +464,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testHotplugWhileIdleDoesNotStartBridge() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
         XCTAssertEqual(manager.state, .idle)
 
         await manager.handleHotplug()
@@ -389,12 +474,12 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testSelectedAudioDeviceChangeRestartsRunningBridge() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, source) = await makeManager()
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
         let makeCountBefore = launcher.makeCount
-        manager.testDeviceListOverride = [
+        source.devices = [
             AudioDeviceRow(
                 uid: testDevice.uid,
                 name: testDevice.name,
@@ -416,7 +501,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testUnrelatedAudioDeviceChangeDoesNotRestartRunningBridge() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, source) = await makeManager()
         let unrelatedDevice = AudioDeviceRow(
             uid: "unrelated-output-uid",
             name: "Studio Display Speakers",
@@ -428,7 +513,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         manager.start()
         XCTAssertEqual(manager.state, .running)
         let makeCountBefore = launcher.makeCount
-        manager.testDeviceListOverride = [testDevice, unrelatedDevice]
+        source.devices = [testDevice, unrelatedDevice]
 
         await manager.handleHotplug()
 
@@ -440,8 +525,8 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
-    func testStartRejectsSelectedUidMissingFromCurrentDeviceList() {
-        let (manager, settings, launcher) = makeManager()
+    func testStartRejectsSelectedUidMissingFromCurrentDeviceList() async {
+        let (manager, settings, launcher, _) = await makeManager()
         settings.outputDeviceUid = "missing-output"
 
         manager.start()
@@ -451,8 +536,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 0)
     }
 
-    func testStartRejectsIncompatibleSelectedOutputBeforeLaunch() {
-        let (manager, settings, launcher) = makeManager()
+    func testStartRejectsIncompatibleSelectedOutputBeforeLaunch() async {
         let incompatible = AudioDeviceRow(
             uid: "mono-output",
             name: "Mono Output",
@@ -461,8 +545,8 @@ final class BridgeProcessManagerTests: XCTestCase {
             hasOutput: true,
             outputChannels: 1
         )
+        let (manager, settings, launcher, _) = await makeManager(devices: [incompatible])
         settings.outputDeviceUid = incompatible.uid
-        manager.setDevicesForTesting([incompatible])
 
         manager.start()
 
@@ -475,12 +559,12 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testReconnectAfterDisconnectAutoStarts() async {
-        let (manager, settings, launcher) = makeManager()
+        let (manager, settings, launcher, source) = await makeManager()
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
 
-        manager.testDeviceListOverride = []
+        source.devices = []
         await awaitHotplugCompletingTermination(manager: manager, launcher: launcher)
 
         if case .reconnecting = manager.state {
@@ -491,7 +575,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 1)
         XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForOutput(manager.deviceDisplayName))
 
-        manager.testDeviceListOverride = [testDevice]
+        source.devices = [testDevice]
         settings.outputDeviceUid = testDevice.uid
         await manager.handleHotplug()
 
@@ -504,9 +588,9 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testDisconnectWhileIdleStaysIdle() async {
-        let (manager, settings, launcher) = makeManager()
+        let (manager, settings, launcher, source) = await makeManager()
         settings.outputDeviceUid = testDevice.uid
-        manager.testDeviceListOverride = []
+        source.devices = []
 
         await manager.handleHotplug()
 
@@ -514,8 +598,8 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 0)
     }
 
-    func testInvalidSelectedDeviceCleared() {
-        let (manager, settings, _) = makeManager()
+    func testInvalidSelectedDeviceCleared() async {
+        let (manager, settings, _, source) = await makeManager()
         settings.outputDeviceUid = "BH-UID"
         let airpods = AudioDeviceRow(
             uid: "AP-UID",
@@ -525,18 +609,20 @@ final class BridgeProcessManagerTests: XCTestCase {
             hasOutput: true
         )
 
-        manager.applyRefreshedDeviceListForTesting([airpods])
+        source.devices = [airpods]
+        await manager.refreshDevices()
 
         XCTAssertNil(settings.outputDeviceUid)
         XCTAssertEqual(manager.bannerMessage, AppStrings.previousOutputSelect)
     }
 
     func testReconnectingRetryCanBeInterruptedByStop() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testRetryDelays = [60]
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+        )
 
         manager.start()
-        manager.testTerminationStatus = 1
+        launcher.nextTerminationStatus = 1
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -560,13 +646,15 @@ final class BridgeProcessManagerTests: XCTestCase {
     func testRetryExhaustionFromZeroAttempt() async {
         let launcher = MockProcessLauncher()
         launcher.failLaunchesAfterFirstSuccess = true
-        let (manager, _, _) = makeManager(launcher: launcher)
-        manager.testRetryDelays = [0]
+        let (manager, _, _, _) = await makeManager(
+            launcher: launcher,
+            timing: BridgeRetryTiming(retryDelays: [0], stabilityWindow: 15)
+        )
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
 
-        manager.testTerminationStatus = 1
+        launcher.nextTerminationStatus = 1
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -584,8 +672,9 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testCrashLoopExhaustsAfterFourShortLivedSuccessfulLaunches() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testRetryDelays = [0]
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [0], stabilityWindow: 15)
+        )
 
         manager.start()
         XCTAssertEqual(launcher.makeCount, 1)
@@ -595,7 +684,7 @@ final class BridgeProcessManagerTests: XCTestCase {
                 XCTFail("Missing process for unhealthy launch \(unhealthyLaunch)")
                 return
             }
-            manager.testTerminationStatus = 17
+            launcher.nextTerminationStatus = 17
             await launcher.fireTermination(for: proc)
 
             if unhealthyLaunch < 4 {
@@ -616,12 +705,12 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testRetryBudgetResetsOnlyAfterMetricsAndStabilityWindow() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testStabilityWindow = 0
-        manager.testRetryDelays = [0]
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [0], stabilityWindow: 0)
+        )
 
         manager.start()
-        manager.testTerminationStatus = 17
+        launcher.nextTerminationStatus = 17
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -652,10 +741,11 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testStopAndStartDuringRecoveryClearsRetryBanner() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testRetryDelays = [0]
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [0], stabilityWindow: 15)
+        )
         manager.start()
-        manager.testTerminationStatus = 17
+        launcher.nextTerminationStatus = 17
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -681,8 +771,12 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testStableRecoveryPreservesUnrelatedNotice() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testStabilityWindow = 0
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(
+                retryDelays: BridgeRetryTiming.live.retryDelays,
+                stabilityWindow: 0
+            )
+        )
         manager.setRetryAttemptForTesting(1)
         manager.start(resetRetryAttempt: false)
         manager.bannerMessage = "Could not enable launch at login"
@@ -699,14 +793,15 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testRecoverableStaleRingExitTriggersRetry() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testRetryDelays = [60]
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+        )
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
 
         manager.appendStderrForTesting("stale shm ring: could not remap shared-memory ring")
-        manager.testTerminationStatus = 42
+        launcher.nextTerminationStatus = 42
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -721,8 +816,8 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
-    func testStaleRingFailureMessageIsActionable() {
-        let (manager, _, _) = makeManager()
+    func testStaleRingFailureMessageIsActionable() async {
+        let (manager, _, _, _) = await makeManager()
         manager.appendStderrForTesting("stale shm ring: invalid shm ring header")
         let message = manager.bridgeFailureMessageForTesting(defaultMessage: "Lost connection to bridge.")
         XCTAssertEqual(message, AppStrings.ipcFailed())
@@ -731,7 +826,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     func testSettingsRestartWaitsForTermination() async {
         let launcher = MockProcessLauncher()
         launcher.terminationDelayNanoseconds = 200_000_000
-        let (manager, _, _) = makeManager(launcher: launcher)
+        let (manager, _, _, _) = await makeManager(launcher: launcher)
 
         manager.start()
         XCTAssertEqual(launcher.makeCount, 1)
@@ -758,7 +853,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     // overwrite the first waiter; the new list-based implementation
     // appends each caller and drains the full list on termination.
     func testConcurrentTerminationWaitersAllComplete() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
@@ -791,12 +886,22 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     // Stale-route repair: start() must derive launch args and connection
     // phase from the same live halPresent used for the build gate, not
-    // from a stale cached routingMode. Uses halBuildCheckOverride so no
+    // from a stale cached routingMode. Uses a fake device source so no
     // real audio or HAL enumeration runs.
     func testStartWithStaleFallbackCacheUsesLiveHalRoute() async {
-        let (manager, _, launcher) = makeManager()
-        manager.setRoutingModeForTesting(.blackHoleFallback)
-        manager.halBuildCheckOverride = (halPresent: true, appID: fixtureBuildID, driverID: fixtureBuildID)
+        let (manager, _, launcher, source) = await makeManager()
+        source.halCheck = HalBuildCheck(
+            halPresent: false,
+            appBuildID: fixtureBuildID,
+            driverBuildID: nil
+        )
+        manager.refreshRoutingMode()
+        XCTAssertEqual(manager.routingMode, .blackHoleFallback)
+        source.halCheck = HalBuildCheck(
+            halPresent: true,
+            appBuildID: fixtureBuildID,
+            driverBuildID: fixtureBuildID
+        )
 
         manager.start()
 
@@ -811,9 +916,13 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testStartWithStaleHalCacheUsesLiveFallbackRoute() async {
-        let (manager, _, launcher) = makeManager()
-        manager.setRoutingModeForTesting(.halVirtualDevice)
-        manager.halBuildCheckOverride = (halPresent: false, appID: fixtureBuildID, driverID: nil)
+        let (manager, _, launcher, source) = await makeManager()
+        XCTAssertEqual(manager.routingMode, .halVirtualDevice)
+        source.halCheck = HalBuildCheck(
+            halPresent: false,
+            appBuildID: fixtureBuildID,
+            driverBuildID: nil
+        )
 
         manager.start()
 
@@ -827,13 +936,13 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
-    func testStaleHalCacheWithMismatchStillBlocksWithoutFallbackLaunch() {
-        let (manager, _, launcher) = makeManager()
-        manager.setRoutingModeForTesting(.halVirtualDevice)
-        manager.halBuildCheckOverride = (
+    func testStaleHalCacheWithMismatchStillBlocksWithoutFallbackLaunch() async {
+        let (manager, _, launcher, source) = await makeManager()
+        XCTAssertEqual(manager.routingMode, .halVirtualDevice)
+        source.halCheck = HalBuildCheck(
             halPresent: true,
-            appID: fixtureBuildID,
-            driverID: "0.12.7+other-build-mismatch"
+            appBuildID: fixtureBuildID,
+            driverBuildID: "0.12.7+other-build-mismatch"
         )
 
         manager.start()
@@ -848,8 +957,9 @@ final class BridgeProcessManagerTests: XCTestCase {
     func testLoadedDriverBuildMismatchWhileRunningShowsErrorWithoutRetry() async {
         XCTAssertEqual(BridgeProcessManager.loadedDriverBuildMismatchExitStatus, 44)
         for preState in ["running", "starting"] {
-            let (manager, _, launcher) = makeManager()
-            manager.testRetryDelays = [60]
+            let (manager, _, launcher, _) = await makeManager(
+                timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+            )
 
             manager.start()
             XCTAssertEqual(manager.state, .running)
@@ -858,7 +968,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             }
 
             let generationBefore = manager.retryGeneration
-            manager.testTerminationStatus = BridgeProcessManager.loadedDriverBuildMismatchExitStatus
+            launcher.nextTerminationStatus = BridgeProcessManager.loadedDriverBuildMismatchExitStatus
             if let proc = launcher.lastProcess {
                 await launcher.fireTermination(for: proc)
             }
@@ -875,14 +985,15 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testLoadedDriverBuildMismatchResetsExistingRetryBudget() async {
-        let (manager, _, launcher) = makeManager()
-        manager.testRetryDelays = [60]
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+        )
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
         manager.setRetryAttemptForTesting(2)
 
-        manager.testTerminationStatus = 44
+        launcher.nextTerminationStatus = 44
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -894,7 +1005,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testSettingsRestartWhileIdleLeavesApplyingFalse() async {
-        let (manager, _, launcher) = makeManager()
+        let (manager, _, launcher, _) = await makeManager()
 
         XCTAssertEqual(manager.state, .idle)
         XCTAssertFalse(manager.isApplyingSettings)
@@ -909,7 +1020,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     func testApplyingSettingsTrueDuringRestartThenFalse() async {
         let launcher = MockProcessLauncher()
         launcher.terminationDelayNanoseconds = 200_000_000
-        let (manager, _, _) = makeManager(launcher: launcher)
+        let (manager, _, _, _) = await makeManager(launcher: launcher)
 
         manager.start()
         XCTAssertEqual(launcher.makeCount, 1)
@@ -939,7 +1050,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testSettingsRestartCoalescingLaunchesAtMostOnceMore() async {
         let launcher = MockProcessLauncher()
-        let (manager, settings, _) = makeManager(launcher: launcher)
+        let (manager, settings, _, _) = await makeManager(launcher: launcher)
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
@@ -992,31 +1103,33 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
-    func testStartBlockedReasonUsesCachedValues() {
-        let (manager, _, _) = makeManager()
+    func testStartBlockedReasonUsesCachedValues() async {
+        let (manager, _, _, source) = await makeManager()
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
         XCTAssertNil(manager.startBlockedReason)
 
-        manager.halBuildCheckOverride = (
+        source.halCheck = HalBuildCheck(
             halPresent: true,
-            appID: fixtureBuildID,
-            driverID: "0.12.7+other-build-mismatch"
+            appBuildID: fixtureBuildID,
+            driverBuildID: "0.12.7+other-build-mismatch"
         )
+        manager.refreshRoutingMode()
         XCTAssertEqual(manager.startBlockedReason, AppStrings.driverBuildMismatch)
 
-        manager.halBuildCheckOverride = (
+        source.halCheck = HalBuildCheck(
             halPresent: true,
-            appID: fixtureBuildID,
-            driverID: fixtureBuildID
+            appBuildID: fixtureBuildID,
+            driverBuildID: fixtureBuildID
         )
+        manager.refreshRoutingMode()
         XCTAssertNil(manager.startBlockedReason)
     }
 
     // (1) The remembered output name survives a relaunch: a new manager built
     // on the same UserDefaults suite shows it while the device list is empty.
-    func testDeviceNamePersistsAcrossManagersForSameSuite() {
+    func testDeviceNamePersistsAcrossManagersForSameSuite() async {
         let suite = "com.niko.apm44.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
@@ -1027,9 +1140,17 @@ final class BridgeProcessManagerTests: XCTestCase {
             settings: settings1,
             processLauncher: MockProcessLauncher(),
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
+            deviceSource: FakeBridgeDeviceSource(
+                halCheck: HalBuildCheck(
+                    halPresent: true,
+                    appBuildID: fixtureBuildID,
+                    driverBuildID: fixtureBuildID
+                ),
+                devices: [testDevice]
+            ),
             applicationTerminator: {}
         )
-        manager1.applyRefreshedDeviceListForTesting([testDevice])
+        await manager1.refreshDevices()
         XCTAssertEqual(settings1.outputDeviceName, testDevice.name)
 
         let settings2 = BridgeSettings(defaults: defaults)
@@ -1038,20 +1159,28 @@ final class BridgeProcessManagerTests: XCTestCase {
             settings: settings2,
             processLauncher: MockProcessLauncher(),
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
+            deviceSource: FakeBridgeDeviceSource(
+                halCheck: HalBuildCheck(
+                    halPresent: true,
+                    appBuildID: fixtureBuildID,
+                    driverBuildID: fixtureBuildID
+                ),
+                devices: []
+            ),
             applicationTerminator: {}
         )
-        manager2.setDevicesForTesting([])
+        await manager2.refreshDevices()
         XCTAssertEqual(manager2.deviceDisplayName, testDevice.name)
     }
 
     // (2) The remembered name belongs to its uid only: it is not shown for a
     // different uid.
-    func testDeviceNameNotShownForDifferentUid() {
-        let (manager, settings, _) = makeManager()
-        manager.applyRefreshedDeviceListForTesting([testDevice])
+    func testDeviceNameNotShownForDifferentUid() async {
+        let (manager, settings, _, source) = await makeManager()
         XCTAssertEqual(settings.outputDeviceName, testDevice.name)
 
-        manager.setDevicesForTesting([])
+        source.devices = []
+        await manager.refreshDevices()
         settings.outputDeviceUid = "different-output-uid"
 
         XCTAssertNil(settings.outputDeviceName)
@@ -1061,7 +1190,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     // (3) A fresh resume request with an unblocked launch restarts the bridge
     // and clears the flag.
     func testResumeAfterUpdateStartsWhenFreshAndUnblocked() async {
-        let (manager, settings, launcher) = makeManager()
+        let (manager, settings, launcher, _) = await makeManager()
         settings.resumeAfterUpdateRequestedAt = Date()
 
         manager.resumeAfterUpdateIfRequested(now: Date())
@@ -1077,8 +1206,8 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     // (4) A stale request never starts the bridge but is still cleared.
-    func testResumeAfterUpdateIgnoresStaleFlag() {
-        let (manager, settings, launcher) = makeManager()
+    func testResumeAfterUpdateIgnoresStaleFlag() async {
+        let (manager, settings, launcher, _) = await makeManager()
         settings.resumeAfterUpdateRequestedAt = Date().addingTimeInterval(-11 * 60)
 
         manager.resumeAfterUpdateIfRequested(now: Date())
@@ -1089,8 +1218,8 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     // (5) No request never starts the bridge.
-    func testResumeAfterUpdateIgnoresMissingFlag() {
-        let (manager, settings, launcher) = makeManager()
+    func testResumeAfterUpdateIgnoresMissingFlag() async {
+        let (manager, settings, launcher, _) = await makeManager()
         XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
 
         manager.resumeAfterUpdateIfRequested(now: Date())
@@ -1103,9 +1232,9 @@ final class BridgeProcessManagerTests: XCTestCase {
     // flag (Core Audio may still be rescanning after the update); once the
     // device appears, resume starts the bridge and clears the flag.
     func testResumeAfterUpdateKeepsFlagWhileDeviceMissingThenStarts() async {
-        let (manager, settings, launcher) = makeManager()
-        manager.setDevicesForTesting([])
-        manager.testDeviceListOverride = []
+        let (manager, settings, launcher, source) = await makeManager()
+        source.devices = []
+        await manager.refreshDevices()
         XCTAssertNotNil(manager.startBlockedReason)
         settings.resumeAfterUpdateRequestedAt = Date()
 
@@ -1115,8 +1244,8 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 0)
         XCTAssertNotNil(settings.resumeAfterUpdateRequestedAt)
 
-        manager.applyRefreshedDeviceListForTesting([testDevice])
-        manager.testDeviceListOverride = [testDevice]
+        source.devices = [testDevice]
+        await manager.refreshDevices()
         manager.resumeAfterUpdateIfRequested(now: Date())
 
         XCTAssertEqual(manager.state, .running)
@@ -1131,13 +1260,14 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     // A fresh request blocked for another reason (driver build mismatch) is
     // cleared without starting.
-    func testResumeAfterUpdateClearsWhenBlockedForOtherReason() {
-        let (manager, settings, launcher) = makeManager()
-        manager.halBuildCheckOverride = (
+    func testResumeAfterUpdateClearsWhenBlockedForOtherReason() async {
+        let (manager, settings, launcher, source) = await makeManager()
+        source.halCheck = HalBuildCheck(
             halPresent: true,
-            appID: fixtureBuildID,
-            driverID: "0.12.7+other-build-mismatch"
+            appBuildID: fixtureBuildID,
+            driverBuildID: "0.12.7+other-build-mismatch"
         )
+        manager.refreshRoutingMode()
         XCTAssertEqual(manager.startBlockedReason, AppStrings.driverBuildMismatch)
         settings.resumeAfterUpdateRequestedAt = Date()
 
@@ -1151,7 +1281,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     // A pending flag with the bridge already running is cleared without a
     // second launch.
     func testResumeAfterUpdateClearsWhenAlreadyRunning() async {
-        let (manager, settings, launcher) = makeManager()
+        let (manager, settings, launcher, _) = await makeManager()
         manager.start()
         XCTAssertEqual(manager.state, .running)
         XCTAssertEqual(launcher.makeCount, 1)
@@ -1171,9 +1301,8 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     // The hotplug path starts a pending resume once the device appears.
     func testResumeAfterUpdateStartsViaHotplugWhenDeviceAppears() async {
-        let (manager, settings, launcher) = makeManager()
-        manager.setDevicesForTesting([])
-        manager.testDeviceListOverride = []
+        let (manager, settings, launcher, source) = await makeManager()
+        source.devices = []
         settings.resumeAfterUpdateRequestedAt = Date()
 
         await manager.handleHotplug()
@@ -1182,7 +1311,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 0)
         XCTAssertNotNil(settings.resumeAfterUpdateRequestedAt)
 
-        manager.testDeviceListOverride = [testDevice]
+        source.devices = [testDevice]
         await manager.handleHotplug()
 
         XCTAssertEqual(manager.state, .running)
@@ -1199,7 +1328,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     // the resume request. The literal name is used because the
     // SparkleUpdateController declaration lands with the other worker.
     func testWillInstallUpdateSetsResumeFlagWhileRunning() async {
-        let (manager, settings, launcher) = makeManager()
+        let (manager, settings, launcher, _) = await makeManager()
         manager.start()
         XCTAssertEqual(manager.state, .running)
 
@@ -1217,8 +1346,8 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     // (6b) Posting while idle records nothing.
-    func testWillInstallUpdateLeavesFlagClearWhileIdle() {
-        let (manager, settings, _) = makeManager()
+    func testWillInstallUpdateLeavesFlagClearWhileIdle() async {
+        let (manager, settings, _, _) = await makeManager()
         XCTAssertEqual(manager.state, .idle)
 
         NotificationCenter.default.post(

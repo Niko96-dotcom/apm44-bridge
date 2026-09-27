@@ -324,7 +324,10 @@ final class BridgeProcessManagerBuildMismatchTests: XCTestCase {
         hasOutput: true
     )
 
-    private func makeManager(launcher: MockProcessLauncher) -> (BridgeProcessManager, BridgeSettings) {
+    private func makeManager(
+        launcher: MockProcessLauncher,
+        halCheck: HalBuildCheck
+    ) async -> (BridgeProcessManager, BridgeSettings) {
         let suite = "com.niko.apm44.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
@@ -334,17 +337,22 @@ final class BridgeProcessManagerBuildMismatchTests: XCTestCase {
             settings: settings,
             processLauncher: launcher,
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
+            deviceSource: FakeBridgeDeviceSource(
+                halCheck: halCheck,
+                devices: [testDevice]
+            ),
             applicationTerminator: {}
         )
-        manager.setDevicesForTesting([testDevice])
-        manager.testDeviceListOverride = [testDevice]
+        await manager.refreshDevices()
         return (manager, settings)
     }
 
-    func testStartBlockedOnMismatchLaunchesNothing() {
+    func testStartBlockedOnMismatchLaunchesNothing() async {
         let launcher = MockProcessLauncher()
-        let (manager, _) = makeManager(launcher: launcher)
-        manager.halBuildCheckOverride = (halPresent: true, appID: appID, driverID: driverID)
+        let (manager, _) = await makeManager(
+            launcher: launcher,
+            halCheck: HalBuildCheck(halPresent: true, appBuildID: appID, driverBuildID: driverID)
+        )
         manager.start()
         XCTAssertEqual(launcher.makeCount, 0)
         if case .error(let message) = manager.state {
@@ -359,10 +367,12 @@ final class BridgeProcessManagerBuildMismatchTests: XCTestCase {
         }
     }
 
-    func testStartBlockedOnMissingDriverID() {
+    func testStartBlockedOnMissingDriverID() async {
         let launcher = MockProcessLauncher()
-        let (manager, _) = makeManager(launcher: launcher)
-        manager.halBuildCheckOverride = (halPresent: true, appID: appID, driverID: nil)
+        let (manager, _) = await makeManager(
+            launcher: launcher,
+            halCheck: HalBuildCheck(halPresent: true, appBuildID: appID, driverBuildID: nil)
+        )
         manager.start()
         XCTAssertEqual(launcher.makeCount, 0)
         if case .error = manager.state { } else {
@@ -370,19 +380,23 @@ final class BridgeProcessManagerBuildMismatchTests: XCTestCase {
         }
     }
 
-    func testStartAllowedWhenIDsMatch() {
+    func testStartAllowedWhenIDsMatch() async {
         let launcher = MockProcessLauncher()
-        let (manager, _) = makeManager(launcher: launcher)
-        manager.halBuildCheckOverride = (halPresent: true, appID: appID, driverID: appID)
+        let (manager, _) = await makeManager(
+            launcher: launcher,
+            halCheck: HalBuildCheck(halPresent: true, appBuildID: appID, driverBuildID: appID)
+        )
         manager.start()
         XCTAssertEqual(launcher.makeCount, 1)
         XCTAssertEqual(manager.state, .running)
     }
 
-    func testStartAllowedInBlackHoleFallbackWithoutDriver() {
+    func testStartAllowedInBlackHoleFallbackWithoutDriver() async {
         let launcher = MockProcessLauncher()
-        let (manager, _) = makeManager(launcher: launcher)
-        manager.halBuildCheckOverride = (halPresent: false, appID: appID, driverID: nil)
+        let (manager, _) = await makeManager(
+            launcher: launcher,
+            halCheck: HalBuildCheck(halPresent: false, appBuildID: appID, driverBuildID: nil)
+        )
         manager.start()
         XCTAssertEqual(launcher.makeCount, 1)
         XCTAssertEqual(manager.state, .running)
