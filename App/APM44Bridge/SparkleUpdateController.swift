@@ -280,24 +280,15 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             markAlreadyInstalled()
             return
         }
-        let nsError = error as NSError
-        if Self.shouldTreatInstallationErrorAsSuccess(
+        let outcome = Self.classifyUpdateCycleError(
             state: state,
             error: error,
             currentVersion: currentVersion
-        ) {
+        )
+        if outcome == .alreadyInstalled {
             benignInstallationSuccessLatched = true
-            markAlreadyInstalled()
-        } else if Self.isNoUpdateError(error) {
-            state = .idle
-            lastOfferedVersion = nil
-        } else if nsError.domain == SUSparkleErrorDomain,
-                  nsError.code == 4007 { // Sparkle's SUInstallationCanceledError.
-            logger.info("Update cancelled")
-            state = .cancelled
-        } else {
-            fail(error)
         }
+        applyUpdateCycleOutcome(outcome, error: error)
     }
 
     func updater(
@@ -314,19 +305,28 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             markAlreadyInstalled()
             return
         }
-        if let error, Self.shouldTreatInstallationErrorAsSuccess(
-            state: state,
-            error: error,
-            currentVersion: currentVersion
-        ) {
+        guard let error else {
+            if case .checking = state { state = .idle }
+            return
+        }
+        applyUpdateCycleOutcome(
+            Self.classifyUpdateCycleError(state: state, error: error, currentVersion: currentVersion),
+            error: error
+        )
+    }
+
+    private func applyUpdateCycleOutcome(_ outcome: UpdateCycleErrorOutcome, error: Error) {
+        switch outcome {
+        case .alreadyInstalled:
             markAlreadyInstalled()
-        } else if let error, Self.isNoUpdateError(error) {
+        case .noUpdate:
             state = .idle
             lastOfferedVersion = nil
-        } else if let error {
+        case .cancelled:
+            logger.info("Update cancelled")
+            state = .cancelled
+        case .failed:
             fail(error)
-        } else if case .checking = state {
-            state = .idle
         }
     }
 
