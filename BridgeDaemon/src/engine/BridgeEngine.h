@@ -2,6 +2,7 @@
 
 #include "engine/LibSamplerateSrc.h"
 #include "engine/MetricsPublisher.h"
+#include "engine/StaleRingRecoveryPlan.h"
 #include "engine/VirtualPrebufferGate.h"
 #include "engine/VirtualDeviceFeed.h"
 #include "hal/HalTypes.h"
@@ -34,7 +35,7 @@ class BridgeEngine {
   void runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick = nullptr);
   static void requestStop();
 
-  enum class VirtualFeedStaleAction { None, StopForRemap, StopForExit };
+  using VirtualFeedStaleAction = apm44::VirtualFeedStaleAction;
   VirtualFeedStaleAction pollVirtualFeedStaleRing();
   const std::string& virtualFeedLastOpenError() const {
     return virtualFeed_.lastOpenError();
