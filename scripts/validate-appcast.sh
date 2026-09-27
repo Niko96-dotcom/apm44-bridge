@@ -140,7 +140,7 @@ PY
 enclosure_length="${enclosure%% *}"
 enclosure_signature="${enclosure#* }"
 
-pkg_length="$(stat -f%z "$PKG")"
+pkg_length="$(stat -L -f%z "$PKG")"
 [[ "$pkg_length" == "$enclosure_length" ]] || \
   fail "enclosure length $enclosure_length does not match $PKG ($pkg_length bytes)"
 run_sign_update --verify "$PKG" "$enclosure_signature" >/dev/null || \
