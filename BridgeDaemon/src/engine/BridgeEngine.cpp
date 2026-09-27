@@ -520,27 +520,20 @@ BridgeEngine::VirtualFeedStaleAction BridgeEngine::pollVirtualFeedStaleRing() {
   }
 
   const StaleRingPollResult pollResult = virtualFeed_.pollStaleRing();
-
-  VirtualFeedStaleAction action = VirtualFeedStaleAction::None;
-  switch (pollResult) {
-    case StaleRingPollResult::Ok:
-      action = VirtualFeedStaleAction::None;
-      break;
-    case StaleRingPollResult::Remapped:
-      if (!resetVirtualStreamEpoch()) {
-        std::cerr << "error: could not reset SRC for remapped shm stream epoch\n";
-        action = VirtualFeedStaleAction::StopForExit;
-      } else {
-        virtualFeed_.markReady();
-        action = VirtualFeedStaleAction::StopForRemap;
-      }
-      break;
-    case StaleRingPollResult::MustExit:
-      action = VirtualFeedStaleAction::StopForExit;
-      break;
+  bool epochResetOk = false;
+  if (pollResult == StaleRingPollResult::Remapped) {
+    epochResetOk = resetVirtualStreamEpoch();
+    if (!epochResetOk) {
+      std::cerr << "error: could not reset SRC for remapped shm stream epoch\n";
+    }
   }
 
-  if (pollResult != StaleRingPollResult::MustExit) {
+  const StaleRingRecoveryPlan plan = PlanStaleRingRecovery(pollResult, epochResetOk);
+  if (plan.action == VirtualFeedStaleAction::StopForRemap) {
+    virtualFeed_.markReady();
+  }
+
+  if (plan.restartOutput) {
     const OSStatus startStatus = AudioDeviceStart(devices_.output.deviceId, outputProc_);
     if (startStatus != noErr) {
       std::cerr << "error: AudioDeviceStart after shm remap failed: " << startStatus << "\n";
@@ -548,7 +541,7 @@ BridgeEngine::VirtualFeedStaleAction BridgeEngine::pollVirtualFeedStaleRing() {
     }
   }
 
-  return action;
+  return plan.action;
 }
 
 void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick) {

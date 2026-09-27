@@ -1,3 +1,4 @@
+#include "engine/StaleRingRecoveryPlan.h"
 #include "engine/VirtualDeviceFeed.h"
 
 #include "apm44/MmapShmRing.h"
@@ -99,4 +100,34 @@ TEST_CASE("pollStaleRing returns MustExit when recreated ring is invalid",
 
   feed.close();
   UnlinkRing(ringName);
+}
+
+TEST_CASE("PlanStaleRingRecovery keeps output stopped once it decides to exit",
+          "[shm_stale_recovery]") {
+  using apm44::PlanStaleRingRecovery;
+  using apm44::StaleRingPollResult;
+  using apm44::VirtualFeedStaleAction;
+
+  struct Row {
+    StaleRingPollResult pollResult;
+    bool epochResetOk;
+    VirtualFeedStaleAction action;
+    bool restartOutput;
+  };
+  const Row rows[] = {
+      {StaleRingPollResult::Ok, true, VirtualFeedStaleAction::None, true},
+      {StaleRingPollResult::Ok, false, VirtualFeedStaleAction::None, true},
+      {StaleRingPollResult::Remapped, true, VirtualFeedStaleAction::StopForRemap, true},
+      {StaleRingPollResult::Remapped, false, VirtualFeedStaleAction::StopForExit, false},
+      {StaleRingPollResult::MustExit, true, VirtualFeedStaleAction::StopForExit, false},
+      {StaleRingPollResult::MustExit, false, VirtualFeedStaleAction::StopForExit, false},
+  };
+
+  for (const Row& row : rows) {
+    CAPTURE(static_cast<int>(row.pollResult), row.epochResetOk);
+    const apm44::StaleRingRecoveryPlan plan =
+        PlanStaleRingRecovery(row.pollResult, row.epochResetOk);
+    CHECK(plan.action == row.action);
+    CHECK(plan.restartOutput == row.restartOutput);
+  }
 }
