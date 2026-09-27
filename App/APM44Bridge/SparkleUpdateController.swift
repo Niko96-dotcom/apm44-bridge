@@ -9,209 +9,6 @@ private let logger = Logger(
     category: "Updates"
 )
 
-enum AppUpdateState: Equatable {
-    case idle
-    case checking
-    case available(version: String)
-    case readyToInstall(version: String)
-    case installing(version: String)
-    case cancelled
-    case failed(message: String)
-}
-
-enum UpdateVersionComparison: Equatable {
-    case older
-    case same
-    case newer
-    case invalid
-}
-
-/// A small, deterministic comparator used by the app-facing state machine and
-/// its tests. Sparkle still performs the authoritative appcast comparison and
-/// signature validation; this guard prevents a stale or malformed delegate
-/// callback from ever surfacing a downgrade as an update button.
-struct AppUpdateVersionComparator {
-    static func compare(_ lhs: String, to rhs: String) -> UpdateVersionComparison {
-        guard let left = components(lhs), let right = components(rhs) else {
-            return .invalid
-        }
-
-        for index in 0..<max(left.count, right.count) {
-            let leftComponent = index < left.count ? left[index] : 0
-            let rightComponent = index < right.count ? right[index] : 0
-            if leftComponent < rightComponent { return .older }
-            if leftComponent > rightComponent { return .newer }
-        }
-        return .same
-    }
-
-    static func isNewer(_ candidate: String, than current: String) -> Bool {
-        compare(candidate, to: current) == .newer
-    }
-
-    private static func components(_ value: String) -> [Int]? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let pieces = trimmed.split(separator: ".", omittingEmptySubsequences: false)
-        guard !pieces.isEmpty else { return nil }
-        var result: [Int] = []
-        result.reserveCapacity(pieces.count)
-        for piece in pieces {
-            guard !piece.isEmpty, piece.allSatisfy(\.isNumber),
-                  let number = Int(piece) else { return nil }
-            result.append(number)
-        }
-        return result
-    }
-}
-
-extension Notification.Name {
-    static let apm44WillInstallUpdate = Notification.Name("apm44.willInstallUpdate")
-}
-
-/// Orders out SwiftUI's MenuBarExtra panel without touching the Controls
-/// window or the Settings window, which host the same MenuContentView.
-@MainActor
-func dismissMenuBarPanel() {
-    let panels = NSApp.windows.filter { window in
-        let className = NSStringFromClass(type(of: window))
-        let isMenuBarExtraWindow = className.contains("MenuBarExtraWindow")
-        let isStatusBarPanel = (window.level == .statusBar || window.level == .popUpMenu) && window is NSPanel
-        return window.isVisible && (isMenuBarExtraWindow || isStatusBarPanel)
-    }
-    guard !panels.isEmpty else { return }
-    // Toggle through the status item like a user click so SwiftUI's
-    // MenuBarExtra state stays in sync. Ordering the panel out behind its
-    // back leaves the next status-item click as a no-op.
-    if let button = menuBarExtraStatusButton() {
-        logger.debug("Dismissing menu bar panel via status item")
-        button.performClick(nil)
-    }
-    for panel in panels where panel.isVisible {
-        logger.debug("Dismissing menu bar panel class=\(NSStringFromClass(type(of: panel)), privacy: .public)")
-        panel.orderOut(nil)
-    }
-}
-
-@MainActor
-private func menuBarExtraStatusButton() -> NSStatusBarButton? {
-    for window in NSApp.windows where NSStringFromClass(type(of: window)).contains("NSStatusBarWindow") {
-        if let button = findStatusBarButton(in: window.contentView) {
-            return button
-        }
-    }
-    return nil
-}
-
-@MainActor
-private func findStatusBarButton(in view: NSView?) -> NSStatusBarButton? {
-    guard let view else { return nil }
-    if let button = view as? NSStatusBarButton { return button }
-    for subview in view.subviews {
-        if let button = findStatusBarButton(in: subview) { return button }
-    }
-    return nil
-}
-
-/// Isolates NSApp side effects behind injected closures so unit tests can
-/// verify the accessory -> regular -> accessory transitions without touching
-/// NSApp, starting a real SPUUpdater, or hitting the network.
-@MainActor
-final class UpdateActivationCoordinator {
-    var activationPolicySetter: @MainActor (NSApplication.ActivationPolicy) -> Bool
-    var appActivator: @MainActor () -> Void
-    var panelDismisser: @MainActor () -> Void
-    var deferredRunner: @MainActor (@escaping @MainActor () -> Void) -> Void
-    var isAppActive: @MainActor () -> Bool
-    var attentionRequester: @MainActor () -> Int
-    var attentionCanceller: @MainActor (Int) -> Void
-    private var didElevateActivationPolicy = false
-    private var outstandingAttentionRequest: Int?
-    private var activeObserver: NSObjectProtocol?
-
-    init(
-        activationPolicySetter: @escaping @MainActor (NSApplication.ActivationPolicy) -> Bool,
-        appActivator: @escaping @MainActor () -> Void,
-        panelDismisser: @escaping @MainActor () -> Void,
-        deferredRunner: @escaping @MainActor (@escaping @MainActor () -> Void) -> Void = { work in
-            DispatchQueue.main.async {
-                Task { @MainActor in work() }
-            }
-        },
-        isAppActive: @escaping @MainActor () -> Bool = { NSApp.isActive },
-        attentionRequester: @escaping @MainActor () -> Int = { NSApp.requestUserAttention(.criticalRequest) },
-        attentionCanceller: @escaping @MainActor (Int) -> Void = { NSApp.cancelUserAttentionRequest($0) }
-    ) {
-        self.activationPolicySetter = activationPolicySetter
-        self.appActivator = appActivator
-        self.panelDismisser = panelDismisser
-        self.deferredRunner = deferredRunner
-        self.isAppActive = isAppActive
-        self.attentionRequester = attentionRequester
-        self.attentionCanceller = attentionCanceller
-        self.activeObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.handleAppDidBecomeActive()
-            }
-        }
-    }
-
-    func bringUpdateUIToFront() {
-        panelDismisser()
-        _ = activationPolicySetter(.regular)
-        didElevateActivationPolicy = true
-        appActivator()
-        if isAppActive() {
-            cancelOutstandingAttentionRequest()
-        } else if outstandingAttentionRequest == nil {
-            outstandingAttentionRequest = attentionRequester()
-        }
-    }
-
-    func handleAppDidBecomeActive() {
-        cancelOutstandingAttentionRequest()
-    }
-
-    private func cancelOutstandingAttentionRequest() {
-        guard let requestId = outstandingAttentionRequest else { return }
-        outstandingAttentionRequest = nil
-        attentionCanceller(requestId)
-    }
-
-    /// Schedules one more activation on the next main-queue turn, so the
-    /// post-authorization "Install and Relaunch" status window is ordered
-    /// after Sparkle shows it.
-    func scheduleDeferredBringToFront() {
-        deferredRunner { [weak self] in
-            self?.bringUpdateUIToFront()
-        }
-    }
-
-    /// Post-extraction activation: immediately, plus once more on the next
-    /// main-queue turn so it also happens after Sparkle orders its window.
-    func bringUpdateUIToFrontAfterExtraction() {
-        bringUpdateUIToFront()
-        scheduleDeferredBringToFront()
-    }
-
-    func willFinishUpdateSession() {
-        cancelOutstandingAttentionRequest()
-        guard didElevateActivationPolicy else { return }
-        didElevateActivationPolicy = false
-        let restored = activationPolicySetter(.accessory)
-        if !restored {
-            deferredRunner { [weak self] in
-                guard let self else { return }
-                _ = self.activationPolicySetter(.accessory)
-            }
-        }
-    }
-}
-
 /// Sparkle's standard UI remains responsible for release notes, download
 /// progress, administrator authorization, cancellation, installation, and
 /// relaunch. This observable bridge supplies a small musician-facing status
@@ -220,15 +17,6 @@ final class UpdateActivationCoordinator {
 @MainActor
 final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, @preconcurrency SPUStandardUserDriverDelegate {
     static let shared = SparkleUpdateController()
-
-    // Sparkle reports a successful "no update" result as an error-shaped
-    // completion with SUNoUpdateError (1001). Keep that result distinct from
-    // feed, network, and installation failures so the musician-facing surface
-    // returns to its quiet idle state instead of showing a false failure.
-    nonisolated private static let noUpdateErrorCode = 1001
-
-    // Network-layer codes that mean "interrupted, check connection and retry".
-    nonisolated private static let networkInterruptionCodes: Set<Int> = [-1001, -1003, -1004, -1005, -1009, -1018, -1020]
 
     @Published private(set) var state: AppUpdateState = .idle
     @Published private(set) var canCheckForUpdates = false
@@ -489,9 +277,7 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     func handleAbort(error: Error) {
         if benignInstallationSuccessLatched {
-            logger.info("Update already installed")
-            state = .idle
-            lastOfferedVersion = nil
+            markAlreadyInstalled()
             return
         }
         let nsError = error as NSError
@@ -501,9 +287,7 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             currentVersion: currentVersion
         ) {
             benignInstallationSuccessLatched = true
-            logger.info("Update already installed")
-            state = .idle
-            lastOfferedVersion = nil
+            markAlreadyInstalled()
         } else if Self.isNoUpdateError(error) {
             state = .idle
             lastOfferedVersion = nil
@@ -511,10 +295,8 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
                   nsError.code == 4007 { // Sparkle's SUInstallationCanceledError.
             logger.info("Update cancelled")
             state = .cancelled
-        } else if Self.isDownloadFailure(error) {
-            failDownload(error)
         } else {
-            failCheck(error)
+            fail(error)
         }
     }
 
@@ -529,9 +311,7 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     func handleFinish(error: Error?) {
         defer { benignInstallationSuccessLatched = false }
         if benignInstallationSuccessLatched {
-            logger.info("Update already installed")
-            state = .idle
-            lastOfferedVersion = nil
+            markAlreadyInstalled()
             return
         }
         if let error, Self.shouldTreatInstallationErrorAsSuccess(
@@ -539,18 +319,12 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
             error: error,
             currentVersion: currentVersion
         ) {
-            logger.info("Update already installed")
-            state = .idle
-            lastOfferedVersion = nil
+            markAlreadyInstalled()
         } else if let error, Self.isNoUpdateError(error) {
             state = .idle
             lastOfferedVersion = nil
         } else if let error {
-            if Self.isDownloadFailure(error) {
-                failDownload(error)
-            } else {
-                failCheck(error)
-            }
+            fail(error)
         } else if case .checking = state {
             state = .idle
         }
@@ -572,36 +346,32 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         state = .readyToInstall(version: versionString)
     }
 
-    private func failCheck(_ error: Error) {
+    private func markAlreadyInstalled() {
+        logger.info("Update already installed")
+        state = .idle
+        lastOfferedVersion = nil
+    }
+
+    private func fail(_ error: Error, message: @autoclosure () -> String) {
         if Self.shouldTreatInstallationErrorAsSuccess(
             state: state,
             error: error,
             currentVersion: currentVersion
         ) {
-            logger.info("Update already installed")
-            state = .idle
-            lastOfferedVersion = nil
+            markAlreadyInstalled()
             return
         }
         let nsError = error as NSError
         logger.error("Update failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code)")
-        state = .failed(message: Self.userFacingErrorMessage(error))
+        state = .failed(message: message())
+    }
+
+    private func failCheck(_ error: Error) {
+        fail(error, message: Self.userFacingErrorMessage(error))
     }
 
     private func failDownload(_ error: Error) {
-        if Self.shouldTreatInstallationErrorAsSuccess(
-            state: state,
-            error: error,
-            currentVersion: currentVersion
-        ) {
-            logger.info("Update already installed")
-            state = .idle
-            lastOfferedVersion = nil
-            return
-        }
-        let nsError = error as NSError
-        logger.error("Update failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code)")
-        state = .failed(message: Self.downloadErrorMessage(error))
+        fail(error, message: Self.downloadErrorMessage(error))
     }
 
     private func fail(_ error: Error) {
@@ -612,120 +382,6 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         }
     }
 
-    nonisolated static func isNoUpdateError(_ error: Error) -> Bool {
-        let nsError = error as NSError
-        return nsError.domain == SUSparkleErrorDomain && nsError.code == noUpdateErrorCode
-    }
-
-    /// True for errors that come from the download phase: an explicit
-    /// SUDownloadError, any NSURLErrorDomain error, or a Sparkle error whose
-    /// NSUnderlyingError chain contains NSURLErrorDomain.
-    nonisolated static func isDownloadFailure(_ error: Error) -> Bool {
-        let top = error as NSError
-        if top.domain == SUSparkleErrorDomain && top.code == 2001 {
-            return true
-        }
-        var current: Error? = error
-        var depth = 0
-        while depth < 10, let candidate = current {
-            let nsCandidate = candidate as NSError
-            if nsCandidate.domain == NSURLErrorDomain {
-                return true
-            }
-            guard let underlying = nsCandidate.userInfo[NSUnderlyingErrorKey] as? Error else { break }
-            current = underlying
-            depth += 1
-        }
-        return false
-    }
-
-    /// True when the error (or its underlying chain) is a network-layer
-    /// interruption that should prompt a connection check and retry.
-    nonisolated static func isNetworkInterruptionError(_ error: Error) -> Bool {
-        var current: Error? = error
-        var depth = 0
-        while depth < 10, let candidate = current {
-            let nsCandidate = candidate as NSError
-            if nsCandidate.domain == NSURLErrorDomain,
-               networkInterruptionCodes.contains(nsCandidate.code) {
-                return true
-            }
-            guard let underlying = nsCandidate.userInfo[NSUnderlyingErrorKey] as? Error else { break }
-            current = underlying
-            depth += 1
-        }
-        return false
-    }
-
-    /// Download-phase message: network interruptions get the actionable
-    /// "check connection and try again" copy; other download failures keep
-    /// the underlying detail. Signature and cancellation wording is kept.
-    nonisolated static func downloadErrorMessage(_ error: Error) -> String {
-        if isNoUpdateError(error) {
-            return AppStrings.noUpdateAvailable
-        }
-        let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lowered = description.lowercased()
-        if lowered.contains("signature") || lowered.contains("appcast") || lowered.contains("secure") {
-            return AppStrings.updateFeedUnverified
-        }
-        if lowered.contains("cancel") || lowered.contains("authorization") || lowered.contains("password") {
-            return AppStrings.updateCancelledBeforeReplace
-        }
-        if isNetworkInterruptionError(error) {
-            return AppStrings.updateDownloadInterrupted
-        }
-        if description.isEmpty {
-            let nsError = error as NSError
-            return AppStrings.updateDownloadFailed(detail: "\(nsError.domain) (\(nsError.code))")
-        }
-        return AppStrings.updateDownloadFailed(detail: description)
-    }
-
-    /// A post-relaunch installation error while installing a version that is
-    /// not newer than the running app means the install already succeeded
-    /// (e.g. the app was launched a moment too early). Accept 4010
-    /// (SUAgentInvalidationError) as before, but accept the generic 4005
-    /// (SUInstallationError) only when the error chain carries Sparkle's
-    /// "remote port connection was invalidated" text, which it appends in
-    /// English even in localized UIs.
-    nonisolated static func shouldTreatInstallationErrorAsSuccess(
-        state: AppUpdateState,
-        error: Error,
-        currentVersion: String
-    ) -> Bool {
-        let nsError = error as NSError
-        guard nsError.domain == SUSparkleErrorDomain else { return false }
-        guard nsError.code == 4005 || nsError.code == 4010 else { return false }
-        guard case let .installing(version: installingVersion) = state else { return false }
-        guard !AppUpdateVersionComparator.isNewer(installingVersion, than: currentVersion) else { return false }
-        if nsError.code == 4010 { return true }
-        return containsRemotePortInvalidation(error)
-    }
-
-    /// True when the error or any NSUnderlyingError in its chain carries the
-    /// remote-port invalidation text in its localized description or failure
-    /// reason (case-insensitive).
-    nonisolated static func containsRemotePortInvalidation(_ error: Error) -> Bool {
-        let needle = "remote port connection was invalidated"
-        var current: Error? = error
-        var depth = 0
-        while depth < 10, let candidate = current {
-            let nsCandidate = candidate as NSError
-            if nsCandidate.localizedDescription.lowercased().contains(needle) {
-                return true
-            }
-            if let reason = nsCandidate.userInfo[NSLocalizedFailureReasonErrorKey] as? String,
-               reason.lowercased().contains(needle) {
-                return true
-            }
-            guard let underlying = nsCandidate.userInfo[NSUnderlyingErrorKey] as? Error else { break }
-            current = underlying
-            depth += 1
-        }
-        return false
-    }
-
     nonisolated static func shouldRunLaunchCheck(
         automaticallyChecks: Bool,
         lastCheckDate: Date?,
@@ -734,21 +390,5 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         guard automaticallyChecks else { return false }
         guard let lastCheckDate else { return true }
         return lastCheckDate < launchDate
-    }
-
-    nonisolated static func userFacingErrorMessage(_ error: Error) -> String {
-        if isNoUpdateError(error) {
-            return AppStrings.noUpdateAvailable
-        }
-        let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lowered = description.lowercased()
-        if lowered.contains("signature") || lowered.contains("appcast") || lowered.contains("secure") {
-            return AppStrings.updateFeedUnverified
-        }
-        if lowered.contains("cancel") || lowered.contains("authorization") || lowered.contains("password") {
-            return AppStrings.updateCancelledBeforeReplace
-        }
-        if description.isEmpty { return AppStrings.updateCheckFailedRetry }
-        return AppStrings.updateCheckFailed(detail: description)
     }
 }
