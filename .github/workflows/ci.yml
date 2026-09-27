@@ -28,66 +28,9 @@ jobs:
         timeout-minutes: 10
         run: brew install xcodegen
 
-      - name: Secret scan
-        timeout-minutes: 5
-        run: bash scripts/check-secrets.sh
-
-      - name: Prepare submodules
-        timeout-minutes: 5
-        run: bash scripts/prepare-submodules.sh
-
-      - name: Configure CMake
-        timeout-minutes: 10
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build native targets
-        timeout-minutes: 30
-        run: cmake --build build --parallel 4
-
-      - name: Native tests
-        timeout-minutes: 10
-        run: ctest --test-dir build --output-on-failure
-
-      - name: UI chrome copy tests
-        timeout-minutes: 5
-        run: bash tests/test_ui_chrome.sh
-
-      - name: Release script tests
-        timeout-minutes: 5
-        run: bash tests/test_release_scripts.sh
-
-      - name: E2E script tests
-        timeout-minutes: 5
-        run: bash tests/test_e2e_scripts.sh
-
-      - name: Sparkle appcast tests
-        timeout-minutes: 5
-        run: bash tests/test_appcast.sh
-
-      - name: Compiler probe tests
-        timeout-minutes: 5
-        run: bash tests/test_compiler_probe.sh
-
-      - name: Rebuild-and-open script tests
-        timeout-minutes: 5
-        run: bash tests/test_rebuild_and_open_app.sh
-
-      - name: Swift app build
-        timeout-minutes: 15
-        run: bash scripts/verify-app-build.sh
-
-      - name: Swift unit tests
-        timeout-minutes: 15
-        run: |
-          bash scripts/run-xcodebuild.sh -project App/APM44Bridge.xcodeproj \
-            -scheme APM44Bridge \
-            -destination 'platform=macOS' \
-            -derivedDataPath build/app \
-            test -only-testing:APM44BridgeTests \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGN_IDENTITY=- \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM=
+      - name: Build and test (scripts/ci.sh)
+        timeout-minutes: 45
+        run: bash scripts/ci.sh
 
   sanitizers:
     name: ${{ matrix.sanitizer }} sanitizer

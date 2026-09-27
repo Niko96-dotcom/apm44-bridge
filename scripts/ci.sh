@@ -27,7 +27,8 @@ echo "== Configure CMake ($CONFIG) =="
 cmake -S "$ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$CONFIG"
 
 echo "== Build native targets =="
-cmake --build "$BUILD_DIR" --parallel
+# A bare --parallel gives make an unlimited -j; bound it to the core count.
+cmake --build "$BUILD_DIR" --parallel "$(sysctl -n hw.ncpu)"
 
 echo "== Native tests =="
 ctest --test-dir "$BUILD_DIR" --output-on-failure
