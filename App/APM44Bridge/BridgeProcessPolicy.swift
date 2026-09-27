@@ -73,10 +73,6 @@ enum BridgeDiagnostics {
         if singleLine.isEmpty { return AppStrings.noDiagnostic }
         return String(singleLine.prefix(240))
     }
-
-    static func isRecoverableStaleRingExit(status: Int32, stderr: String) -> Bool {
-        status == 42 && stderr.localizedCaseInsensitiveContains("stale shm ring")
-    }
 }
 
 enum BridgeLaunchArguments {
@@ -120,8 +116,17 @@ extension BridgeConnectionPhase {
     }
 }
 
+/// Exit codes the helper uses to say why it stopped. Mirrors
+/// BridgeDaemon/src/DaemonExitCodes.h; change both together.
+enum DaemonExitCode: Int32 {
+    case staleShmRing = 42
+    case singletonBusy = 43
+    case loadedDriverBuildMismatch = 44
+}
+
 enum BridgeTerminationOutcome: Equatable {
     case loadedDriverMismatch
+    case helperAlreadyRunning
     case autoRetry
     case failWhileRunning
     case cleanExitWhileRunning
@@ -130,18 +135,20 @@ enum BridgeTerminationOutcome: Equatable {
 }
 
 enum BridgeTerminationPolicy {
-    static let loadedDriverBuildMismatchExitStatus: Int32 = 44
-
     /// Classifies an unexpected exit. A `.stopping` termination never gets
     /// here: the manager finishes the stop before reading the exit status.
+    /// Classification uses the exit code only.
     static func classify(
         state: BridgeRunState,
         exitStatus: Int32,
-        stderr: String,
         lastStopReason: StopReason?
     ) -> BridgeTerminationOutcome {
-        if exitStatus == loadedDriverBuildMismatchExitStatus, state == .running || state == .starting {
-            return .loadedDriverMismatch
+        if state == .running || state == .starting, let code = DaemonExitCode(rawValue: exitStatus) {
+            switch code {
+            case .loadedDriverBuildMismatch: return .loadedDriverMismatch
+            case .singletonBusy: return .helperAlreadyRunning
+            case .staleShmRing: break
+            }
         }
         if exitStatus != 0, case .running = state {
             return lastStopReason != .user ? .autoRetry : .failWhileRunning
@@ -150,10 +157,6 @@ enum BridgeTerminationPolicy {
             return .cleanExitWhileRunning
         }
         if case .starting = state {
-            if BridgeDiagnostics.isRecoverableStaleRingExit(status: exitStatus, stderr: stderr),
-               lastStopReason != .user {
-                return .autoRetry
-            }
             return .failWhileStarting
         }
         return .ignore

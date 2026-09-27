@@ -20,6 +20,7 @@ std::string ProcessSingletonLock::DefaultPath() {
 bool ProcessSingletonLock::acquire(const std::string& path) {
   release();
   lastError_.clear();
+  heldByAnotherProcess_ = false;
 
   const int fd = ::open(path.c_str(), O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
   if (fd < 0) {
@@ -35,7 +36,8 @@ bool ProcessSingletonLock::acquire(const std::string& path) {
   }
 
   if (::flock(fd, LOCK_EX | LOCK_NB) != 0) {
-    lastError_ = errno == EWOULDBLOCK
+    heldByAnotherProcess_ = errno == EWOULDBLOCK;
+    lastError_ = heldByAnotherProcess_
                      ? "another apm44-bridge helper already owns the singleton lock"
                      : "flock singleton lock failed: " + std::string(std::strerror(errno));
     ::close(fd);
