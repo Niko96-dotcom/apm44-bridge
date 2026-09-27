@@ -300,10 +300,13 @@ bash scripts/install-driver.sh [path/to/APM44Bridge.driver]
 
 Current repo CI expectation (see [daw-matrix.md](daw-matrix.md)):
 
-- **Automated:** `cmake --build`, `ctest`, offline soak (`scripts/ci-soak.sh`)
+- **Automated:** `.github/workflows/ci.yml` runs `bash scripts/ci.sh` on
+  macOS 15 (CMake build, `ctest`, shell regressions, Swift app build and
+  tests), plus AddressSanitizer+UBSan and ThreadSanitizer builds and a dependency
+  review. It installs no HAL driver and uses no notary secrets. The offline
+  soak is opt-in: `APM44_RUN_SOAK=1 bash scripts/ci.sh` or
+  `bash scripts/ci-soak.sh`.
 - **Manual:** DAW matrix, export bounce QA-02, 30+ min hardware soak, notarization with real Developer ID credentials
-
-Optional future: GitHub Actions `macos-latest` job compiling daemon + tests only (no HAL install, no notary secrets).
 
 ## GitHub Actions trust decision
 

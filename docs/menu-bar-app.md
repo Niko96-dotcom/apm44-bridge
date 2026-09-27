@@ -31,7 +31,8 @@ To rebuild, stop any running copy, and open the exact local build:
 bash scripts/rebuild-and-open-app.sh
 ```
 
-Or open `App/APM44Bridge.xcodeproj` in Xcode and run the **APM44 Bridge** scheme.
+Or generate the project with `bash scripts/generate-app-project.sh`, open
+`App/APM44Bridge.xcodeproj` in Xcode and run the **APM44Bridge** scheme.
 
 ## User controls
 
@@ -54,7 +55,9 @@ Updates…** in the panel footer and the app menu triggers a manual check.
 Start readiness is cached from the last device and build-identity refresh, not
 probed per render.
 
-The menu-bar extra is a template image: headphones when stopped, waveform when running. Color is not the only running/stopped signal.
+The menu-bar extra is a template image: headphones when stopped, waveform when
+running, circular arrows while starting or reconnecting, and crossed-out
+headphones after an error. Color is not the only running/stopped signal.
 
 Quit is intentionally an app lifecycle action only. It does not install,
 uninstall, reload, or otherwise mutate the HAL driver.

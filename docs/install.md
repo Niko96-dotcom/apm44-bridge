@@ -80,7 +80,9 @@ Full Cubase steps: [first-run-cubase.md](first-run-cubase.md).
 
 ## No Dock icon?
 
-The app is **menu bar only** (by design). It does not appear in the Dock. Use the **headphones** menu bar icon.
+The app is **menu bar only** (by design). It normally does not appear in the
+Dock; it shows a Dock icon only while an update window is open. Use the
+**headphones** menu bar icon.
 
 Quit closes only the app and any app-owned bridge process. It does not uninstall
 the HAL driver, reload Core Audio, or remove the virtual audio device.
