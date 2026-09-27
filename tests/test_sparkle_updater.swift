@@ -332,6 +332,34 @@ final class SparkleUpdaterTests: XCTestCase {
         XCTAssertEqual(recorded, [.cancelled, .cancelled])
     }
 
+    @MainActor
+    func testFinishWithoutErrorOrWithNoUpdateReturnsToIdle() {
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            menuPanelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { true },
+            startUpdater: false
+        )
+        controller.seedStateForTests(.checking)
+        controller.handleFinish(error: nil)
+        XCTAssertEqual(controller.state, .idle)
+
+        // A clean finish leaves any other state alone.
+        controller.seedStateForTests(.readyToInstall(version: "0.12.13"))
+        controller.handleFinish(error: nil)
+        XCTAssertEqual(controller.state, .readyToInstall(version: "0.12.13"))
+
+        // No update: back to idle and forget the previously offered version.
+        controller.handleWillInstallUpdateOnQuit(versionString: "0.12.13")
+        XCTAssertEqual(controller.lastOfferedVersion, "0.12.13")
+        controller.handleFinish(error: NSError(domain: "SUSparkleErrorDomain", code: 1001))
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertNil(controller.lastOfferedVersion)
+    }
+
     func testUpdateCycleErrorClassification() {
         XCTAssertEqual(
             SparkleUpdateController.classifyUpdateCycleError(

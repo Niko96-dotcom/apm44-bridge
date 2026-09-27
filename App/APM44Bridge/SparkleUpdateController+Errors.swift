@@ -58,7 +58,7 @@ extension SparkleUpdateController {
     nonisolated private static var installationCanceledErrorCode: Int { 4007 }
 
     /// The one decision for an error that ends an update cycle. Sparkle
-    /// reports the same error to both `didAbortWithError` and
+    /// usually reports the same error to `didAbortWithError` and then to
     /// `didFinishUpdateCycleFor`, so both callbacks must classify it alike.
     nonisolated static func classifyUpdateCycleError(
         state: AppUpdateState,
