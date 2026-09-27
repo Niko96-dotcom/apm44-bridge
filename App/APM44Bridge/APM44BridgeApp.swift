@@ -157,6 +157,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
+enum APM44BridgeMain {
+    static func main() {
+        // XCTest hosts the unit tests inside this app. Boot an empty app there:
+        // macOS can quit a menu bar item's app mid-run, and the real updater,
+        // Core Audio listeners, and bridge manager would act on the user's
+        // own defaults and devices while tests run.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            UnitTestHostApp.main()
+        } else {
+            APM44BridgeApp.main()
+        }
+    }
+}
+
+struct UnitTestHostApp: App {
+    var body: some Scene {
+        Settings { EmptyView() }
+    }
+}
+
 struct APM44BridgeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var settings = BridgeSettings()
