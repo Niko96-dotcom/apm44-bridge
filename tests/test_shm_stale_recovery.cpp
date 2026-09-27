@@ -2,6 +2,7 @@
 #include "engine/VirtualDeviceFeed.h"
 
 #include "apm44/MmapShmRing.h"
+#include "apm44/PlanarRingBuffer.h"
 #include "apm44/ShmRingLayout.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -12,6 +13,7 @@
 
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -42,6 +44,25 @@ bool CreateInvalidRing(const std::string& name) {
   header->magic = 0;
   header->version = 99;
   ::munmap(base, kSize);
+  ::close(fd);
+  return true;
+}
+
+bool OverwriteProducerBuildId(const std::string& name, const char* buildId) {
+  const int fd = ::shm_open(name.c_str(), O_RDWR, 0666);
+  if (fd < 0) {
+    return false;
+  }
+  void* base = ::mmap(nullptr, sizeof(apm44::ShmRingHeader), PROT_READ | PROT_WRITE,
+                      MAP_SHARED, fd, 0);
+  if (base == MAP_FAILED) {
+    ::close(fd);
+    return false;
+  }
+  auto* header = static_cast<apm44::ShmRingHeader*>(base);
+  std::memset(header->producer_build_id, 0, apm44::kShmBuildIdBytes);
+  std::strncpy(header->producer_build_id, buildId, apm44::kShmBuildIdBytes - 1);
+  ::munmap(base, sizeof(apm44::ShmRingHeader));
   ::close(fd);
   return true;
 }
@@ -99,6 +120,96 @@ TEST_CASE("pollStaleRing returns MustExit when recreated ring is invalid",
   REQUIRE(feed.pollStaleRing() == apm44::StaleRingPollResult::MustExit);
 
   feed.close();
+  UnlinkRing(ringName);
+}
+
+TEST_CASE("remapped feed drains frames from the recreated ring", "[shm_stale_recovery]") {
+  const std::string ringName = TestRingName('d');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(512));
+
+  apm44::VirtualDeviceFeed feed(ringName);
+  REQUIRE(feed.open());
+
+  producer.close();
+  UnlinkRing(ringName);
+  REQUIRE(producer.create(512));
+
+  REQUIRE(feed.pollStaleRing() == apm44::StaleRingPollResult::Remapped);
+  REQUIRE(feed.pollStaleRing() == apm44::StaleRingPollResult::Ok);
+
+  constexpr std::size_t kFrames = 64;
+  std::vector<float> ramp(kFrames * 2);
+  for (std::size_t i = 0; i < kFrames; ++i) {
+    ramp[2 * i] = static_cast<float>(i) * 0.01f;
+    ramp[2 * i + 1] = -(static_cast<float>(i) * 0.01f) - 0.5f;
+  }
+  REQUIRE(producer.pushInterleaved(ramp.data(), kFrames) == kFrames);
+
+  apm44::PlanarRingBuffer planar;
+  planar.prepare(256);
+  REQUIRE(feed.drainTo(planar, kFrames) == kFrames);
+
+  std::vector<float> left(kFrames);
+  std::vector<float> right(kFrames);
+  float* channels[2] = {left.data(), right.data()};
+  REQUIRE(planar.pop(channels, kFrames) == kFrames);
+  for (std::size_t i = 0; i < kFrames; ++i) {
+    CHECK(left[i] == ramp[2 * i]);
+    CHECK(right[i] == ramp[2 * i + 1]);
+  }
+
+  feed.markReady();
+  REQUIRE(producer.daemonReady());
+
+  feed.close();
+  producer.close();
+  UnlinkRing(ringName);
+}
+
+TEST_CASE("pollStaleRing exits when the ring is unlinked and not recreated",
+          "[shm_stale_recovery]") {
+  const std::string ringName = TestRingName('e');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(512));
+
+  apm44::VirtualDeviceFeed feed(ringName);
+  REQUIRE(feed.open());
+
+  producer.close();
+  UnlinkRing(ringName);
+
+  REQUIRE(feed.pollStaleRing() == apm44::StaleRingPollResult::MustExit);
+  REQUIRE_FALSE(feed.isOpen());
+  REQUIRE(feed.lastOpenErrorCode() == apm44::ShmRingErrorCode::OpenFailed);
+
+  feed.close();
+  producer.close();
+  UnlinkRing(ringName);
+}
+
+TEST_CASE("pollStaleRing exits when the ring is recreated by a different driver build",
+          "[shm_stale_recovery]") {
+  const std::string ringName = TestRingName('f');
+  apm44::MmapShmRing producer(ringName);
+  REQUIRE(producer.create(512));
+
+  apm44::VirtualDeviceFeed feed(ringName);
+  REQUIRE(feed.open());
+
+  producer.close();
+  UnlinkRing(ringName);
+  REQUIRE(producer.create(512));
+  REQUIRE(OverwriteProducerBuildId(ringName, "other-build"));
+
+  // Pins current behavior: the daemon maps this to exit 42, not 44. Whether a
+  // mid-run build mismatch should exit 44 is an open owner decision.
+  REQUIRE(feed.pollStaleRing() == apm44::StaleRingPollResult::MustExit);
+  REQUIRE_FALSE(feed.isOpen());
+  REQUIRE(feed.lastOpenErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);
+
+  feed.close();
+  producer.close();
   UnlinkRing(ringName);
 }
 
