@@ -48,6 +48,28 @@ Do not add these operations to audio callbacks or HAL I/O paths:
 Keep audio callbacks boring: copy data, touch preallocated buffers, update
 lock-free counters, and return.
 
+## Test Rules
+
+A test earns its place by failing when the behavior it names breaks. The
+2026-09 test audit removed tests that could not fail; keep them out:
+
+- Test behavior, not source text. Do not read or grep a source file as a
+  stand-in for running the code. Call the function, run the script, or drive
+  the state and assert the result.
+- No placeholders. No `SUCCEED()`, `XCTAssertTrue(true)`, or empty test bodies.
+  Every test asserts a specific output.
+- Fake `kill` with a `BASH_ENV` shim that defines a `kill()` function, as
+  `tests/test_rebuild_and_open_app.sh` does. Bash's builtin `kill` bypasses a
+  fake `kill` on `PATH`, so a PATH fake lets the test signal real processes.
+- Inject dependencies through small interfaces passed to `init` (for example
+  `ProcessLaunching`). Do not add new `…ForTesting` members or mutable
+  override properties to production types.
+- Measure Swift coverage per test when comparing before and after. The Swift
+  tests run hosted in the app, and app launch enumerates audio devices, so the
+  total coverage number changes with which devices are connected.
+
+Before adding a test, check that it fails when you break the code it covers.
+
 ## Pull Requests
 
 Before opening a PR:
