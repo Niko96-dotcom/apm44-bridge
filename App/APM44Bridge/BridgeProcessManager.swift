@@ -95,32 +95,36 @@ final class BridgeProcessManager: ObservableObject {
 
     private let processLauncher: ProcessLaunching
     private let binaryURLOverride: URL?
+    private let retryTiming: BridgeRetryTiming
+    private let deviceSource: any BridgeDeviceSource
     private let applicationTerminator: @MainActor () -> Void
 
     let settings: BridgeSettings
 
     internal private(set) var hotplugRefreshGeneration = 0
     internal private(set) var retryGeneration = 0
-    internal var testRetryDelays: [TimeInterval]?
-    internal var testStabilityWindow: TimeInterval?
 
     private var retryDelays: [TimeInterval] {
-        testRetryDelays ?? [1.0, 2.0, 4.0, 4.0]
+        retryTiming.retryDelays
     }
 
     private var stabilityWindow: TimeInterval {
-        testStabilityWindow ?? 15.0
+        retryTiming.stabilityWindow
     }
 
     init(
         settings: BridgeSettings,
         processLauncher: ProcessLaunching? = nil,
         binaryURLOverride: URL? = nil,
+        retryTiming: BridgeRetryTiming = .live,
+        deviceSource: any BridgeDeviceSource = LiveBridgeDeviceSource(),
         applicationTerminator: @escaping @MainActor () -> Void = { NSApplication.shared.terminate(nil) }
     ) {
         self.settings = settings
         self.processLauncher = processLauncher ?? LiveProcessLauncher()
         self.binaryURLOverride = binaryURLOverride
+        self.retryTiming = retryTiming
+        self.deviceSource = deviceSource
         self.applicationTerminator = applicationTerminator
         self.cachedBinaryURL = binaryURLOverride ?? BridgeBinaryLocator.resolve()
         // Restore the persisted device name so deviceDisplayName can show it
@@ -211,14 +215,6 @@ final class BridgeProcessManager: ObservableObject {
         return blockedReason == nil
     }
 
-    internal func setDevicesForTesting(_ list: [AudioDeviceRow]) {
-        devices = list
-    }
-
-    internal func setRoutingModeForTesting(_ mode: RoutingMode) {
-        routingMode = mode
-    }
-
     internal func setStateForTesting(_ newState: BridgeRunState) {
         state = newState
     }
@@ -229,23 +225,6 @@ final class BridgeProcessManager: ObservableObject {
 
     internal var retryAttemptForTesting: Int { retryAttempt }
     internal var processHealthForTesting: BridgeProcessHealth { processHealth }
-
-    internal var testTerminationStatus: Int32?
-    internal var testDeviceListOverride: [AudioDeviceRow]?
-    /// Injectable HAL build check for deterministic tests:
-    /// `(halPresent, appID, driverID)`. When nil, `start()` reads the live
-    /// HAL enumeration and the two small Info.plists. No helper commands run.
-    internal var halBuildCheckOverride: (halPresent: Bool, appID: String?, driverID: String?)? {
-        didSet {
-            if let override = halBuildCheckOverride {
-                updateReadinessCaches(
-                    halPresent: override.halPresent,
-                    appID: override.appID,
-                    driverID: override.driverID
-                )
-            }
-        }
-    }
 
     private func updateReadinessCaches(halPresent: Bool, appID: String?, driverID: String?) {
         let mode: RoutingMode = halPresent ? .halVirtualDevice : .blackHoleFallback
@@ -272,18 +251,15 @@ final class BridgeProcessManager: ObservableObject {
         let refreshGeneration = hotplugRefreshGeneration
         refreshRoutingMode()
         resolveCachedBinaryURL()
-        if let override = testDeviceListOverride {
-            applyRefreshedDeviceList(override)
-            return true
-        }
         guard let url = binaryURL else {
             logger.error("Device list refresh blocked: missing binary")
             bannerMessage = AppStrings.bridgeNotFound
             return false
         }
         do {
+            let source = deviceSource
             let list = try await Task.detached {
-                try DeviceCatalog.refresh(binaryURL: url)
+                try source.listDevices(binaryURL: url)
             }.value
             guard refreshGeneration == hotplugRefreshGeneration else {
                 return false
@@ -297,10 +273,6 @@ final class BridgeProcessManager: ObservableObject {
             }
             return false
         }
-    }
-
-    internal func applyRefreshedDeviceListForTesting(_ list: [AudioDeviceRow]) {
-        applyRefreshedDeviceList(list)
     }
 
     private func applyRefreshedDeviceList(_ list: [AudioDeviceRow]) {
@@ -396,20 +368,12 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func refreshRoutingMode() {
-        if let override = halBuildCheckOverride {
-            updateReadinessCaches(
-                halPresent: override.halPresent,
-                appID: override.appID,
-                driverID: override.driverID
-            )
-        } else {
-            let halPresent = HalDriverDetector.isHalInstalled()
-            updateReadinessCaches(
-                halPresent: halPresent,
-                appID: HalDriverDetector.appBuildID(),
-                driverID: HalDriverDetector.driverBuildID()
-            )
-        }
+        let check = deviceSource.halBuildCheck()
+        updateReadinessCaches(
+            halPresent: check.halPresent,
+            appID: check.appBuildID,
+            driverID: check.driverBuildID
+        )
         updateConnectionPhase()
     }
 
@@ -440,18 +404,10 @@ final class BridgeProcessManager: ObservableObject {
         // ID must equal the app's full build ID. Fail closed on
         // missing/malformed IDs. Never silently fall back to BlackHole here;
         // when the HAL device is absent this gate does not block.
-        let halPresent: Bool
-        let appID: String?
-        let driverID: String?
-        if let override = halBuildCheckOverride {
-            halPresent = override.halPresent
-            appID = override.appID
-            driverID = override.driverID
-        } else {
-            halPresent = HalDriverDetector.isHalInstalled()
-            appID = HalDriverDetector.appBuildID()
-            driverID = HalDriverDetector.driverBuildID()
-        }
+        let check = deviceSource.halBuildCheck()
+        let halPresent = check.halPresent
+        let appID = check.appBuildID
+        let driverID = check.driverBuildID
         // Keep the launch route in lockstep with the live build-gate
         // decision: `routingMode` may be stale (last hotplug refresh), so
         // derive it from the same `halPresent` used for gating. This keeps
@@ -1152,8 +1108,7 @@ final class BridgeProcessManager: ObservableObject {
             transitionToIdle()
             return
         }
-        let exitStatus = testTerminationStatus ?? proc.terminationStatus
-        testTerminationStatus = nil
+        let exitStatus = processLauncher.terminationStatus(of: proc)
         let stderr = stderrLines.joined(separator: "\n")
         let recoverableStale = isRecoverableStaleRingExit(status: exitStatus, stderr: stderr)
 
