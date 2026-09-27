@@ -155,7 +155,10 @@ bash scripts/uninstall-apm44.sh --dry-run
 bash scripts/uninstall-apm44.sh --yes
 ```
 
-Without a repository checkout, remove the installed app and HAL driver manually:
+The helper quits the app and stops its bridge helper before removing anything.
+
+Without a repository checkout, quit APM44 Bridge from its menu, then remove the
+installed app and HAL driver manually:
 
 ```bash
 sudo rm -rf "/Applications/APM44 Bridge.app"
