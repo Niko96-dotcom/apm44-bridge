@@ -673,15 +673,22 @@ final class BridgeProcessManager: ObservableObject {
     func handleSystemDidWake() async {
         // The intent stays in resumeAfterSystemWake across every await below,
         // so a user stop meanwhile cancels it; it is consumed only at the end.
+        var sleepStopUnfinished = false
         if resumeAfterSystemWake, case .stopping = state {
             // The sleep stop is still in flight and start() would ignore
             // .stopping, so wait for the termination first.
             try? await waitForTermination(timeout: .seconds(11))
+            if case .stopping = state { sleepStopUnfinished = true }
         }
         let refreshed = await refreshDevices()
         let shouldResume = resumeAfterSystemWake
         resumeAfterSystemWake = false
         guard shouldResume else { return }
+        if sleepStopUnfinished {
+            logger.info("Bridge stop unfinished after wake")
+            parkAfterWake(banner: AppStrings.waitingForDevicesAfterWake)
+            return
+        }
         if case .stopping = state {
             // A hotplug or settings restart began during the refresh and
             // relaunches by itself; parking would overwrite its .stopping.

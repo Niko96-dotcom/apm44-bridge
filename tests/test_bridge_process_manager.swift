@@ -597,7 +597,8 @@ final class BridgeProcessManagerTests: XCTestCase {
             wakeFinished = true
         }
         // Wake must not finish while the sleep stop is still in flight.
-        await waitUntil { wakeFinished }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(wakeFinished)
         if let proc = sleepingProcess {
             await launcher.fireTermination(for: proc)
         }
