@@ -1,13 +1,32 @@
 #!/usr/bin/env bash
 # Structural and security validation for a Sparkle package-update appcast.
+#
+# Usage: validate-appcast.sh [--pkg <path>]
+#   --pkg  also require the enclosure that downloads <path> (matched by file
+#          name) to carry that file's byte length and a verifying EdDSA
+#          signature, so a PKG rebuilt after generate-appcast.sh cannot ship.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APPCAST="${APM44_APPCAST_PATH:-$ROOT/docs/appcast.xml}"
 SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-}"
+PKG=""
 
 fail() { echo "error: $*" >&2; exit 1; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --pkg)
+      [[ $# -ge 2 && -n "$2" ]] || fail "--pkg needs a path"
+      PKG="$2"
+      shift 2
+      ;;
+    *) fail "unknown argument: $1" ;;
+  esac
+done
+
 [[ -f "$APPCAST" ]] || fail "appcast missing at $APPCAST"
+[[ -z "$PKG" || -f "$PKG" ]] || fail "PKG missing at $PKG"
 
 if command -v xmllint >/dev/null 2>&1; then
   xmllint --noout "$APPCAST" || fail "appcast is not well-formed XML"
@@ -79,15 +98,51 @@ for item in items:
 print(f"appcast structure: OK ({len(items)} item(s))")
 PY
 
-if [[ -n "$SIGN_UPDATE" ]]; then
-  [[ -x "$SIGN_UPDATE" ]] || fail "Sparkle sign_update tool is not executable: $SIGN_UPDATE"
-  if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
-    printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - --verify "$APPCAST"
-  else
-    "$SIGN_UPDATE" --verify "$APPCAST"
-  fi
-  echo "appcast signature: OK"
-else
+if [[ -z "$SIGN_UPDATE" ]]; then
   echo "appcast signature: NOT VERIFIED (set SPARKLE_SIGN_UPDATE for the release gate)" >&2
   exit 1
 fi
+[[ -x "$SIGN_UPDATE" ]] || fail "Sparkle sign_update tool is not executable: $SIGN_UPDATE"
+
+run_sign_update() {
+  if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+    printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "$@"
+  else
+    "$SIGN_UPDATE" "$@"
+  fi
+}
+
+run_sign_update --verify "$APPCAST"
+echo "appcast signature: OK"
+
+[[ -n "$PKG" ]] || exit 0
+
+# Prints "<length> <edSignature>" of the one enclosure whose URL file name is
+# the PKG's file name. Both values were already checked for shape above.
+enclosure="$(python3 - "$APPCAST" "$(basename "$PKG")" <<'PY'
+import posixpath
+import sys
+import urllib.parse
+import xml.etree.ElementTree as ET
+
+path, name = sys.argv[1:]
+sparkle = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+matches = [
+    enclosure
+    for enclosure in ET.parse(path).getroot().findall("./channel/item/enclosure")
+    if posixpath.basename(urllib.parse.urlparse(enclosure.get("url", "")).path) == name
+]
+if len(matches) != 1:
+    raise SystemExit(f"error: appcast has {len(matches)} enclosures for {name}, expected 1")
+print(matches[0].get("length"), matches[0].get(f"{{{sparkle}}}edSignature"))
+PY
+)"
+enclosure_length="${enclosure%% *}"
+enclosure_signature="${enclosure#* }"
+
+pkg_length="$(stat -f%z "$PKG")"
+[[ "$pkg_length" == "$enclosure_length" ]] || \
+  fail "enclosure length $enclosure_length does not match $PKG ($pkg_length bytes)"
+run_sign_update --verify "$PKG" "$enclosure_signature" >/dev/null || \
+  fail "enclosure edSignature does not verify against $PKG"
+echo "appcast enclosure matches PKG: OK ($(basename "$PKG"), $pkg_length bytes)"
