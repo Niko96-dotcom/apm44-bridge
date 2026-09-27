@@ -33,6 +33,9 @@ cmake --build "$BUILD_DIR" --parallel "$(sysctl -n hw.ncpu)"
 echo "== Native tests =="
 ctest --test-dir "$BUILD_DIR" --output-on-failure
 
+echo "== Daemon exit-code tests =="
+bash tests/test_daemon_exit_codes.sh
+
 echo "== UI chrome copy tests =="
 bash tests/test_ui_chrome.sh
 

@@ -45,7 +45,6 @@ enum BridgeProcessHealth: Equatable {
 
 @MainActor
 final class BridgeProcessManager: ObservableObject {
-    static let loadedDriverBuildMismatchExitStatus = BridgeTerminationPolicy.loadedDriverBuildMismatchExitStatus
     @Published private(set) var state: BridgeRunState = .idle
     @Published private(set) var latestMetrics: BridgeMetricsSnapshot?
     @Published private(set) var glitchFlash = false
@@ -1035,6 +1034,16 @@ final class BridgeProcessManager: ObservableObject {
         }
     }
 
+    private func failWithoutRetry(_ message: String) {
+        cancelRetryTask()
+        retryBudget.clearAttemptKeepingDiagnostics()
+        lastStopReason = nil
+        state = .error(message)
+        bannerMessage = message
+        connectionPhase = .stopped
+        resumeTerminationWaiters()
+    }
+
     private func handleTermination(_ proc: Process) {
         defer { settleApplyingSettings() }
         // A late callback from an old child must never clear state belonging
@@ -1060,18 +1069,13 @@ final class BridgeProcessManager: ObservableObject {
         switch BridgeTerminationPolicy.classify(
             state: state,
             exitStatus: exitStatus,
-            stderr: stderr,
             lastStopReason: lastStopReason
         ) {
         case .loadedDriverMismatch:
-            cancelRetryTask()
-            retryBudget.clearAttemptKeepingDiagnostics()
-            lastStopReason = nil
-            let message = AppStrings.loadedDriverBuildMismatch
-            state = .error(message)
-            bannerMessage = message
-            connectionPhase = .stopped
-            resumeTerminationWaiters()
+            failWithoutRetry(AppStrings.loadedDriverBuildMismatch)
+            return
+        case .helperAlreadyRunning:
+            failWithoutRetry(AppStrings.helperAlreadyRunning)
             return
         case .autoRetry:
             scheduleAutoRetry()

@@ -119,12 +119,6 @@ final class BridgeDiagnosticsTests: XCTestCase {
     func testSanitizedTruncatesTo240() {
         XCTAssertEqual(BridgeDiagnostics.sanitized(String(repeating: "a", count: 300)), String(repeating: "a", count: 240))
     }
-
-    func testIsRecoverableStaleRingExit() {
-        XCTAssertTrue(BridgeDiagnostics.isRecoverableStaleRingExit(status: 42, stderr: "STALE SHM RING detected"))
-        XCTAssertFalse(BridgeDiagnostics.isRecoverableStaleRingExit(status: 42, stderr: "other"))
-        XCTAssertFalse(BridgeDiagnostics.isRecoverableStaleRingExit(status: 1, stderr: "stale shm ring"))
-    }
 }
 
 final class BridgeLaunchArgumentsTests: XCTestCase {
@@ -180,33 +174,44 @@ final class BridgeConnectionPhaseDeriveTests: XCTestCase {
 
 final class BridgeTerminationPolicyTests: XCTestCase {
     func testTable() {
-        let stale = "daemon: stale shm ring, reattach"
-        let rows: [(BridgeRunState, Int32, String, StopReason?, BridgeTerminationOutcome)] = [
-            (.running, 44, "", nil, .loadedDriverMismatch),
-            (.starting, 44, "", .user, .loadedDriverMismatch),
-            (.error("x"), 44, "", nil, .ignore),
-            (.running, 1, "", nil, .autoRetry),
-            (.running, 1, "", .internal, .autoRetry),
-            (.running, 1, "", .user, .failWhileRunning),
-            (.running, 0, "", nil, .cleanExitWhileRunning),
-            (.running, 0, "", .user, .cleanExitWhileRunning),
-            (.starting, 42, stale, nil, .autoRetry),
-            (.starting, 42, stale, .internal, .autoRetry),
-            (.starting, 42, stale, .user, .failWhileStarting),
-            (.starting, 42, "other", nil, .failWhileStarting),
-            (.starting, 1, "", nil, .failWhileStarting),
-            (.starting, 0, "", nil, .failWhileStarting),
-            (.reconnecting, 1, "", nil, .ignore),
-            (.reconnecting, 0, "", nil, .ignore),
-            (.idle, 1, "", nil, .ignore),
-            (.error("x"), 1, "", nil, .ignore),
+        let rows: [(BridgeRunState, Int32, StopReason?, BridgeTerminationOutcome)] = [
+            (.running, 44, nil, .loadedDriverMismatch),
+            (.starting, 44, .user, .loadedDriverMismatch),
+            (.error("x"), 44, nil, .ignore),
+            (.running, 43, nil, .helperAlreadyRunning),
+            (.running, 43, .internal, .helperAlreadyRunning),
+            (.running, 43, .user, .helperAlreadyRunning),
+            (.starting, 43, nil, .helperAlreadyRunning),
+            (.reconnecting, 43, nil, .ignore),
+            (.running, 42, nil, .autoRetry),
+            (.running, 42, .user, .failWhileRunning),
+            (.starting, 42, nil, .failWhileStarting),
+            (.running, 1, nil, .autoRetry),
+            (.running, 1, .internal, .autoRetry),
+            (.running, 1, .user, .failWhileRunning),
+            (.running, 0, nil, .cleanExitWhileRunning),
+            (.running, 0, .user, .cleanExitWhileRunning),
+            (.starting, 1, nil, .failWhileStarting),
+            (.starting, 0, nil, .failWhileStarting),
+            (.reconnecting, 1, nil, .ignore),
+            (.reconnecting, 0, nil, .ignore),
+            (.idle, 1, nil, .ignore),
+            (.error("x"), 1, nil, .ignore),
         ]
-        for (state, status, stderr, reason, expected) in rows {
+        for (state, status, reason, expected) in rows {
             XCTAssertEqual(
-                BridgeTerminationPolicy.classify(state: state, exitStatus: status, stderr: stderr, lastStopReason: reason),
+                BridgeTerminationPolicy.classify(state: state, exitStatus: status, lastStopReason: reason),
                 expected,
                 "state=\(state) status=\(status) reason=\(String(describing: reason))"
             )
         }
+    }
+
+    func testDaemonExitCodesMatchHelper() {
+        XCTAssertEqual(DaemonExitCode.staleShmRing.rawValue, 42)
+        XCTAssertEqual(DaemonExitCode.singletonBusy.rawValue, 43)
+        XCTAssertEqual(DaemonExitCode.loadedDriverBuildMismatch.rawValue, 44)
+        XCTAssertNil(DaemonExitCode(rawValue: 1))
+        XCTAssertNil(DaemonExitCode(rawValue: 0))
     }
 }

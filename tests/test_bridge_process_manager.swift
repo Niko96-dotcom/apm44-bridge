@@ -1140,7 +1140,29 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
-    func testRecoverableStaleRingExitTriggersRetry() async {
+    func testStaleRingExitRelaunchesVirtualDeviceHelper() async {
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeTiming(retryDelays: [0], stabilityWindow: 15)
+        )
+
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertEqual(launcher.lastProcess?.arguments?.first, "--virtual-device")
+
+        launcher.nextTerminationStatus = 42
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        launcher.nextTerminationStatus = nil
+        await waitUntil { launcher.makeCount == 2 && manager.state == .running }
+
+        XCTAssertEqual(launcher.makeCount, 2)
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.lastProcess?.arguments?.first, "--virtual-device")
+    }
+
+    func testHelperAlreadyRunningExitShowsErrorWithoutRetry() async {
         let (manager, _, launcher, _) = await makeManager(
             timing: BridgeTiming(retryDelays: [60], stabilityWindow: 15)
         )
@@ -1148,21 +1170,21 @@ final class BridgeProcessManagerTests: XCTestCase {
         manager.start()
         XCTAssertEqual(manager.state, .running)
 
-        writeStderr("stale shm ring: could not remap shared-memory ring", launcher: launcher)
+        let generationBefore = manager.retryGeneration
+        launcher.nextTerminationStatus = DaemonExitCode.singletonBusy.rawValue
+        writeStderr("error: another apm44-bridge helper already owns the singleton lock", launcher: launcher)
         await settlePipeDelivery()
-        launcher.nextTerminationStatus = 42
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
 
-        if case .reconnecting = manager.state {
-            XCTAssertEqual(
-                manager.bannerMessage,
-                AppStrings.reconnectingAttempt(current: 1, max: 4)
-            )
-        } else {
-            XCTFail("Expected reconnecting after recoverable stale ring exit, got \(manager.state)")
-        }
+        XCTAssertEqual(manager.state, .error(AppStrings.helperAlreadyRunning))
+        XCTAssertEqual(manager.bannerMessage, AppStrings.helperAlreadyRunning)
+        XCTAssertEqual(manager.retryGeneration, generationBefore)
+        XCTAssertEqual(launcher.makeCount, 1)
+        // Clearing the notice must not reveal a reconnecting banner: exit 43 schedules no retry.
+        manager.bannerMessage = nil
+        XCTAssertNil(manager.bannerMessage)
     }
 
     func testStaleRingFailureMessageIsActionable() async {
@@ -1315,7 +1337,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testLoadedDriverBuildMismatchWhileRunningShowsErrorWithoutRetry() async {
-        XCTAssertEqual(BridgeProcessManager.loadedDriverBuildMismatchExitStatus, 44)
+        XCTAssertEqual(DaemonExitCode.loadedDriverBuildMismatch.rawValue, 44)
         for preState in ["running", "starting"] {
             let (manager, _, launcher, _) = await makeManager(
                 timing: BridgeTiming(retryDelays: [60], stabilityWindow: 15)
@@ -1328,7 +1350,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             }
 
             let generationBefore = manager.retryGeneration
-            launcher.nextTerminationStatus = BridgeProcessManager.loadedDriverBuildMismatchExitStatus
+            launcher.nextTerminationStatus = DaemonExitCode.loadedDriverBuildMismatch.rawValue
             if let proc = launcher.lastProcess {
                 await launcher.fireTermination(for: proc)
             }
@@ -1370,7 +1392,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             )
         }
 
-        launcher.nextTerminationStatus = 44
+        launcher.nextTerminationStatus = DaemonExitCode.loadedDriverBuildMismatch.rawValue
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }

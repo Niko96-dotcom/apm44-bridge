@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -57,7 +58,8 @@ TEST_CASE("testSecondLaunchRejectedOrAdopted", "[process][singleton][F-07]") {
   REQUIRE(child >= 0);
   if (child == 0) {
     apm44::ProcessSingletonLock second;
-    _exit(second.acquire(path) ? 1 : 0);
+    const bool acquired = second.acquire(path);
+    _exit(!acquired && second.heldByAnotherProcess() ? 0 : 1);
   }
 
   int status = 0;
@@ -70,4 +72,18 @@ TEST_CASE("testSecondLaunchRejectedOrAdopted", "[process][singleton][F-07]") {
   REQUIRE(replacement.acquire(path));
   replacement.release();
   ::unlink(path.c_str());
+}
+
+TEST_CASE("unusable singleton lock path is not reported as held elsewhere",
+          "[process][singleton]") {
+  const std::string path = "/tmp/apm44-singleton-dir." +
+                           std::to_string(static_cast<long long>(::getpid())) + ".lock";
+  ::rmdir(path.c_str());
+  REQUIRE(::mkdir(path.c_str(), 0700) == 0);
+
+  apm44::ProcessSingletonLock lock;
+  REQUIRE_FALSE(lock.acquire(path));
+  CHECK_FALSE(lock.heldByAnotherProcess());
+  CHECK_FALSE(lock.lastError().empty());
+  ::rmdir(path.c_str());
 }

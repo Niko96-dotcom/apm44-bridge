@@ -132,6 +132,15 @@ enum AppStrings {
             "Reload Core Audio or restart the Mac, then try Start again."
         )
     }
+    static var helperAlreadyRunning: String {
+        t("helper_already_running", "Another APM44 Bridge helper is already running.")
+    }
+    static var helperAlreadyRunningRecovery: String {
+        t(
+            "helper_already_running_recovery",
+            "Quit the other APM44 Bridge app, or quit apm44-bridge in Activity Monitor, then try Start again."
+        )
+    }
     static var buildIDMissingPlaceholder: String { t("build_id_missing", "missing") }
     static var bridgeStatus: String { t("bridge_status", "Bridge status") }
     static var stopped: String { t("stopped", "Stopped") }

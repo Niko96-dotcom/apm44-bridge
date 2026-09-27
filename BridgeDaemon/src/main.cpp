@@ -1,4 +1,5 @@
 #include "CliOptions.h"
+#include "DaemonExitCodes.h"
 #include "ParentDeathWatch.h"
 #include "ProcessSingletonLock.h"
 #include "engine/BridgeEngine.h"
@@ -17,9 +18,6 @@
 #include <unistd.h>
 
 namespace {
-
-constexpr int kExitStaleShmRing = 42;
-constexpr int kExitLoadedDriverBuildMismatch = 44;
 
 std::optional<apm44::BridgeDevicePair> ResolveDevices(const apm44::CliOptions& options,
                                                       bool requirePresent) {
@@ -267,7 +265,7 @@ int main(int argc, char* argv[]) {
   apm44::ProcessSingletonLock singleton;
   if (!singleton.acquire()) {
     std::cerr << "error: " << singleton.lastError() << "\n";
-    return 43;
+    return apm44::ExitCodeForSingletonFailure(singleton.heldByAnotherProcess());
   }
   if (options.parentWatchStdin) {
     apm44::StartParentDeathWatch(STDIN_FILENO, [] {
@@ -290,13 +288,12 @@ int main(int argc, char* argv[]) {
 
   apm44::BridgeEngine engine;
   if (!engine.prepare(*pair, engineOptions)) {
-    if (options.virtualDevice &&
-        engine.virtualFeedLastOpenErrorCode() ==
-            apm44::ShmRingErrorCode::ProducerBuildMismatch) {
-      return kExitLoadedDriverBuildMismatch;
+    const int code = apm44::ExitCodeForPrepareFailure(options.virtualDevice,
+                                                      engine.virtualFeedLastOpenErrorCode());
+    if (code == apm44::kExitFailure) {
+      std::cerr << "error: engine prepare failed\n";
     }
-    std::cerr << "error: engine prepare failed\n";
-    return 1;
+    return code;
   }
   if (!engine.start()) {
     std::cerr << "error: failed to start IOProcs\n";
@@ -318,7 +315,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "stale shm ring: could not remap shared-memory ring\n";
           }
           apm44::BridgeEngine::requestStop();
-          exitCode = kExitStaleShmRing;
+          exitCode = apm44::kExitStaleShmRing;
           break;
         }
         case apm44::BridgeEngine::VirtualFeedStaleAction::None:
