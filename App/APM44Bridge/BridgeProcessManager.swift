@@ -90,6 +90,9 @@ final class BridgeProcessManager: ObservableObject {
     private var stabilityTask: Task<Void, Never>?
     private var processHealth: BridgeProcessHealth = .stopped
     private var resumeAfterSystemWake = false
+    /// The newest device-list refresh; superseded refreshes await it.
+    private var newestDeviceRefresh: (generation: Int, task: Task<Bool?, Never>)?
+    private var hotplugEventGeneration = 0
     /// Lifetime observers; the manager outlives the app, so the tokens are
     /// retained without explicit removal.
     private var outputDeviceObserver: NSObjectProtocol?
@@ -232,6 +235,9 @@ final class BridgeProcessManager: ObservableObject {
         }
     }
 
+    /// A refresh that a newer one supersedes joins the newest refresh and
+    /// returns its result, so a superseded caller (wake, hotplug, the menu)
+    /// never reads "superseded" as a failed listing.
     @discardableResult
     func refreshDevices() async -> Bool {
         hotplugRefreshGeneration += 1
@@ -239,27 +245,40 @@ final class BridgeProcessManager: ObservableObject {
         refreshRoutingMode()
         resolveCachedBinaryURL()
         guard let url = binaryURL else {
+            newestDeviceRefresh = nil
             logger.error("Device list refresh blocked: missing binary")
             bannerMessage = AppStrings.bridgeNotFound
             return false
         }
-        do {
-            let source = deviceSource
-            let list = try await Task.detached {
-                try source.listDevices(binaryURL: url)
-            }.value
-            guard refreshGeneration == hotplugRefreshGeneration else {
+        let source = deviceSource
+        let refresh = Task { @MainActor () -> Bool? in
+            do {
+                let list = try await Task.detached {
+                    try source.listDevices(binaryURL: url)
+                }.value
+                guard refreshGeneration == self.hotplugRefreshGeneration else { return nil }
+                self.applyRefreshedDeviceList(list)
+                return true
+            } catch {
+                guard refreshGeneration == self.hotplugRefreshGeneration else { return nil }
+                logger.error("Device list refresh failed")
+                self.bannerMessage = AppStrings.couldNotListDevices
                 return false
             }
-            applyRefreshedDeviceList(list)
-            return true
-        } catch {
-            if refreshGeneration == hotplugRefreshGeneration {
-                logger.error("Device list refresh failed")
-                bannerMessage = AppStrings.couldNotListDevices
-            }
-            return false
         }
+        newestDeviceRefresh = (refreshGeneration, refresh)
+        var joinedGeneration = refreshGeneration
+        var result = await refresh.value
+        // nil means superseded: every newer refresh is recorded before its
+        // listing starts, so this loop only ever steps forward.
+        while result == nil {
+            guard let newest = newestDeviceRefresh, newest.generation > joinedGeneration else {
+                return false
+            }
+            joinedGeneration = newest.generation
+            result = await newest.task.value
+        }
+        return result ?? false
     }
 
     private func applyRefreshedDeviceList(_ list: [AudioDeviceRow]) {
@@ -520,6 +539,7 @@ final class BridgeProcessManager: ObservableObject {
 
     private func initiateUserStop() -> Bool {
         wasRunningBeforeDisconnect = false
+        resumeAfterSystemWake = false
         cancelRetryTask()
         cancelStabilityTask()
         retryBudget.clearAttemptKeepingDiagnostics()
@@ -634,7 +654,9 @@ final class BridgeProcessManager: ObservableObject {
         default:
             shouldResume = false
         }
-        resumeAfterSystemWake = shouldResume
+        // Keep an intent that a wake has not consumed yet: a sleep that
+        // lands during that wake finds the bridge already stopped.
+        resumeAfterSystemWake = resumeAfterSystemWake || shouldResume
         guard shouldResume else { return }
 
         logger.info("Bridge pausing for sleep")
@@ -649,35 +671,56 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func handleSystemDidWake() async {
+        // The intent stays in resumeAfterSystemWake across every await below,
+        // so a user stop meanwhile cancels it; it is consumed only at the end.
+        if resumeAfterSystemWake, case .stopping = state {
+            // The sleep stop is still in flight and start() would ignore
+            // .stopping, so wait for the termination first.
+            try? await waitForTermination(timeout: .seconds(11))
+        }
+        let refreshed = await refreshDevices()
         let shouldResume = resumeAfterSystemWake
         resumeAfterSystemWake = false
-        guard await refreshDevices() else {
-            if shouldResume {
-                logger.info("Bridge waiting for devices after wake")
-                state = .reconnecting
-                bannerMessage = AppStrings.waitingForDevicesAfterWake
-            }
+        guard shouldResume else { return }
+        if case .stopping = state {
+            logger.info("Bridge stop unfinished after wake")
+            parkAfterWake(banner: AppStrings.waitingForDevicesAfterWake)
             return
         }
-        guard shouldResume else { return }
+        guard refreshed else {
+            logger.info("Bridge waiting for devices after wake")
+            parkAfterWake(banner: AppStrings.waitingForDevicesAfterWake)
+            return
+        }
         guard let uid = settings.outputDeviceUid,
               let selected = devices.first(where: { $0.uid == uid }),
               selected.isAlive,
               selected.isMonitoringCompatible else {
             logger.info("Bridge output unavailable after wake")
-            wasRunningBeforeDisconnect = true
-            state = .reconnecting
-            connectionPhase = .stopped
-            bannerMessage = AppStrings.outputUnavailableAfterWake(deviceDisplayName)
+            parkAfterWake(banner: AppStrings.outputUnavailableAfterWake(deviceDisplayName))
             return
         }
         logger.info("Bridge resuming after wake")
         start()
     }
 
+    /// Parks a bridge that should resume after wake so the next hotplug with
+    /// the output present finishes the resume.
+    private func parkAfterWake(banner: String) {
+        wasRunningBeforeDisconnect = true
+        state = .reconnecting
+        connectionPhase = .stopped
+        bannerMessage = banner
+    }
+
     func handleHotplug() async {
+        hotplugEventGeneration += 1
+        let event = hotplugEventGeneration
         refreshRoutingMode()
         guard await refreshDevices() else { return }
+        // A newer hotplug joined the same refresh and handles this list;
+        // handling it twice would restart the bridge twice.
+        guard event == hotplugEventGeneration else { return }
 
         guard let uid = settings.outputDeviceUid else {
             if isRunning {

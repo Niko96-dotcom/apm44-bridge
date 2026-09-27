@@ -58,6 +58,7 @@ final class FakeBridgeDeviceSource: BridgeDeviceSource, @unchecked Sendable {
     private let lock = NSLock()
     private var _halCheck: HalBuildCheck
     private var _devices: [AudioDeviceRow]
+    private var pendingGates: [ListDevicesGate] = []
 
     init(halCheck: HalBuildCheck, devices: [AudioDeviceRow]) {
         self._halCheck = halCheck
@@ -96,10 +97,52 @@ final class FakeBridgeDeviceSource: BridgeDeviceSource, @unchecked Sendable {
         return _halCheck
     }
 
+    /// Holds the next unclaimed `listDevices` call inside the manager's
+    /// `Task.detached` until the returned gate is released.
+    func gateNextListing() -> ListDevicesGate {
+        let gate = ListDevicesGate()
+        lock.lock()
+        pendingGates.append(gate)
+        lock.unlock()
+        return gate
+    }
+
     func listDevices(binaryURL: URL) throws -> [AudioDeviceRow] {
+        lock.lock()
+        let gate = pendingGates.isEmpty ? nil : pendingGates.removeFirst()
+        lock.unlock()
+        gate?.hold()
         lock.lock()
         defer { lock.unlock() }
         return _devices
+    }
+}
+
+/// One held `listDevices` call. It blocks a cooperative-pool thread, so a
+/// test holds at most two at once and releases them in teardown.
+final class ListDevicesGate: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var held = false
+    private var released = false
+
+    var isHolding: Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return held && !released
+    }
+
+    func release() {
+        condition.lock()
+        released = true
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    fileprivate func hold() {
+        condition.lock()
+        held = true
+        while !released { condition.wait() }
+        condition.unlock()
     }
 }
 
@@ -152,6 +195,26 @@ final class BridgeProcessManagerTests: XCTestCase {
             await launcher.fireTermination(for: proc)
         }
         await task.value
+    }
+
+    /// Yields the main actor until `condition` holds or about a second passes.
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<200 {
+            if condition() { return }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    private func sleepCompletingTermination(
+        manager: BridgeProcessManager,
+        launcher: MockProcessLauncher
+    ) async {
+        let sleep = Task { await manager.handleSystemWillSleep() }
+        await waitUntil { manager.state == .stopping }
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await sleep.value
     }
 
     private func makeSettings() -> BridgeSettings {
@@ -520,6 +583,77 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 0)
     }
 
+    func testWakeDuringUnfinishedSleepStopResumesBridge() async {
+        let (manager, _, launcher, _) = await makeManager()
+        manager.start()
+        let sleepingProcess = launcher.lastProcess
+
+        let sleep = Task { await manager.handleSystemWillSleep() }
+        await waitUntil { manager.state == .stopping }
+        XCTAssertEqual(manager.state, .stopping)
+        var wakeFinished = false
+        let wake = Task {
+            await manager.handleSystemDidWake()
+            wakeFinished = true
+        }
+        // Wake must not finish while the sleep stop is still in flight.
+        await waitUntil { wakeFinished }
+        if let proc = sleepingProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await sleep.value
+        await wake.value
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testWakeWhoseRefreshIsSupersededByHotplugStillResumes() async {
+        let (manager, _, launcher, source) = await makeManager()
+        manager.start()
+        await sleepCompletingTermination(manager: manager, launcher: launcher)
+        XCTAssertEqual(manager.state, .idle)
+
+        let gate = source.gateNextListing()
+        addTeardownBlock { gate.release() }
+        let wake = Task { await manager.handleSystemDidWake() }
+        await waitUntil { gate.isHolding }
+        XCTAssertTrue(gate.isHolding)
+        await manager.handleHotplug()
+        gate.release()
+        await wake.value
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testUserStopDuringWakeCancelsResume() async {
+        let (manager, _, launcher, source) = await makeManager()
+        manager.start()
+        await sleepCompletingTermination(manager: manager, launcher: launcher)
+        XCTAssertEqual(manager.state, .idle)
+
+        let gate = source.gateNextListing()
+        addTeardownBlock { gate.release() }
+        let wake = Task { await manager.handleSystemDidWake() }
+        await waitUntil { gate.isHolding }
+        XCTAssertTrue(gate.isHolding)
+        manager.stop()
+        gate.release()
+        await wake.value
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
     func testUserStopNoAutoRetry() async {
         let (manager, _, launcher, _) = await makeManager(
             timing: BridgeTiming(retryDelays: [0.01], stabilityWindow: 15)
@@ -640,6 +774,60 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertGreaterThan(launcher.makeCount, makeCountBefore)
         XCTAssertEqual(manager.state, .running)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testOverlappingHotplugsRestartRunningBridgeOnce() async {
+        let (manager, _, launcher, source) = await makeManager()
+        manager.start()
+        let firstProcess = launcher.lastProcess
+        source.devices = [
+            AudioDeviceRow(
+                uid: testDevice.uid,
+                name: testDevice.name,
+                nominalRate: 48_000,
+                hasInput: false,
+                hasOutput: true,
+                bufferFrameSize: 256
+            )
+        ]
+        let olderGate = source.gateNextListing()
+        let newerGate = source.gateNextListing()
+        addTeardownBlock {
+            olderGate.release()
+            newerGate.release()
+        }
+
+        let older = Task { await manager.handleHotplug() }
+        await waitUntil { olderGate.isHolding }
+        let newer = Task { await manager.handleHotplug() }
+        await waitUntil { newerGate.isHolding }
+        XCTAssertTrue(olderGate.isHolding && newerGate.isHolding)
+        // The superseded refresh finishes first and joins the newer one, so
+        // both hotplugs resume together when the newer listing returns.
+        olderGate.release()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        newerGate.release()
+        await waitUntil { manager.state == .stopping }
+        if let proc = firstProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await waitUntil { launcher.makeCount >= 2 && manager.state == .running }
+        // A duplicate restart would stop the replacement right away.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        // Finish a duplicate restart's stop so both handlers return.
+        while manager.state == .stopping, let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+            await waitUntil { manager.state != .stopping }
+        }
+        await older.value
+        await newer.value
         manager.stop()
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
