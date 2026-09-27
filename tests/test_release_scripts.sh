@@ -732,8 +732,6 @@ run_pkg_replacement_script_check() {
   [[ -x "$preinstall" ]] || { echo "expected executable preinstall at $preinstall" >&2; exit 1; }
   [[ -x "$postinstall" ]] || { echo "expected executable postinstall at $postinstall" >&2; exit 1; }
 
-  assert_contains "$preinstall" 'rm -rf "/Applications/APM44 Bridge.app"'
-  assert_contains "$preinstall" 'rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"'
   assert_contains "$postinstall" 'APM44 Bridge.app missing after install'
   assert_contains "$postinstall" 'APM44Bridge.driver missing after install'
 
@@ -837,33 +835,36 @@ run_postinstall_case() {
   printf '%s\n' "$status" >"$TMP/$label.status"
 }
 
-assert_postinstall_status() {
+assert_installer_status() {
   local label="$1"
   local expected="$2"
   local actual
   actual="$(cat "$TMP/$label.status")"
   [[ "$actual" == "$expected" ]] || {
-    echo "$label: expected postinstall exit $expected, got $actual" >&2
+    echo "$label: expected exit $expected, got $actual" >&2
     cat "$TMP/$label.err" "$TMP/$label.calls" >&2
     exit 1
   }
 }
 
 # One call-log line, quoted the way the shims quote it, so word splitting shows.
-postinstall_call() {
+installer_call() {
   local line
   line="$(printf '%q ' "$@")"
   printf '%s' "${line% }"
 }
 
 # Assert that the call log holds exactly these lines, in this order.
-assert_postinstall_calls() {
+assert_installer_calls() {
   local label="$1"
   shift
   local expected="$TMP/$label.expected-calls"
-  printf '%s\n' "$@" >"$expected"
+  : >"$expected"
+  if (( $# > 0 )); then
+    printf '%s\n' "$@" >"$expected"
+  fi
   diff -u "$expected" "$TMP/$label.calls" >&2 || {
-    echo "$label: unexpected postinstall calls" >&2
+    echo "$label: unexpected installer script calls" >&2
     exit 1
   }
 }
@@ -907,45 +908,45 @@ EOF
   local manual_pkg="/Users/musician/Downloads/APM44Bridge-9.9.9.pkg"
   local sparkle_pkg="/private/var/root/Library/Caches/com.niko.apm44.menu/org.sparkle-project.Sparkle/Installation/ABC/APM44Bridge-9.9.9.pkg"
   local chown_call xattr_call kickstart sleep_call
-  chown_call="$(postinstall_call chown -R root:wheel "$driver")"
-  xattr_call="$(postinstall_call xattr -d com.apple.quarantine "$driver")"
-  kickstart="$(postinstall_call launchctl kickstart -k system/com.apple.audio.coreaudiod)"
-  sleep_call="$(postinstall_call sleep 4)"
+  chown_call="$(installer_call chown -R root:wheel "$driver")"
+  xattr_call="$(installer_call xattr -d com.apple.quarantine "$driver")"
+  kickstart="$(installer_call launchctl kickstart -k system/com.apple.audio.coreaudiod)"
+  sleep_call="$(installer_call sleep 4)"
 
   # A failed check still reloads Core Audio, after preinstall deleted the old driver.
   make_postinstall_root "$root" "9.9.9+abc" "9.9.9+def"
   run_postinstall_case "$postinstall" "$root" "postinstall-build-id-mismatch" "$manual_pkg" 0
-  assert_postinstall_status "postinstall-build-id-mismatch" 1
+  assert_installer_status "postinstall-build-id-mismatch" 1
   assert_contains "$TMP/postinstall-build-id-mismatch.err" "build ID mismatch: app=9.9.9+abc driver=9.9.9+def"
-  assert_postinstall_calls "postinstall-build-id-mismatch" "$chown_call" "$xattr_call" "$kickstart" "$sleep_call"
+  assert_installer_calls "postinstall-build-id-mismatch" "$chown_call" "$xattr_call" "$kickstart" "$sleep_call"
 
   # With no root set, a failing chown under set -e stops at the production driver
   # path and still reloads. Nothing after chown reads the real install.
   run_postinstall_case "$postinstall" "" "postinstall-production-chown-fails" "$manual_pkg" 0 1
-  assert_postinstall_status "postinstall-production-chown-fails" 1
-  assert_postinstall_calls "postinstall-production-chown-fails" \
-    "$(postinstall_call chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver)" \
+  assert_installer_status "postinstall-production-chown-fails" 1
+  assert_installer_calls "postinstall-production-chown-fails" \
+    "$(installer_call chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver)" \
     "$kickstart" "$sleep_call"
 
   # SIGTERM mid-install still reloads, and the exit status reports the signal.
   run_postinstall_case "$postinstall" "$root" "postinstall-sigterm" "$manual_pkg" 0 0 1
-  assert_postinstall_status "postinstall-sigterm" 143
-  assert_postinstall_calls "postinstall-sigterm" "$chown_call" "$xattr_call" "$kickstart" "$sleep_call"
+  assert_installer_status "postinstall-sigterm" 143
+  assert_installer_calls "postinstall-sigterm" "$chown_call" "$xattr_call" "$kickstart" "$sleep_call"
 
   # Success under Sparkle: fall back to killall, wait, and leave the relaunch to Sparkle.
   make_postinstall_root "$root" "9.9.9+abc" "9.9.9+abc"
   run_postinstall_case "$postinstall" "$root" "postinstall-sparkle-success" "$sparkle_pkg" 1
-  assert_postinstall_status "postinstall-sparkle-success" 0
-  assert_postinstall_calls "postinstall-sparkle-success" \
-    "$chown_call" "$xattr_call" "$kickstart" "$(postinstall_call killall coreaudiod)" "$sleep_call"
+  assert_installer_status "postinstall-sparkle-success" 0
+  assert_installer_calls "postinstall-sparkle-success" \
+    "$chown_call" "$xattr_call" "$kickstart" "$(installer_call killall coreaudiod)" "$sleep_call"
 
   # Success from a manual install: reload once, then open the app as the console user.
   run_postinstall_case "$postinstall" "$root" "postinstall-manual-success" "$manual_pkg" 0
-  assert_postinstall_status "postinstall-manual-success" 0
-  assert_postinstall_calls "postinstall-manual-success" \
+  assert_installer_status "postinstall-manual-success" 0
+  assert_installer_calls "postinstall-manual-success" \
     "$chown_call" "$xattr_call" "$kickstart" "$sleep_call" \
-    "$(postinstall_call stat -f%Su /dev/console)" \
-    "$(postinstall_call sudo -u musician open "$app")"
+    "$(installer_call stat -f%Su /dev/console)" \
+    "$(installer_call sudo -u musician open "$app")"
 }
 
 write_guard_test_plist() {
@@ -1026,19 +1027,129 @@ run_preinstall_downgrade_guard_check() {
     run_preinstall_guard_case "$preinstall" "$target" "1" "preinstall-guard-unparseable" "Cannot compare the installed APM44 Bridge app version"
     [[ -d "$target/Applications/APM44 Bridge.app" ]] || { echo "unparseable guard must not delete fake app" >&2; exit 1; }
   done
+}
 
-  # Non-startup-disk targets are refused before any side effect. Never execute
-  # that path here: outside guard-only mode the script kills and deletes the
-  # real install, so check the ordering statically instead.
-  assert_contains "$preinstall" "can only be installed on the startup disk"
-  local refuse_line kill_line rm_line
-  refuse_line="$(grep -n "can only be installed on the startup disk" "$preinstall" | head -1 | cut -d: -f1)"
-  kill_line="$(grep -n "pkill" "$preinstall" | head -1 | cut -d: -f1)"
-  rm_line="$(grep -n "rm -rf" "$preinstall" | head -1 | cut -d: -f1)"
-  [[ "$refuse_line" -lt "$kill_line" && "$refuse_line" -lt "$rm_line" ]] || {
-    echo "startup-disk refusal must precede pkill ($kill_line) and rm -rf ($rm_line); found at $refuse_line" >&2
-    exit 1
-  }
+# Run the generated preinstall in full, without guard-only mode. BASH_ENV
+# functions replace every side-effecting command. The sandbox hides the real
+# installed bundles from the downgrade guard, and a missing shim can neither
+# run the real command, write the install locations nor signal a process.
+# APM44_TEST_PGREP_RUNNING is how many pgrep calls per pattern report a match,
+# and APM44_TEST_CONSOLE_USER is who stat reports on /dev/console.
+run_preinstall_case() {
+  local preinstall="$1"
+  local target="$2"
+  local label="$3"
+  local pgrep_running="$4"
+  local console_user="${5:-musician}"
+  : >"$TMP/$label.calls"
+  local status=0
+  env -u SHELLOPTS -u APM44_PREINSTALL_GUARD_ONLY \
+    APM44_TEST_CALLS="$TMP/$label.calls" \
+    APM44_TEST_PGREP_RUNNING="$pgrep_running" \
+    APM44_TEST_CONSOLE_USER="$console_user" \
+    BASH_ENV="$TMP/preinstall-shims.bash" \
+    sandbox-exec -f "$TMP/preinstall-sandbox.sb" \
+    /bin/bash "$preinstall" "$PKG" / "$target" >"$TMP/$label.out" 2>"$TMP/$label.err" || status=$?
+  printf '%s\n' "$status" >"$TMP/$label.status"
+}
+
+run_preinstall_execution_cases() {
+  run_pkg_builder_case one success "pkg-preinstall-exec"
+
+  local preinstall="$TMP/preinstall-under-test"
+  cp "$ROOT/build/signing/pkg-scripts/preinstall" "$preinstall"
+  cat >"$TMP/preinstall-shims.bash" <<'EOF'
+apm44_test_log() {
+  local line
+  line="$(printf '%q ' "$@")"
+  printf '%s\n' "${line% }" >>"$APM44_TEST_CALLS"
+}
+apm44_test_pgrep_app=0
+apm44_test_pgrep_helper=0
+pgrep() {
+  local calls
+  case "$*" in
+    "-f ^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge"*)
+      apm44_test_pgrep_app=$((apm44_test_pgrep_app + 1))
+      calls="$apm44_test_pgrep_app"
+      ;;
+    "-f ^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge"*)
+      apm44_test_pgrep_helper=$((apm44_test_pgrep_helper + 1))
+      calls="$apm44_test_pgrep_helper"
+      ;;
+    *)
+      apm44_test_log pgrep "$@"
+      return 1
+      ;;
+  esac
+  (( calls <= APM44_TEST_PGREP_RUNNING ))
+}
+stat() {
+  case "$1" in
+    -f%Su) echo "$APM44_TEST_CONSOLE_USER" ;;
+    -f%u) [[ "$APM44_TEST_CONSOLE_USER" == root ]] && echo 0 || echo 501 ;;
+    *) apm44_test_log stat "$@"; return 1 ;;
+  esac
+}
+launchctl() { apm44_test_log launchctl "$@"; }
+sudo() { apm44_test_log sudo "$@"; }
+osascript() { apm44_test_log osascript "$@"; }
+pkill() { apm44_test_log pkill "$@"; }
+killall() { apm44_test_log killall "$@"; }
+rm() { apm44_test_log rm "$@"; }
+sleep() { :; }
+EOF
+  cat >"$TMP/preinstall-sandbox.sb" <<'EOF'
+(version 1)
+(allow default)
+(deny file-read* (subpath "/Applications/APM44 Bridge.app") (subpath "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"))
+(deny file-write* (subpath "/Applications") (subpath "/Library/Audio"))
+(deny process-exec* (literal "/bin/rm") (literal "/usr/bin/pkill") (literal "/usr/bin/pgrep") (literal "/usr/bin/killall") (literal "/bin/launchctl") (literal "/usr/bin/sudo") (literal "/usr/bin/osascript"))
+(deny signal (target others))
+EOF
+
+  local app_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
+  local helper_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge([[:space:]]|$)'
+  local quit_call rm_app rm_driver
+  quit_call="$(installer_call launchctl asuser 501 sudo -u musician osascript -e 'tell application id "com.niko.apm44.menu" to quit')"
+  rm_app="$(installer_call rm -rf "/Applications/APM44 Bridge.app")"
+  rm_driver="$(installer_call rm -rf /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver)"
+
+  # Another volume is refused before anything is quit, killed or deleted.
+  run_preinstall_case "$preinstall" "$TMP/other-volume" "preinstall-other-volume" 1000
+  assert_installer_status "preinstall-other-volume" 1
+  assert_contains "$TMP/preinstall-other-volume.err" "can only be installed on the startup disk (target: $TMP/other-volume)"
+  assert_installer_calls "preinstall-other-volume"
+
+  # The app quits within the polite wait: no signals, then both bundles go.
+  run_preinstall_case "$preinstall" / "preinstall-quits-in-time" 5
+  assert_installer_status "preinstall-quits-in-time" 0
+  assert_installer_calls "preinstall-quits-in-time" "$quit_call" "$rm_app" "$rm_driver"
+
+  # At the login window the console user is root: nobody to ask, so no quit.
+  run_preinstall_case "$preinstall" / "preinstall-root-console" 0 root
+  assert_installer_status "preinstall-root-console" 0
+  assert_installer_calls "preinstall-root-console" "$rm_app" "$rm_driver"
+
+  # Still running after the 20-poll wait: TERM each, and both exit before KILL.
+  run_preinstall_case "$preinstall" / "preinstall-term" 21
+  assert_installer_status "preinstall-term" 0
+  assert_installer_calls "preinstall-term" \
+    "$quit_call" \
+    "$(installer_call pkill -TERM -f "$app_pattern")" \
+    "$(installer_call pkill -TERM -f "$helper_pattern")" \
+    "$rm_app" "$rm_driver"
+
+  # Never exits: TERM, then KILL, for the app and then the helper.
+  run_preinstall_case "$preinstall" / "preinstall-kill" 1000
+  assert_installer_status "preinstall-kill" 0
+  assert_installer_calls "preinstall-kill" \
+    "$quit_call" \
+    "$(installer_call pkill -TERM -f "$app_pattern")" \
+    "$(installer_call pkill -KILL -f "$app_pattern")" \
+    "$(installer_call pkill -TERM -f "$helper_pattern")" \
+    "$(installer_call pkill -KILL -f "$helper_pattern")" \
+    "$rm_app" "$rm_driver"
 }
 
 run_notary_case() {
@@ -1885,6 +1996,7 @@ run_postinstall_launch_guard_behavior_check
 run_postinstall_execution_cases
 
 run_preinstall_downgrade_guard_check
+run_preinstall_execution_cases
 
 run_dmg_checksum_artifact_check        # [DOC-04]
 
