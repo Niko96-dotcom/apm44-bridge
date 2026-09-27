@@ -56,12 +56,6 @@ final class AppStringsChromeTests: XCTestCase {
         XCTAssertFalse(AppStrings.selectedOutputGone.localizedCaseInsensitiveContains("choose another"))
     }
 
-    func testPreviousOutputErrorIsOneLine() {
-        let text = AppStrings.previousOutputUnavailable(name: "Studio Speakers")
-        XCTAssertTrue(text.contains("Studio Speakers"))
-        XCTAssertEqual(text.filter { $0 == "." }.count, 0)
-    }
-
     func testStoppedStatusOmitsRoutingEcho() {
         XCTAssertFalse(AppStrings.stopped.isEmpty)
         XCTAssertTrue(AppStrings.pathHal(output: "AirPods").contains("AirPods"))

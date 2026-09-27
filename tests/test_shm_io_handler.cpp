@@ -117,45 +117,6 @@ TEST_CASE("HAL producer preserves a complete 4096-frame callback",
   shm_unlink(ringName.c_str());
 }
 
-TEST_CASE("ShmIoHandler combines Float32 mono lanes into stereo shm frames",
-          "[shm_io_handler]") {
-  const std::string ringName = TestRingName('m');
-  apm44::ShmIoHandler handler(ringName);
-  REQUIRE(handler.OnStartIO() == kAudioHardwareNoError);
-
-  apm44::MmapShmRing consumer(ringName);
-  REQUIRE(consumer.open(apm44::ShmRingRole::Consumer));
-  consumer.setDaemonReady();
-
-  auto context = std::make_shared<aspl::Context>();
-  aspl::DeviceParameters deviceParams;
-  deviceParams.SampleRate = apm44::kApm44DriverSampleRate;
-  deviceParams.ChannelCount = apm44::kApm44DriverChannelCount;
-  auto device = std::make_shared<aspl::Device>(context, deviceParams);
-  auto left = std::make_shared<apm44::Apm44OutputStream>(context, device, 1);
-  auto right = std::make_shared<apm44::Apm44OutputStream>(context, device, 2);
-
-  std::vector<float> leftFrames{0.25f, 0.5f, 0.75f};
-  std::vector<float> rightFrames{-0.25f, -0.5f, -0.75f};
-
-  handler.OnProcessMixedOutput(left, 0.0, 512.0, leftFrames.data(), 3, 1);
-
-  std::vector<float> out(6);
-  REQUIRE(consumer.popInterleaved(out.data(), 3) == 0);
-
-  handler.OnProcessMixedOutput(right, 0.0, 512.0, rightFrames.data(), 3, 1);
-
-  REQUIRE(consumer.popInterleaved(out.data(), 3) == 3);
-  for (std::size_t frame = 0; frame < 3; ++frame) {
-    REQUIRE(out[frame * 2 + 0] == Catch::Approx(leftFrames[frame]).margin(1e-7f));
-    REQUIRE(out[frame * 2 + 1] == Catch::Approx(rightFrames[frame]).margin(1e-7f));
-  }
-
-  handler.OnStopIO();
-  consumer.close();
-  shm_unlink(ringName.c_str());
-}
-
 TEST_CASE("ShmIoHandler serialized left-right mono-lane callbacks form stereo frames",
           "[shm_io_handler][MONO-02]") {
   const std::string ringName = TestRingName('z');
@@ -180,6 +141,13 @@ TEST_CASE("ShmIoHandler serialized left-right mono-lane callbacks form stereo fr
   std::vector<float> rightB{-0.30f, -0.40f};
 
   handler.OnProcessMixedOutput(left, 0.0, 1024.0, leftA.data(), 2, 1);
+  // Carried over from the removed `ShmIoHandler combines Float32
+  // mono lanes into stereo shm frames`: nothing is popped after only
+  // the first lane arrives.
+  {
+    std::vector<float> probe(4);
+    REQUIRE(consumer.popInterleaved(probe.data(), 2) == 0);
+  }
   handler.OnProcessMixedOutput(right, 0.0, 1024.0, rightA.data(), 2, 1);
   handler.OnProcessMixedOutput(left, 0.0, 1026.0, leftB.data(), 2, 1);
   handler.OnProcessMixedOutput(right, 0.0, 1026.0, rightB.data(), 2, 1);

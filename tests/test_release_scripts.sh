@@ -920,28 +920,22 @@ run_release_all_unnotarized_override() {
   assert_not_contains "$LOG" "notarytool submit"
 }
 
-run_release_all_notary_ready_sequence() {
-  local out="$TMP/release-all-notary-ready.out"
-
-  reset_log
-  env \
-    PATH="$FAKE_BIN:$PATH" \
-    APM44_FAKE_XCRUN_LOG="$LOG" \
-    APM44_FAKE_NOTARY_HISTORY=ok \
-    /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
-
-  assert_contains "$LOG" "APM44_DMG_SKIP_IMAGE=1 bash scripts/build-release-dmg.sh"
-  assert_contains "$LOG" "bash scripts/notary-dry-run.sh"
-  assert_contains "$LOG" "xcrun stapler staple build/Release/APM44 Bridge.app"
-  assert_contains "$LOG" "xcrun stapler validate build/Release/APM44 Bridge.app"
-  assert_contains "$LOG" "xcrun stapler staple build/Driver/APM44Bridge.driver"
-  assert_contains "$LOG" "xcrun stapler validate build/Driver/APM44Bridge.driver"
-  assert_contains "$LOG" "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh"
-  assert_contains "$LOG" "bash scripts/notarize-release-dmg.sh"
+# Fails unless both steps are in $LOG and the first occurrence of $1 precedes that of $2.
+assert_log_order() {
+  local first second
+  first="$(grep -nF "$1" "$LOG" | head -1 | cut -d: -f1)"
+  second="$(grep -nF "$2" "$LOG" | head -1 | cut -d: -f1)"
+  if [[ -z "$first" || -z "$second" || "$first" -ge "$second" ]]; then
+    echo "release-all ready sequence: expected '$1' before '$2'" >&2
+    cat "$LOG" >&2
+    exit 1
+  fi
 }
 
-run_release_all_pkg_gate_sequence() {
-  local out="$TMP/release-all-pkg-gate.out"
+# One stubbed release-all run proves the ready path's steps and their ordering:
+# DIST-01 staple-before-package, REL-01 codesign-before-dry-run, and the PKG gate.
+run_release_all_ready_sequence() {
+  local out="$TMP/release-all-ready.out"
 
   reset_log
   env \
@@ -950,35 +944,34 @@ run_release_all_pkg_gate_sequence() {
     APM44_FAKE_NOTARY_HISTORY=ok \
     /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
 
-  assert_contains "$LOG" "bash scripts/build-release-pkg.sh"
-  assert_contains "$LOG" "bash scripts/notarize-release-pkg.sh"
-  assert_contains "$LOG" "bash scripts/verify-release-dmg-layout.sh"
+  assert_contains "$LOG" "xcrun stapler validate build/Release/APM44 Bridge.app"
   assert_not_contains "$out" "SKIP pkg"
 
-  local driver_validate_line
-  local pkg_build_line
-  local pkg_notarize_line
-  local package_only_line
-  local layout_verify_line
-  local dmg_notarize_line
-  driver_validate_line="$(grep -n "xcrun stapler validate build/Driver/APM44Bridge.driver" "$LOG" | head -1 | cut -d: -f1)"
-  pkg_build_line="$(grep -n "bash scripts/build-release-pkg.sh" "$LOG" | head -1 | cut -d: -f1)"
-  pkg_notarize_line="$(grep -n "bash scripts/notarize-release-pkg.sh" "$LOG" | head -1 | cut -d: -f1)"
-  package_only_line="$(grep -n "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
-  layout_verify_line="$(grep -n "bash scripts/verify-release-dmg-layout.sh" "$LOG" | head -1 | cut -d: -f1)"
-  dmg_notarize_line="$(grep -n "bash scripts/notarize-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
+  local skip_image="APM44_DMG_SKIP_IMAGE=1 bash scripts/build-release-dmg.sh"
+  local codesign_verify="bash scripts/codesign-verify-release.sh"
+  local notary_dry_run="bash scripts/notary-dry-run.sh"
+  local app_staple="xcrun stapler staple build/Release/APM44 Bridge.app"
+  local driver_staple="xcrun stapler staple build/Driver/APM44Bridge.driver"
+  local driver_validate="xcrun stapler validate build/Driver/APM44Bridge.driver"
+  local pkg_build="bash scripts/build-release-pkg.sh"
+  local pkg_notarize="bash scripts/notarize-release-pkg.sh"
+  local package_only="APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh"
+  local layout_verify="bash scripts/verify-release-dmg-layout.sh"
+  local dmg_notarize="bash scripts/notarize-release-dmg.sh"
 
-  if [[ -z "$driver_validate_line" || -z "$pkg_build_line" || -z "$pkg_notarize_line" || -z "$package_only_line" || -z "$layout_verify_line" || -z "$dmg_notarize_line" ]]; then
-    echo "release-all PKG gate: expected lines missing from log" >&2
-    cat "$LOG" >&2
-    exit 1
-  fi
-
-  if [[ "$driver_validate_line" -ge "$pkg_build_line" || "$pkg_build_line" -ge "$pkg_notarize_line" || "$pkg_notarize_line" -ge "$package_only_line" || "$package_only_line" -ge "$layout_verify_line" || "$layout_verify_line" -ge "$dmg_notarize_line" ]]; then
-    echo "release-all PKG gate order is wrong" >&2
-    cat "$LOG" >&2
-    exit 1
-  fi
+  # DIST-01: inner app/driver are stapled before the final DMG is packaged and notarized.
+  assert_log_order "$skip_image" "$app_staple"
+  assert_log_order "$app_staple" "$package_only"
+  assert_log_order "$driver_staple" "$package_only"
+  assert_log_order "$package_only" "$dmg_notarize"
+  # REL-01: codesign verification precedes the notary dry-run.
+  assert_log_order "$codesign_verify" "$notary_dry_run"
+  # PKG gate: validated driver -> pkg build -> pkg notarize -> DMG package -> layout -> notarize.
+  assert_log_order "$driver_validate" "$pkg_build"
+  assert_log_order "$pkg_build" "$pkg_notarize"
+  assert_log_order "$pkg_notarize" "$package_only"
+  assert_log_order "$package_only" "$layout_verify"
+  assert_log_order "$layout_verify" "$dmg_notarize"
 }
 
 run_dmg_checksum_artifact_check() {
@@ -1246,66 +1239,6 @@ run_verify_release_pkg_reject_case() {
     exit 1
   fi
   assert_contains "$out" "$expected"
-}
-
-# DIST-01: enforce that inner app/driver are stapled before the final DMG is packaged,
-# and that the final DMG is notarized after it is built from the stapled artifacts.
-run_dist_01_staple_before_dmg_order() {
-  local out="$TMP/dist-01-order.out"
-
-  reset_log
-  env \
-    PATH="$FAKE_BIN:$PATH" \
-    APM44_FAKE_XCRUN_LOG="$LOG" \
-    APM44_FAKE_NOTARY_HISTORY=ok \
-    /bin/bash "$ROOT/scripts/release-all.sh" >"$out" 2>&1
-
-  local skip_image_line
-  local app_staple_line
-  local codesign_verify_line
-  local notary_dry_run_line
-  local driver_staple_line
-  local package_only_line
-  local dmg_notarize_line
-
-  skip_image_line="$(grep -n "APM44_DMG_SKIP_IMAGE=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
-  app_staple_line="$(grep -n "xcrun stapler staple build/Release/APM44 Bridge.app" "$LOG" | head -1 | cut -d: -f1)"
-  codesign_verify_line="$(grep -n "bash scripts/codesign-verify-release.sh" "$LOG" | head -1 | cut -d: -f1)"
-  notary_dry_run_line="$(grep -n "bash scripts/notary-dry-run.sh" "$LOG" | head -1 | cut -d: -f1)"
-  driver_staple_line="$(grep -n "xcrun stapler staple build/Driver/APM44Bridge.driver" "$LOG" | head -1 | cut -d: -f1)"
-  package_only_line="$(grep -n "APM44_DMG_PACKAGE_ONLY=1 bash scripts/build-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
-  dmg_notarize_line="$(grep -n "bash scripts/notarize-release-dmg.sh" "$LOG" | head -1 | cut -d: -f1)"
-
-  if [[ -z "$skip_image_line" || -z "$app_staple_line" || -z "$codesign_verify_line" || -z "$notary_dry_run_line" || -z "$driver_staple_line" || -z "$package_only_line" || -z "$dmg_notarize_line" ]]; then
-    echo "DIST-01: expected staple/package/notarize lines missing from log" >&2
-    cat "$LOG" >&2
-    exit 1
-  fi
-
-  if [[ "$skip_image_line" -ge "$app_staple_line" ]]; then
-    echo "DIST-01: first DMG pass must skip the public image before staple" >&2
-    exit 1
-  fi
-
-  if [[ "$codesign_verify_line" -ge "$notary_dry_run_line" ]]; then
-    echo "REL-01: codesign verification must occur before notary dry-run" >&2
-    exit 1
-  fi
-
-  if [[ "$app_staple_line" -ge "$package_only_line" ]]; then
-    echo "DIST-01: app staple must occur before package-only DMG build" >&2
-    exit 1
-  fi
-
-  if [[ "$driver_staple_line" -ge "$package_only_line" ]]; then
-    echo "DIST-01: driver staple must occur before package-only DMG build" >&2
-    exit 1
-  fi
-
-  if [[ "$package_only_line" -ge "$dmg_notarize_line" ]]; then
-    echo "DIST-01: package-only DMG build must occur before DMG notarization" >&2
-    exit 1
-  fi
 }
 
 run_workflow_action_trust_check() {
@@ -1699,9 +1632,7 @@ run_notary_case "scripts/notarize-release-dmg.sh" APM44_DMG_PATH "$DMG" malforme
 run_release_all_missing_credentials      # [REL-02]
 run_release_all_unnotarized_override     # [REL-02]
 
-run_release_all_notary_ready_sequence
-
-run_release_all_pkg_gate_sequence
+run_release_all_ready_sequence      # [DIST-01][REL-01]
 
 run_pkg_identity_gate_cases
 
@@ -1732,8 +1663,6 @@ run_pkg_validation_order_check
 run_verify_release_pkg_check
 
 run_verify_release_pkg_relocate_reject_check
-
-run_dist_01_staple_before_dmg_order      # [DIST-01]
 
 run_release_workflow_does_not_upload_unsigned_installables
 

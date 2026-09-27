@@ -35,15 +35,15 @@ final class BridgeStartReadinessTests: XCTestCase {
     }
 
     func testStaleSelectionKeepsNamedUnavailableReason() {
-        XCTAssertEqual(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: "gone",
-                devices: [compatible],
-                lastKnownName: "Studio Speakers"
-            ),
-            AppStrings.previousOutputUnavailable(name: "Studio Speakers")
+        let reason = BridgeStartReadiness.blockedReason(
+            binaryMissing: false,
+            selectedUid: "gone",
+            devices: [compatible],
+            lastKnownName: "Studio Speakers"
         )
+        XCTAssertEqual(reason, AppStrings.previousOutputUnavailable(name: "Studio Speakers"))
+        XCTAssertTrue(reason?.contains("Studio Speakers") == true)
+        XCTAssertEqual(reason?.filter { $0 == "." }.count, 0)
     }
 
     func testIncompatibleSelectionUsesLocalizedIssue() {
@@ -116,7 +116,11 @@ final class HalBuildIDTests: XCTestCase {
     }
 
     func testMissingOrMalformedIDsFailClosed() {
-        for bad in [nil, "", "   ", "unknown", "$(APM44_BUILD_ID)", "${APM44_BUILD_ID}"] {
+        for bad in [nil, "", "   ", "unknown", "Unknown", "UNKNOWN", "UnKnOwN", "  Unknown  ", "$(APM44_BUILD_ID)", "${APM44_BUILD_ID}", "$APM44_BUILD_ID"] {
+            XCTAssertNil(
+                HalDriverDetector.normalizedBuildID(bad),
+                "normalizedBuildID(\(String(describing: bad))) must be nil"
+            )
             XCTAssertFalse(
                 HalDriverDetector.buildIDsMatch(appBuildID: bad, driverBuildID: driverID),
                 "app ID \(String(describing: bad)) must not match"
@@ -125,8 +129,16 @@ final class HalBuildIDTests: XCTestCase {
                 HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: bad),
                 "driver ID \(String(describing: bad)) must not match"
             )
+            XCTAssertFalse(
+                HalDriverDetector.buildIDsMatch(appBuildID: bad, driverBuildID: bad),
+                "placeholder \(String(describing: bad)) must never match itself"
+            )
         }
         XCTAssertFalse(HalDriverDetector.buildIDsMatch(appBuildID: nil, driverBuildID: nil))
+        XCTAssertTrue(
+            HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: appID),
+            "valid exact full-ID comparison must still match"
+        )
     }
 
     func testWhitespaceIsTrimmedBeforeCompare() {
@@ -136,41 +148,15 @@ final class HalBuildIDTests: XCTestCase {
         ))
     }
 
-    func testUnknownRejectedInAnyCaseAndPlaceholdersFailClosed() {
-        for bad in ["unknown", "Unknown", "UNKNOWN", "UnKnOwN", "  Unknown  ", "$APM44_BUILD_ID"] {
-            XCTAssertNil(
-                HalDriverDetector.normalizedBuildID(bad),
-                "normalizedBuildID(\(bad)) must be nil"
-            )
-            XCTAssertFalse(
-                HalDriverDetector.buildIDsMatch(appBuildID: bad, driverBuildID: driverID),
-                "app ID \(bad) must not match"
-            )
-            XCTAssertFalse(
-                HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: bad),
-                "driver ID \(bad) must not match"
-            )
-            XCTAssertFalse(
-                HalDriverDetector.buildIDsMatch(appBuildID: bad, driverBuildID: bad),
-                "placeholder \(bad) must never match itself"
-            )
-        }
-        XCTAssertTrue(
-            HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: appID),
-            "valid exact full-ID comparison must still match"
-        )
-    }
-
     func testMismatchStatusIsNotReady() {
-        XCTAssertEqual(
-            HalDriverDetector.status(
-                halPresent: true,
-                appBuildID: appID,
-                driverBuildID: driverID,
-                driverBundleOnDisk: true
-            ),
-            .buildMismatch
+        let status = HalDriverDetector.status(
+            halPresent: true,
+            appBuildID: appID,
+            driverBuildID: driverID,
+            driverBundleOnDisk: true
         )
+        XCTAssertEqual(status, .buildMismatch)
+        XCTAssertNotEqual(status, .ready)
     }
 
     func testMatchingStatusIsReady() {

@@ -4,16 +4,13 @@ import XCTest
 
 @MainActor
 final class LaunchAtLoginControllerTests: XCTestCase {
-    func testMapsRequiresApprovalAsDistinctObservableState() {
-        XCTAssertEqual(
-            LaunchAtLoginController.map(.requiresApproval),
-            .requiresApproval
-        )
-    }
-
     func testMapsEnabledAndDisabledStates() {
         XCTAssertEqual(LaunchAtLoginController.map(.enabled), .enabled)
         XCTAssertEqual(LaunchAtLoginController.map(.notRegistered), .disabled)
         XCTAssertEqual(LaunchAtLoginController.map(.notFound), .unavailable)
+        XCTAssertEqual(
+            LaunchAtLoginController.map(.requiresApproval),
+            .requiresApproval
+        )
     }
 }

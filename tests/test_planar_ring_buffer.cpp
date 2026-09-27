@@ -3,23 +3,47 @@
 #include "apm44/PlanarRingBuffer.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
-TEST_CASE("PlanarRingBuffer push pop", "[planar_ring]") {
+TEST_CASE("PlanarRingBuffer preserves samples across many wraps", "[planar_ring]") {
+  // Replaces `PlanarRingBuffer push pop` and `PlanarRingBuffer 10k
+  // push pop alternation`: a small ring forces index wraparound, and
+  // every popped value (ch1 = -ch0, monotonically increasing) plus
+  // the push/pop counts are asserted, so wraparound bugs are caught
+  // (the old 10k test used zeroed data and only checked counts).
   apm44::PlanarRingBuffer ring;
   ring.prepare(8);
+  const std::size_t capacity = ring.capacityFrames();
 
-  float ch0[4] = {1, 2, 3, 4};
-  float ch1[4] = {5, 6, 7, 8};
-  const float* in[2] = {ch0, ch1};
-  REQUIRE(ring.push(in, 4) == 4);
-
-  float out0[4] = {};
-  float out1[4] = {};
-  float* out[2] = {out0, out1};
-  REQUIRE(ring.pop(out, 4) == 4);
-  REQUIRE(out0[0] == 1.0f);
-  REQUIRE(out1[3] == 8.0f);
+  float next = 1.0f;
+  std::vector<float> in0(capacity);
+  std::vector<float> in1(capacity);
+  std::vector<float> out0(capacity);
+  std::vector<float> out1(capacity);
+  for (int i = 0; i < 10000; ++i) {
+    // Varying count in 1..capacity-1 (one slot is reserved for the
+    // SPSC full/empty distinction, so a full `capacity` push can
+    // never be accepted in one go).
+    const std::size_t count = static_cast<std::size_t>(i % (capacity - 1)) + 1;
+    for (std::size_t k = 0; k < count; ++k) {
+      in0[k] = next;
+      in1[k] = -next;
+      ++next;
+    }
+    const float* in[2] = {in0.data(), in1.data()};
+    const std::size_t pushed = ring.push(in, count);
+    REQUIRE(pushed == count);
+    float* out[2] = {out0.data(), out1.data()};
+    const std::size_t popped = ring.pop(out, pushed);
+    REQUIRE(popped == pushed);
+    for (std::size_t k = 0; k < popped; ++k) {
+      const float expected = next - static_cast<float>(count - k);
+      REQUIRE(out0[k] == expected);
+      REQUIRE(out1[k] == -expected);
+    }
+  }
 }
 
 TEST_CASE("PlanarRingBuffer power-of-two capacity rounding", "[planar_ring]") {
@@ -54,26 +78,6 @@ TEST_CASE("PlanarRingBuffer fillMs at 44100 Hz", "[planar_ring]") {
 
   const double ms = ring.fillMs(44100.0);
   REQUIRE(std::abs(ms - 15.0) < 0.5);
-}
-
-TEST_CASE("PlanarRingBuffer 10k push pop alternation", "[planar_ring]") {
-  apm44::PlanarRingBuffer ring;
-  ring.prepare(64);
-
-  float ch0[32] = {};
-  float ch1[32] = {};
-  float out0[32] = {};
-  float out1[32] = {};
-  const float* in[2] = {ch0, ch1};
-  float* out[2] = {out0, out1};
-
-  for (int i = 0; i < 10000; ++i) {
-    const std::size_t pushed = ring.push(in, 16);
-    if (pushed > 0) {
-      const std::size_t popped = ring.pop(out, pushed);
-      REQUIRE(popped == pushed);
-    }
-  }
 }
 
 TEST_CASE("PlanarRingBuffer drops the unaccepted tail and preserves queued audio",

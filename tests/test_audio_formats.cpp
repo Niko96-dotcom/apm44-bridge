@@ -35,19 +35,16 @@ TEST_CASE("Device buffer lease restores only the bridge-owned value",
   REQUIRE_FALSE(lease.shouldRestore(512));
 }
 
-TEST_CASE("MakeFloat32StereoNonInterleaved 44100", "[audio_formats]") {
-  const auto asbd = apm44::MakeFloat32StereoNonInterleaved(44100.0);
-  REQUIRE(asbd.mSampleRate == 44100.0);
-  REQUIRE(asbd.mChannelsPerFrame == 2);
-  REQUIRE(asbd.mBitsPerChannel == 32);
-  REQUIRE((asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0);
-  REQUIRE((asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0);
-}
-
-TEST_CASE("MakeFloat32StereoNonInterleaved 48000", "[audio_formats]") {
-  const auto asbd = apm44::MakeFloat32StereoNonInterleaved(48000.0);
-  REQUIRE(asbd.mSampleRate == 48000.0);
-  REQUIRE(asbd.mChannelsPerFrame == 2);
+TEST_CASE("MakeFloat32StereoNonInterleaved", "[audio_formats]") {
+  for (const double rate : {44100.0, 48000.0}) {
+    INFO("sample rate=" << rate);
+    const auto asbd = apm44::MakeFloat32StereoNonInterleaved(rate);
+    REQUIRE(asbd.mSampleRate == rate);
+    REQUIRE(asbd.mChannelsPerFrame == 2);
+    REQUIRE(asbd.mBitsPerChannel == 32);
+    REQUIRE((asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0);
+    REQUIRE((asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0);
+  }
 }
 
 TEST_CASE("AsbdMatchesFloat32Stereo interleaved USB AirPods shape", "[audio_formats]") {

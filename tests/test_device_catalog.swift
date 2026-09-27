@@ -17,11 +17,6 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertFalse(rows.contains { $0.uid == "MIC-UID" })
     }
 
-    func testPreferredDefaultPicksAirPods() {
-        let rows = DeviceCatalog.parseListDevicesOutput(fixture)
-        XCTAssertEqual(DeviceCatalog.preferredDefault(from: rows)?.uid, "AP-UID")
-    }
-
     func testParsesSelectedEndpointFingerprintFields() {
         let text = """
         UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\tSUPPORTS_48000
@@ -61,6 +56,8 @@ final class DeviceCatalogTests: XCTestCase {
         )
 
         XCTAssertEqual(DeviceCatalog.preferredDefault(from: [bluetooth, usb])?.uid, "USB")
+        let rows = DeviceCatalog.parseListDevicesOutput(fixture)
+        XCTAssertEqual(DeviceCatalog.preferredDefault(from: rows)?.uid, "AP-UID")
     }
 
     func testIncompatibleOutputRemainsVisibleButCannotBeStarted() {
@@ -80,28 +77,6 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertNil(DeviceCatalog.preferredDefault(from: [unsupported]))
     }
 
-    func testFilterExcludesBlackHole() {
-        let row = AudioDeviceRow(
-            uid: "BH-UID",
-            name: "BlackHole 2ch",
-            nominalRate: 44_100,
-            hasInput: true,
-            hasOutput: true
-        )
-        XCTAssertTrue(DeviceCatalog.filterMonitoringOutputs([row]).isEmpty)
-    }
-
-    func testFilterExcludesAPM44Bridge() {
-        let row = AudioDeviceRow(
-            uid: "APM44-OUT",
-            name: "APM44 Bridge",
-            nominalRate: 48_000,
-            hasInput: false,
-            hasOutput: true
-        )
-        XCTAssertTrue(DeviceCatalog.filterMonitoringOutputs([row]).isEmpty)
-    }
-
     func testFilterKeepsPhysicalUSB() {
         let airpods = AudioDeviceRow(
             uid: "AP-UID",
@@ -117,6 +92,22 @@ final class DeviceCatalogTests: XCTestCase {
             hasInput: false,
             hasOutput: true
         )
+        let blackHole = AudioDeviceRow(
+            uid: "BH-UID",
+            name: "BlackHole 2ch",
+            nominalRate: 44_100,
+            hasInput: true,
+            hasOutput: true
+        )
+        let apm44Bridge = AudioDeviceRow(
+            uid: "APM44-OUT",
+            name: "APM44 Bridge",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+        XCTAssertTrue(DeviceCatalog.filterMonitoringOutputs([blackHole]).isEmpty)
+        XCTAssertTrue(DeviceCatalog.filterMonitoringOutputs([apm44Bridge]).isEmpty)
         let filtered = DeviceCatalog.filterMonitoringOutputs([airpods, usb])
         XCTAssertEqual(filtered.count, 2)
     }

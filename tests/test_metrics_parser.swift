@@ -24,16 +24,12 @@ final class MetricsParserTests: XCTestCase {
         XCTAssertFalse(snapshot.bridgeBufferingLabel.contains("0 ms"))
     }
 
-    func testRecoveriesDecodeSeparatelyFromHardXruns() {
-        let line = #"{"fill_ms":30.100,"ratio":1.08843537,"ppm":120.00,"underruns":7,"overruns":0,"xruns":0,"estimated_rt_ms":32.600,"target_fill_ms":30.000,"src_quality":"best"}"#
-        let snapshot = MetricsParser.parse(line: line)
-        XCTAssertEqual(snapshot?.underruns, 7)
-        XCTAssertEqual(snapshot?.xruns, 0)
-    }
-
     func testKnownFrameLossCountersDecodeAndAggregate() {
         let line = #"{"fill_ms":30.100,"ratio":1.08843537,"ppm":120.00,"underruns":7,"overruns":1,"xruns":2,"input_dropped_frames":11,"producer_overrun_events":2,"producer_dropped_frames":13,"producer_not_ready_dropped_frames":3,"lane_queue_drops":5,"lane_timestamp_mismatches":7,"lane_frame_mismatch_dropped_frames":17,"consumer_resets":19,"output_starvation_frames":23,"partial_shortage_events":29,"converter_reset_events":31,"rebuffer_events":37,"recovery_fade_events":41,"estimated_rt_ms":32.600,"target_fill_ms":30.000,"src_quality":"best"}"#
         let snapshot = MetricsParser.parse(line: line)
+        XCTAssertEqual(snapshot?.underruns, 7)
+        XCTAssertEqual(snapshot?.xruns, 2)
+        XCTAssertNotEqual(snapshot?.underruns, snapshot?.xruns)
         XCTAssertEqual(snapshot?.producerDroppedFrames, 13)
         XCTAssertEqual(snapshot?.outputStarvationFrames, 23)
         XCTAssertEqual(snapshot?.partialShortageEvents, 29)
