@@ -4,6 +4,24 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+- If the bridge was running when the Mac went to sleep, it now starts again
+  after wake in more cases: when an audio device reconnects during wake, and
+  when the Mac wakes before the bridge has finished stopping for sleep.
+  Clicking Stop during wake still keeps it stopped.
+- Cancelling an update (for example at the password prompt) now shows as
+  cancelled instead of "update failed".
+- If another APM44 Bridge helper is already running, the app now says so
+  right away instead of retrying several times and reporting unstable launches.
+- If the installer's final checks fail, it now still reloads Core Audio, so
+  Core Audio no longer keeps running the removed audio driver.
+- `scripts/uninstall-apm44.sh` now quits the app and its helper before it
+  deletes them.
+- When the helper gives up on a stale audio connection, it no longer starts
+  audio output again right before it exits.
+- Internal: the helper supervision, update controller and menu code were
+  split into smaller parts, CI and release checks were tightened, and the
+  PKG build and notarization dry run no longer leave app copies in `build/`.
+
 ## 0.12.15 - 2026-09-26
 
 - If an update window opens while you are working in another app, the APM44
