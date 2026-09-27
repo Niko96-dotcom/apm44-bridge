@@ -83,7 +83,21 @@ done
 
 SCRIPTS="$ROOT/build/signing/pkg-scripts"
 COMPONENT_PLIST="$ROOT/build/signing/pkg-components.plist"
-rm -rf "$PAYLOAD" "$SCRIPTS" "$COMPONENT_PLIST"
+LSREGISTER="${APM44_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
+
+# The payload app carries the production bundle ID. Left on disk, Launch
+# Services can pick it over /Applications for a launch by bundle ID, so it
+# only exists while pkgbuild reads it.
+apm44_remove_payload() {
+  if [[ -x "$LSREGISTER" ]]; then
+    "$LSREGISTER" -u "$PAYLOAD/Applications/APM44 Bridge.app" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$PAYLOAD"
+}
+
+trap apm44_remove_payload EXIT
+apm44_remove_payload
+rm -rf "$SCRIPTS" "$COMPONENT_PLIST"
 mkdir -p "$PAYLOAD/Applications"
 mkdir -p "$PAYLOAD/Library/Audio/Plug-Ins/HAL"
 mkdir -p "$SCRIPTS"
@@ -382,6 +396,7 @@ pkgbuild --root "$PAYLOAD" --scripts "$SCRIPTS" \
   --component-plist "$COMPONENT_PLIST" \
   --identifier com.niko.apm44.pkg --version "$VERSION" \
   "$UNSIGNED_PKG"
+apm44_remove_payload
 
 curl -fsSL -o "$G2_CA" "$G2_CA_URL"
 security import "$G2_CA" -k ~/Library/Keychains/login.keychain-db 2>/dev/null || true

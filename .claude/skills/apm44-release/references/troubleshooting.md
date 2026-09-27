@@ -126,3 +126,9 @@ APM44_PREINSTALL_GUARD_ONLY=1 /bin/bash /tmp/apm44-pkgx/Scripts/preinstall pkg /
 - Cause: a run aborted before the update relaunched the app without arguments (the harness now relaunches it normally on exit).
 - Fix: `osascript -e 'tell application id "com.niko.apm44.menu" to quit'`, then `open -a "/Applications/APM44 Bridge.app"`.
 
+
+## Running app is a build copy, not /Applications
+
+- Symptom: `ps -axww -o pid,command | grep 'MacOS/APM44 Bridge'` shows a path under `build/` (seen after 0.12.15: `build/signing/pkg-root/Applications/APM44 Bridge.app`) even though `/Applications/APM44 Bridge.app` is installed.
+- Cause: staging copies carry the production bundle ID `com.niko.apm44.menu`, so Launch Services can pick one for a launch by bundle ID. `build-release-pkg.sh` and `notary-dry-run.sh` now unregister and delete their staging copies when they exit; older builds left them behind.
+- Fix: with the bridge stopped, quit the app from its menu, then `open "/Applications/APM44 Bridge.app"`. Remove leftovers with `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u <copy>` and `rm -rf build/signing/pkg-root build/signing/release-staging`.
