@@ -159,3 +159,66 @@ enum BridgeTerminationPolicy {
         return .ignore
     }
 }
+
+struct BridgeRetryBudget: Equatable {
+    enum Decision: Equatable {
+        case exhausted(message: String)
+        case retry(delay: TimeInterval)
+    }
+
+    static let maxUnhealthyLaunches = 4
+
+    private(set) var attempt = 0
+    private(set) var lastExitStatus: Int32?
+    private(set) var lastStderr: String?
+
+    var exhaustedMessage: String {
+        var detail = ""
+        if let status = lastExitStatus {
+            detail = AppStrings.lastExit(Int(status))
+        }
+        if let stderr = lastStderr, !stderr.isEmpty {
+            detail += ": \(stderr)"
+        }
+        return AppStrings.stoppedAfterUnstableLaunches(Self.maxUnhealthyLaunches, detail: detail)
+    }
+
+    func bannerMessage(for state: BridgeRunState) -> String? {
+        guard attempt > 0 else { return nil }
+        switch state {
+        case .idle, .stopping: return nil
+        default: break
+        }
+        if attempt >= Self.maxUnhealthyLaunches { return exhaustedMessage }
+        return AppStrings.reconnectingAttempt(current: attempt, max: Self.maxUnhealthyLaunches)
+    }
+
+    /// A fresh user start or a launch that stayed up for the stability
+    /// window: forget the attempt and its diagnostics.
+    mutating func reset() {
+        attempt = 0
+        lastExitStatus = nil
+        lastStderr = nil
+    }
+
+    mutating func clearAttemptKeepingDiagnostics() {
+        attempt = 0
+    }
+
+    mutating func recordUnexpectedExit(status: Int32, stderr: String) {
+        lastExitStatus = status
+        lastStderr = stderr
+    }
+
+    mutating func recordRetryLaunchFailure(detail: String) {
+        lastStderr = detail
+    }
+
+    mutating func consumeAttempt(delays: [TimeInterval]) -> Decision {
+        attempt += 1
+        if attempt >= Self.maxUnhealthyLaunches {
+            return .exhausted(message: exhaustedMessage)
+        }
+        return .retry(delay: delays[min(attempt - 1, delays.count - 1)])
+    }
+}

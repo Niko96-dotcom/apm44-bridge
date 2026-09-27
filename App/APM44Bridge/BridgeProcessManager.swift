@@ -63,13 +63,7 @@ final class BridgeProcessManager: ObservableObject {
     var bannerMessage: String? {
         get {
             if let noticeMessage { return noticeMessage }
-            guard retryAttempt > 0 else { return nil }
-            switch state {
-            case .idle, .stopping: return nil
-            default: break
-            }
-            if retryAttempt >= maxUnhealthyLaunches { return exhaustedRetryMessage() }
-            return AppStrings.reconnectingAttempt(current: retryAttempt, max: maxUnhealthyLaunches)
+            return retryBudget.bannerMessage(for: state)
         }
         set { noticeMessage = newValue }
     }
@@ -91,13 +85,10 @@ final class BridgeProcessManager: ObservableObject {
     private var lastKnownDeviceName: String?
     private var lastKnownDeviceUid: String?
     private var runningOutputFingerprint: AudioDeviceRow?
-    @Published private var retryAttempt = 0
-    private let maxUnhealthyLaunches = 4
+    @Published private var retryBudget = BridgeRetryBudget()
     private var retryTask: Task<Void, Never>?
     private var stabilityTask: Task<Void, Never>?
     private var processHealth: BridgeProcessHealth = .stopped
-    private var lastUnexpectedExitStatus: Int32?
-    private var lastUnexpectedStderr: String?
     private var resumeAfterSystemWake = false
     /// Lifetime observers; the manager outlives the app, so the tokens are
     /// retained without explicit removal.
@@ -115,10 +106,6 @@ final class BridgeProcessManager: ObservableObject {
 
     internal private(set) var hotplugRefreshGeneration = 0
     internal private(set) var retryGeneration = 0
-
-    private var retryDelays: [TimeInterval] {
-        timing.retryDelays
-    }
 
     private var stabilityWindow: TimeInterval {
         timing.stabilityWindow
@@ -385,9 +372,7 @@ final class BridgeProcessManager: ObservableObject {
         if resetRetryAttempt {
             cancelRetryTask()
             cancelStabilityTask()
-            retryAttempt = 0
-            lastUnexpectedExitStatus = nil
-            lastUnexpectedStderr = nil
+            retryBudget.reset()
         }
         resolveCachedBinaryURL()
         guard let url = binaryURL else {
@@ -440,7 +425,7 @@ final class BridgeProcessManager: ObservableObject {
         if resetRetryAttempt {
             logger.info("Bridge starting")
         } else {
-            logger.info("Bridge starting retry=\(self.retryAttempt)")
+            logger.info("Bridge starting retry=\(self.retryBudget.attempt)")
         }
         state = .starting
         processHealth = .spawning
@@ -513,7 +498,7 @@ final class BridgeProcessManager: ObservableObject {
             logger.error("Bridge launch failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code)")
             let detail = BridgeDiagnostics.sanitized(error.localizedDescription)
             if !resetRetryAttempt {
-                lastUnexpectedStderr = detail
+                retryBudget.recordRetryLaunchFailure(detail: detail)
                 scheduleAutoRetry()
             } else {
                 state = .error(AppStrings.bridgeCouldNotStart(detail: detail))
@@ -537,7 +522,7 @@ final class BridgeProcessManager: ObservableObject {
         wasRunningBeforeDisconnect = false
         cancelRetryTask()
         cancelStabilityTask()
-        retryAttempt = 0
+        retryBudget.clearAttemptKeepingDiagnostics()
         if process != nil {
             initiateStop(reason: .user)
             return true
@@ -956,49 +941,33 @@ final class BridgeProcessManager: ObservableObject {
                   self.processHealth == .handshaking,
                   self.isRunning else { return }
             self.processHealth = .stable
-            self.retryAttempt = 0
-            self.lastUnexpectedExitStatus = nil
-            self.lastUnexpectedStderr = nil
+            self.retryBudget.reset()
         }
-    }
-
-    private func exhaustedRetryMessage() -> String {
-        var detail = ""
-        if let status = lastUnexpectedExitStatus {
-            detail = AppStrings.lastExit(Int(status))
-        }
-        if let stderr = lastUnexpectedStderr, !stderr.isEmpty {
-            detail += ": \(stderr)"
-        }
-        return AppStrings.stoppedAfterUnstableLaunches(maxUnhealthyLaunches, detail: detail)
     }
 
     private func scheduleAutoRetry() {
         cancelRetryTask()
         cancelStabilityTask()
         retryGeneration += 1
-        retryAttempt += 1
-        if retryAttempt >= maxUnhealthyLaunches {
+        let decision = retryBudget.consumeAttempt(delays: timing.retryDelays)
+        switch decision {
+        case .exhausted(let message):
             logger.error("Bridge retries exhausted")
-            let message = exhaustedRetryMessage()
             state = .error(message)
             return
-        }
+        case .retry(let delay):
+            state = .reconnecting
 
-        state = .reconnecting
-
-        // Capture the attempt before creating the task. Stop/reset can set the
-        // live counter back to zero before a cancelled task begins executing.
-        let scheduledAttempt = retryAttempt
-        let delayIndex = min(scheduledAttempt - 1, retryDelays.count - 1)
-        let delay = retryDelays[delayIndex]
-
-        retryTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
-            guard case .reconnecting = self.state else { return }
-            self.retryTask = nil
-            self.start(resetRetryAttempt: false)
+            // The delay is computed from the attempt captured before the task
+            // is created. Stop/reset can set the live counter back to zero
+            // before a cancelled task begins executing.
+            retryTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                guard case .reconnecting = self.state else { return }
+                self.retryTask = nil
+                self.start(resetRetryAttempt: false)
+            }
         }
     }
 
@@ -1033,8 +1002,7 @@ final class BridgeProcessManager: ObservableObject {
         let stderr = stderrTail.joined
 
         if exitStatus != 0 {
-            lastUnexpectedExitStatus = exitStatus
-            lastUnexpectedStderr = BridgeDiagnostics.sanitized(stderr)
+            retryBudget.recordUnexpectedExit(status: exitStatus, stderr: BridgeDiagnostics.sanitized(stderr))
             logger.error("Bridge unexpected exit status=\(exitStatus)")
         }
 
@@ -1046,7 +1014,7 @@ final class BridgeProcessManager: ObservableObject {
         ) {
         case .loadedDriverMismatch:
             cancelRetryTask()
-            retryAttempt = 0
+            retryBudget.clearAttemptKeepingDiagnostics()
             lastStopReason = nil
             let message = AppStrings.loadedDriverBuildMismatch
             state = .error(message)
