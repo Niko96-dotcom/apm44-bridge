@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import XCTest
 @testable import APM44Bridge
 
@@ -289,6 +290,118 @@ final class SparkleUpdaterTests: XCTestCase {
         controller.handleFinish(error: remotePortError)
         XCTAssertEqual(controller.state, .idle)
         XCTAssertFalse(controller.benignInstallationSuccessLatched)
+    }
+
+    @MainActor
+    func testFinishWithInstallationCancelledEndsCancelled() {
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            menuPanelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { true },
+            startUpdater: false
+        )
+        controller.seedStateForTests(.installing(version: "0.12.13"))
+        let cancelled = NSError(domain: "SUSparkleErrorDomain", code: 4007)
+        controller.handleFinish(error: cancelled)
+        XCTAssertEqual(controller.state, .cancelled)
+    }
+
+    @MainActor
+    func testAbortThenFinishWithInstallationCancelledGivesSingleCancelled() {
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            menuPanelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { true },
+            startUpdater: false
+        )
+        controller.seedStateForTests(.installing(version: "0.12.13"))
+        var recorded: [AppUpdateState] = []
+        let subscription = controller.$state.dropFirst().sink { recorded.append($0) }
+        let cancelled = NSError(domain: "SUSparkleErrorDomain", code: 4007)
+        controller.handleAbort(error: cancelled)
+        controller.handleFinish(error: cancelled)
+        subscription.cancel()
+        // Sparkle sends abort and then finish for one cancelled cycle; the
+        // user must never see a .failed state in between or at the end.
+        XCTAssertEqual(recorded, [.cancelled, .cancelled])
+    }
+
+    func testUpdateCycleErrorClassification() {
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.13"),
+                error: NSError(domain: "SUSparkleErrorDomain", code: 4007),
+                currentVersion: "0.12.12"
+            ),
+            .cancelled
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .checking,
+                error: NSError(domain: "SUSparkleErrorDomain", code: 4007),
+                currentVersion: "0.12.12"
+            ),
+            .cancelled
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .checking,
+                error: NSError(domain: "SUSparkleErrorDomain", code: 1001),
+                currentVersion: "0.12.12"
+            ),
+            .noUpdate
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.12"),
+                error: NSError(domain: "SUSparkleErrorDomain", code: 4010),
+                currentVersion: "0.12.12"
+            ),
+            .alreadyInstalled
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.13"),
+                error: NSError(domain: "SUSparkleErrorDomain", code: 4010),
+                currentVersion: "0.12.12"
+            ),
+            .failed
+        )
+        let plain4005 = NSError(
+            domain: "SUSparkleErrorDomain",
+            code: 4005,
+            userInfo: [NSLocalizedDescriptionKey: "Beim Ausführen des Aktualisierungsprogramms ist ein Fehler aufgetreten."]
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.12"),
+                error: plain4005,
+                currentVersion: "0.12.12"
+            ),
+            .failed
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.12"),
+                error: NSError(domain: NSURLErrorDomain, code: -1009),
+                currentVersion: "0.12.12"
+            ),
+            .failed
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.13"),
+                error: NSError(domain: "OtherDomain", code: 4007),
+                currentVersion: "0.12.12"
+            ),
+            .failed
+        )
     }
 
     @MainActor

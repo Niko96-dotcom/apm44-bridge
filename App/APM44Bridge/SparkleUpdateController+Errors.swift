@@ -47,6 +47,41 @@ extension SparkleUpdateController {
         return nsError.domain == SUSparkleErrorDomain && nsError.code == noUpdateErrorCode
     }
 
+    enum UpdateCycleErrorOutcome: Equatable {
+        case alreadyInstalled
+        case noUpdate
+        case cancelled
+        case failed
+    }
+
+    // Sparkle's SUInstallationCanceledError.
+    nonisolated private static var installationCanceledErrorCode: Int { 4007 }
+
+    /// The one decision for an error that ends an update cycle. Sparkle
+    /// reports the same error to both `didAbortWithError` and
+    /// `didFinishUpdateCycleFor`, so both callbacks must classify it alike.
+    nonisolated static func classifyUpdateCycleError(
+        state: AppUpdateState,
+        error: Error,
+        currentVersion: String
+    ) -> UpdateCycleErrorOutcome {
+        if shouldTreatInstallationErrorAsSuccess(
+            state: state,
+            error: error,
+            currentVersion: currentVersion
+        ) {
+            return .alreadyInstalled
+        }
+        if isNoUpdateError(error) {
+            return .noUpdate
+        }
+        let nsError = error as NSError
+        if nsError.domain == SUSparkleErrorDomain, nsError.code == installationCanceledErrorCode {
+            return .cancelled
+        }
+        return .failed
+    }
+
     /// True for errors that come from the download phase: an explicit
     /// SUDownloadError, any NSURLErrorDomain error, or a Sparkle error whose
     /// NSUnderlyingError chain contains NSURLErrorDomain.
