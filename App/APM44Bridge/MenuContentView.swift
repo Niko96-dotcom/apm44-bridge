@@ -33,7 +33,7 @@ struct MenuContentView: View {
             controlCard
             updateSection
             primaryButtons
-            if let reason = startBlockedReason, showsStartButton, !manager.isApplyingSettings {
+            if let reason = presentation.visibleStartBlockedReason {
                 Text(reason)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -41,11 +41,11 @@ struct MenuContentView: View {
                     .accessibilityIdentifier("start-blocked-reason")
                     .accessibilityLabel(reason)
             }
-            if showsStatusDetail {
+            if presentation.showsStatusDetail {
                 Divider()
                 statusDetail
             }
-            if let banner = visibleBanner {
+            if let banner = presentation.visibleBanner {
                 bannerView(banner)
             }
             Divider()
@@ -105,25 +105,25 @@ struct MenuContentView: View {
                 Circle()
                     .fill(statusTint.opacity(0.15))
                     .frame(width: 40, height: 40)
-                Image(systemName: statusSymbol)
+                Image(systemName: presentation.statusSymbol)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(statusTint)
             }
             .accessibilityHidden(true)
 
-            Text(statusText)
+            Text(presentation.statusText)
                 .font(.headline)
 
             Spacer(minLength: 8)
 
-            if let metrics = effectiveDetailMetrics {
+            if let metrics = presentation.effectiveDetailMetrics {
                 latencyBadge(metrics)
-                    .opacity(showsHeldMetrics ? 0.5 : 1)
+                    .opacity(presentation.showsHeldMetrics ? 0.5 : 1)
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(AppStrings.bridgeStatus)
-        .accessibilityValue(statusText)
+        .accessibilityValue(presentation.statusText)
     }
 
     private func latencyBadge(_ metrics: BridgeMetricsSnapshot) -> some View {
@@ -305,11 +305,11 @@ struct MenuContentView: View {
     private var primaryButtons: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                if showsStartButton {
+                if presentation.showsStartButton {
                     startButton
                 }
 
-                if showsStopButton {
+                if presentation.showsStopButton {
                     Button {
                         manager.stop()
                     } label: {
@@ -317,13 +317,13 @@ struct MenuContentView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(manager.isTransitioning || manager.isApplyingSettings)
+                    .disabled(presentation.stopDisabled)
                     .accessibilityLabel(AppStrings.stopBridge)
                     .accessibilityIdentifier("stop-bridge")
                 }
             }
 
-            if showsRestartButton {
+            if presentation.showsRestartButton {
                 Button {
                     Task { await manager.restart(reason: .user) }
                 } label: {
@@ -331,7 +331,7 @@ struct MenuContentView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(manager.isTransitioning || manager.isApplyingSettings || startBlockedReason != nil)
+                .disabled(presentation.restartDisabled)
                 .accessibilityLabel(AppStrings.restart)
                 .accessibilityIdentifier("restart-bridge")
             }
@@ -343,7 +343,7 @@ struct MenuContentView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .disabled(manager.isTransitioning)
+            .disabled(presentation.quitDisabled)
             .accessibilityLabel(AppStrings.quitApp)
             .accessibilityIdentifier("quit-app")
         }
@@ -352,7 +352,7 @@ struct MenuContentView: View {
 
     @ViewBuilder
     private var startButton: some View {
-        let enabled = startBlockedReason == nil && !manager.isTransitioning
+        let enabled = presentation.startEnabled
         if enabled {
             Button {
                 manager.start()
@@ -373,50 +373,42 @@ struct MenuContentView: View {
             .buttonStyle(.bordered)
             .disabled(true)
             .accessibilityLabel(AppStrings.startBridge)
-            .accessibilityHint(startBlockedReason ?? "")
+            .accessibilityHint(presentation.startBlockedReason ?? "")
             .accessibilityIdentifier("start-bridge")
         }
     }
 
     private var updateSection: some View {
         Group {
-            switch updater.state {
-            case .idle:
+            switch updateModel {
+            case .hidden:
                 EmptyView()
-            case .checking:
-                updateStatus(AppStrings.checkingUpdates, systemImage: "arrow.triangle.2.circlepath", tint: .secondary)
-            case let .available(version):
-                Button {
+            case let .status(message, systemImage, tone):
+                updateStatus(message, systemImage: systemImage, tint: updateToneColor(tone))
+            case let .action(title, kind, identifier):
+                let button = Button {
                     dismissMenuBarPanel()
-                    updater.checkForUpdates()
+                    switch kind {
+                    case .checkForUpdates: updater.checkForUpdates()
+                    case .showPendingUpdate: updater.showPendingUpdate()
+                    }
                 } label: {
-                    Text(AppStrings.updateAvailable(version))
+                    Text(title)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .accessibilityLabel(AppStrings.updateAvailable(version))
-            case let .readyToInstall(version):
-                Button {
-                    dismissMenuBarPanel()
-                    updater.showPendingUpdate()
-                } label: {
-                    Text(AppStrings.installUpdateAndRelaunch(version))
-                        .frame(maxWidth: .infinity)
+                .accessibilityLabel(title)
+                if let identifier {
+                    button.accessibilityIdentifier(identifier)
+                } else {
+                    button
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityLabel(AppStrings.installUpdateAndRelaunch(version))
-                .accessibilityIdentifier("install-update")
-            case let .installing(version):
-                updateStatus(AppStrings.installingUpdate(version), systemImage: "gearshape", tint: .accentColor)
-            case .cancelled:
-                updateStatus(AppStrings.updateCancelled, systemImage: "xmark.circle", tint: .secondary)
-            case let .failed(message):
+            case let .failed(message, retryVersionText):
                 VStack(alignment: .leading, spacing: 8) {
                     updateStatus(message, systemImage: "exclamationmark.triangle", tint: .orange)
-                    if let retryVersion = updater.lastOfferedVersion {
-                        Text(AppStrings.updateAvailable(retryVersion))
+                    if let retryText = retryVersionText {
+                        Text(retryText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -436,6 +428,14 @@ struct MenuContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func updateToneColor(_ tone: MenuUpdateTone) -> Color {
+        switch tone {
+        case .secondary: return .secondary
+        case .accent: return .accentColor
+        case .orange: return .orange
+        }
+    }
+
     private func updateStatus(_ message: String, systemImage: String, tint: Color) -> some View {
         Label {
             Text(message)
@@ -452,54 +452,37 @@ struct MenuContentView: View {
         )
     }
 
-    private var showsStartButton: Bool {
-        if manager.isApplyingSettings { return false }
-        switch manager.state {
-        case .idle, .error: return true
-        case .starting, .running, .stopping, .reconnecting: return false
-        }
+    /// Pure presentation model built from plain manager values. All decision
+    /// logic lives in `MenuPresentation`; the view only renders.
+    private var presentation: MenuPresentation {
+        MenuPresentation(
+            state: manager.state,
+            isApplyingSettings: manager.isApplyingSettings,
+            connectionPhase: manager.connectionPhase,
+            bannerMessage: manager.bannerMessage,
+            metricsStale: manager.metricsStale,
+            startBlockedReason: manager.startBlockedReason,
+            latestMetrics: manager.latestMetrics,
+            heldMetrics: heldMetrics
+        )
     }
 
-    private var showsStopButton: Bool {
-        if manager.isApplyingSettings { return true }
-        switch manager.state {
-        case .running, .reconnecting: return true
-        case .idle, .starting, .stopping, .error: return false
-        }
-    }
-
-    private var showsRestartButton: Bool {
-        if manager.isApplyingSettings { return true }
-        switch manager.state {
-        case .running, .error: return true
-        case .idle, .starting, .stopping, .reconnecting: return false
-        }
-    }
-
-    /// While settings apply, and until the relaunched daemon's first tick,
-    /// the last snapshot stays visible (dimmed) so the layout never jumps.
-    private var effectiveDetailMetrics: BridgeMetricsSnapshot? {
-        if manager.isApplyingSettings || manager.isRunning {
-            return manager.latestMetrics ?? heldMetrics
-        }
-        return nil
-    }
-
-    private var showsHeldMetrics: Bool {
-        manager.latestMetrics == nil && effectiveDetailMetrics != nil
+    private var updateModel: MenuUpdateSection {
+        MenuPresentation.updateSection(
+            for: updater.state,
+            lastOfferedVersion: updater.lastOfferedVersion
+        )
     }
 
     private func clearHeldMetricsIfSettled() {
-        guard !manager.isApplyingSettings else { return }
-        switch manager.state {
-        case .idle, .error: heldMetrics = nil
-        default: break
+        if presentation.shouldClearHeldMetrics {
+            heldMetrics = nil
         }
     }
 
     private var statusDetail: some View {
         Group {
-            if let metrics = effectiveDetailMetrics {
+            if let metrics = presentation.effectiveDetailMetrics {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
@@ -555,9 +538,9 @@ struct MenuContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .opacity(showsHeldMetrics ? 0.5 : 1)
+                .opacity(presentation.showsHeldMetrics ? 0.5 : 1)
             } else if case .error(let message) = manager.state,
-                      errorHasContent(message) {
+                      MenuPresentation.errorHasContent(message) {
                 errorDetailView(message: message)
             }
         }
@@ -570,21 +553,6 @@ struct MenuContentView: View {
     private var errorIdentity: String {
         if case .error(let message) = manager.state { return message }
         return ""
-    }
-
-    /// The details section only exists when it holds content: live metrics,
-    /// or an error with recovery guidance/a diagnostic. No empty chrome.
-    /// While settings are being applied the last seen snapshot stays visible
-    /// (dimmed) so the popover height does not jump.
-    private var showsStatusDetail: Bool {
-        if effectiveDetailMetrics != nil { return true }
-        if case .error(let message) = manager.state { return errorHasContent(message) }
-        return false
-    }
-
-    private func errorHasContent(_ message: String) -> Bool {
-        let presentation = BridgeErrorPresentation.presentation(for: message)
-        return presentation.recovery != nil || presentation.diagnostic != nil
     }
 
     @ViewBuilder
@@ -736,65 +704,12 @@ struct MenuContentView: View {
         )
     }
 
-    private var startBlockedReason: String? {
-        manager.startBlockedReason
-    }
-
-    private var statusText: String {
-        if manager.isApplyingSettings {
-            return AppStrings.applyingSettings
-        }
-        if manager.isRunning {
-            return manager.connectionPhase.label
-        }
-        switch manager.state {
-        case .idle: return AppStrings.stopped
-        case .starting: return AppStrings.starting
-        case .running: return manager.connectionPhase.label
-        case .stopping: return AppStrings.stopping
-        case .reconnecting:
-            if let banner = manager.bannerMessage {
-                return banner
-            }
-            return AppStrings.reconnecting
-        case .error(let message):
-            // F2: never truncate helper jargon into the headline. Use a
-            // short localized headline; the full diagnostic lives under
-            // Details with mapped recovery text.
-            return BridgeErrorPresentation.headline(for: message)
-        }
-    }
-
-    /// F2: banner that duplicates the raw error diagnostic is suppressed —
-    /// the error section already shows headline + recovery + Details.
-    private var visibleBanner: String? {
-        guard let banner = manager.bannerMessage else { return nil }
-        if case .error(let message) = manager.state,
-           banner == message,
-           BridgeErrorPresentation.presentation(for: message).diagnostic != nil {
-            return nil
-        }
-        return banner
-    }
-
-    private var statusSymbol: String {
-        if manager.isApplyingSettings { return "arrow.triangle.2.circlepath" }
-        switch manager.state {
-        case .error: return "exclamationmark.triangle.fill"
-        case .reconnecting: return "arrow.triangle.2.circlepath"
-        case .running: return "waveform"
-        case .idle, .starting, .stopping: return "headphones"
-        }
-    }
-
     private var statusTint: Color {
-        if manager.isApplyingSettings { return .orange }
-        switch manager.state {
-        case .error: return .red
-        case .reconnecting, .starting: return .orange
-        case .running:
-            return manager.metricsStale || manager.connectionPhase == .waitingForDAW ? .orange : .green
-        case .idle, .stopping: return .secondary
+        switch presentation.statusTone {
+        case .secondary: return .secondary
+        case .orange: return .orange
+        case .green: return .green
+        case .red: return .red
         }
     }
 }
