@@ -118,7 +118,7 @@ final class MenuPresentationButtonTests: XCTestCase {
         XCTAssertNil(makePresentation(state: .idle).visibleStartBlockedReason)
     }
 
-    func testIsRunningAndIsTransitioningMirrorManager() {
+    func testIsRunningAndIsTransitioning() {
         XCTAssertTrue(makePresentation(state: .running).isRunning)
         XCTAssertFalse(makePresentation(state: .reconnecting).isRunning)
         XCTAssertFalse(makePresentation(state: .idle).isRunning)

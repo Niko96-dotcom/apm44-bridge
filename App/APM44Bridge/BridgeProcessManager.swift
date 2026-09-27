@@ -15,6 +15,18 @@ enum BridgeRunState: Equatable {
     case stopping
     case reconnecting
     case error(String)
+
+    var isRunning: Bool {
+        if case .running = self { return true }
+        return false
+    }
+
+    var isTransitioning: Bool {
+        switch self {
+        case .starting, .stopping: return true
+        default: return false
+        }
+    }
 }
 
 enum StopReason: Equatable {
@@ -177,12 +189,7 @@ final class BridgeProcessManager: ObservableObject {
         )
     }
 
-    var isTransitioning: Bool {
-        switch state {
-        case .starting, .stopping: return true
-        default: return false
-        }
-    }
+    var isTransitioning: Bool { state.isTransitioning }
 
     var deviceDisplayName: String {
         guard let uid = settings.outputDeviceUid else {
@@ -199,10 +206,7 @@ final class BridgeProcessManager: ObservableObject {
         return AppStrings.selectedOutput
     }
 
-    var isRunning: Bool {
-        if case .running = state { return true }
-        return false
-    }
+    var isRunning: Bool { state.isRunning }
 
     /// Pure launch-automation decision: start only from idle with no blocker.
     /// Read by the launch Task after the initial refresh; the defaults key
