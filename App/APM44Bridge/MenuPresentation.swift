@@ -44,20 +44,8 @@ struct MenuPresentation {
     let heldMetrics: BridgeMetricsSnapshot?
 
 
-    /// Running ⇔ `.running`, exactly like `BridgeProcessManager.isRunning`.
-    var isRunning: Bool {
-        if case .running = state { return true }
-        return false
-    }
-
-    /// Transitioning ⇔ `.starting` or `.stopping`, exactly like
-    /// `BridgeProcessManager.isTransitioning`.
-    var isTransitioning: Bool {
-        switch state {
-        case .starting, .stopping: return true
-        default: return false
-        }
-    }
+    var isRunning: Bool { state.isRunning }
+    var isTransitioning: Bool { state.isTransitioning }
 
     var showsStartButton: Bool {
         if isApplyingSettings { return false }
