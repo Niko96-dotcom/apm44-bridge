@@ -103,6 +103,31 @@ final class FakeBridgeDeviceSource: BridgeDeviceSource, @unchecked Sendable {
     }
 }
 
+/// Controllable wall-clock for the stale-metrics watch: tests advance time
+/// instead of waiting out the live staleness threshold.
+final class FakeBridgeClock: BridgeClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _now: Date
+
+    /// Far from the real clock, so a watch that reads Date() instead of the
+    /// injected clock never sees the metrics as stale.
+    init(now: Date = Date(timeIntervalSinceReferenceDate: 4_000_000_000)) {
+        _now = now
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        _now = _now.addingTimeInterval(interval)
+    }
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return _now
+    }
+}
+
 @MainActor
 final class BridgeProcessManagerTests: XCTestCase {
     private let fixtureBuildID = "0.12.7+test-fixture-match"
@@ -138,7 +163,8 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     private func makeManager(
         launcher: MockProcessLauncher? = nil,
-        timing: BridgeRetryTiming = .live,
+        timing: BridgeTiming = .live,
+        clock: any BridgeClock = LiveBridgeClock(),
         halCheck: HalBuildCheck? = nil,
         devices: [AudioDeviceRow]? = nil,
         applicationTerminator: @escaping @MainActor () -> Void = {}
@@ -158,7 +184,8 @@ final class BridgeProcessManagerTests: XCTestCase {
             settings: settings,
             processLauncher: mockLauncher,
             binaryURLOverride: URL(fileURLWithPath: "/tmp/apm44-bridge"),
-            retryTiming: timing,
+            timing: timing,
+            clock: clock,
             deviceSource: source,
             applicationTerminator: applicationTerminator
         )
@@ -176,18 +203,44 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertTrue(message.contains(AppStrings.lastExit(lastExit)), message)
     }
 
-    private func sampleMetrics() -> BridgeMetricsSnapshot {
-        BridgeMetricsSnapshot(
-            fillMs: 15,
-            ratio: 1.0,
-            ppm: 0,
-            underruns: 0,
-            overruns: 0,
-            xruns: 0,
-            estimatedRtMs: 15,
-            targetFillMs: 15,
-            srcQuality: "medium"
-        )
+    /// One helper metrics line in the JSON format the daemon emits; written
+    /// to the mock process's stdout pipe so tests drive the real parser.
+    private let metricsJSONLine =
+        #"{"fill_ms":15.200,"ratio":1.08843537,"ppm":12.00,"underruns":0,"overruns":0,"xruns":0,"estimated_rt_ms":17.700,"target_fill_ms":15.000,"src_quality":"medium"}"# + "\n"
+
+    private func writeStdout(_ text: String, launcher: MockProcessLauncher) {
+        let pipe = launcher.lastProcess?.standardOutput as? Pipe
+        XCTAssertNotNil(pipe, "start() must install a stdout pipe")
+        try? pipe?.fileHandleForWriting.write(contentsOf: Data(text.utf8))
+    }
+
+    private func writeStderr(_ text: String, launcher: MockProcessLauncher) {
+        let pipe = launcher.lastProcess?.standardError as? Pipe
+        XCTAssertNotNil(pipe, "start() must install a stderr pipe")
+        try? pipe?.fileHandleForWriting.write(contentsOf: Data((text + "\n").utf8))
+    }
+
+    /// Pipe readabilityHandlers hop to the main actor, so let them run
+    /// before firing termination (which snapshots the stderr lines).
+    /// stderr ingestion has no observable signal to poll; a late pipe can
+    /// only fail a test, never pass a broken one.
+    private func settlePipeDelivery() async {
+        try? await Task.sleep(nanoseconds: 500_000_000)
+    }
+
+    private func pollUntil(
+        _ description: String,
+        timeoutNanoseconds: UInt64 = 2_000_000_000,
+        check: @MainActor () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(Double(timeoutNanoseconds) / 1_000_000_000)
+        while !check() {
+            if Date() >= deadline {
+                XCTFail("Timed out waiting for \(description)")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
     }
 
     func testProductionLaunchUsesParentDeathPipe() async throws {
@@ -220,19 +273,87 @@ final class BridgeProcessManagerTests: XCTestCase {
         await launcher.fireTermination(for: process)
     }
 
+    func testSecondGlitchKeepsFlashUntilItsOwnTimeout() async {
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeTiming(
+                retryDelays: [60],
+                stabilityWindow: 15,
+                glitchFlashDuration: 0.3
+            )
+        )
+        manager.start()
+        func lossLine(_ frames: Int) -> String {
+            metricsJSONLine.replacingOccurrences(
+                of: #""xruns":0,"#,
+                with: #""xruns":0,"input_dropped_frames":\#(frames),"#
+            )
+        }
+
+        writeStdout(lossLine(1), launcher: launcher)
+        await pollUntil("first glitch") { manager.glitchFlash }
+        writeStdout(lossLine(2), launcher: launcher)
+        await pollUntil("second loss applied") { manager.latestMetrics?.knownFrameLoss == 2 }
+        // The first flash's cancelled timer must not switch the new one off.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(manager.glitchFlash)
+        await pollUntil("flash clears after its own duration") { !manager.glitchFlash }
+
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
     func testStartResetsMetricsStateAndTimestamp() async {
-        let (manager, _, _, _) = await makeManager()
-        manager.applyMetricsForTesting(sampleMetrics())
-        manager.markMetricsStaleForTesting()
+        let clock = FakeBridgeClock()
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeTiming(
+                retryDelays: [60],
+                stabilityWindow: 15,
+                staleCheckInterval: 0.05
+            ),
+            clock: clock
+        )
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        writeStdout(metricsJSONLine, launcher: launcher)
+        await pollUntil("metrics from stdout pipe") { manager.latestMetrics != nil }
         XCTAssertNotNil(manager.latestMetrics)
-        XCTAssertTrue(manager.hasLastMetricsTimestampForTesting)
+        // Several watch ticks without the clock moving: still fresh.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(manager.metricsStale)
+        clock.advance(by: 10)
+        await pollUntil("stale flag from watch") { manager.metricsStale }
         XCTAssertTrue(manager.metricsStale)
+
+        // Park in reconnecting (metrics are retained there) so start()
+        // exercises its reset path.
+        launcher.nextTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        guard case .reconnecting = manager.state else {
+            XCTFail("Expected reconnecting before restart, got \(manager.state)")
+            return
+        }
+        XCTAssertNotNil(manager.latestMetrics)
 
         manager.start()
 
+        XCTAssertEqual(manager.state, .running)
         XCTAssertNil(manager.latestMetrics)
-        XCTAssertFalse(manager.hasLastMetricsTimestampForTesting)
         XCTAssertFalse(manager.metricsStale)
+        XCTAssertNil(manager.bannerMessage)
+        // The clock is already past the old stamp; a restart that kept it
+        // would turn stale on the next watch tick.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(manager.metricsStale)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
     }
 
     func testRunningToIdleViaUserStop() async {
@@ -255,13 +376,22 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testIdleTransitionResetsMetricsStateAndTimestamp() async {
-        let (manager, _, launcher, _) = await makeManager()
+        let clock = FakeBridgeClock()
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeTiming(
+                retryDelays: BridgeTiming.live.retryDelays,
+                stabilityWindow: 15,
+                staleCheckInterval: 0.05
+            ),
+            clock: clock
+        )
 
         manager.start()
-        manager.applyMetricsForTesting(sampleMetrics())
-        manager.markMetricsStaleForTesting()
+        writeStdout(metricsJSONLine, launcher: launcher)
+        await pollUntil("metrics from stdout pipe") { manager.latestMetrics != nil }
         XCTAssertNotNil(manager.latestMetrics)
-        XCTAssertTrue(manager.hasLastMetricsTimestampForTesting)
+        clock.advance(by: 10)
+        await pollUntil("stale flag from watch") { manager.metricsStale }
         XCTAssertTrue(manager.metricsStale)
 
         manager.stop()
@@ -271,19 +401,28 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .idle)
         XCTAssertNil(manager.latestMetrics)
-        XCTAssertFalse(manager.hasLastMetricsTimestampForTesting)
         XCTAssertFalse(manager.metricsStale)
     }
 
     func testCleanRunningTerminationUsesIdleTransition() async {
-        let (manager, _, launcher, _) = await makeManager()
+        let clock = FakeBridgeClock()
+        let (manager, _, launcher, _) = await makeManager(
+            timing: BridgeTiming(
+                retryDelays: BridgeTiming.live.retryDelays,
+                stabilityWindow: 15,
+                staleCheckInterval: 0.05
+            ),
+            clock: clock
+        )
 
         manager.start()
-        manager.applyMetricsForTesting(sampleMetrics())
-        manager.markMetricsStaleForTesting()
+        writeStdout(metricsJSONLine, launcher: launcher)
+        await pollUntil("metrics from stdout pipe") { manager.latestMetrics != nil }
         XCTAssertEqual(manager.state, .running)
         XCTAssertNotNil(manager.latestMetrics)
-        XCTAssertTrue(manager.hasLastMetricsTimestampForTesting)
+        clock.advance(by: 10)
+        await pollUntil("stale flag from watch") { manager.metricsStale }
+        XCTAssertTrue(manager.metricsStale)
 
         launcher.nextTerminationStatus = 0
         if let proc = launcher.lastProcess {
@@ -292,14 +431,13 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .idle)
         XCTAssertNil(manager.latestMetrics)
-        XCTAssertFalse(manager.hasLastMetricsTimestampForTesting)
         XCTAssertFalse(manager.metricsStale)
         XCTAssertNil(manager.lastStopReason)
     }
 
     func testRunningUnexpectedExit() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [60], stabilityWindow: 15)
         )
 
         manager.start()
@@ -315,7 +453,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             XCTAssertGreaterThan(manager.retryGeneration, generationBefore)
             XCTAssertEqual(
                 manager.bannerMessage,
-                AppStrings.reconnectingAttempt(current: manager.retryAttemptForTesting, max: 4)
+                AppStrings.reconnectingAttempt(current: 1, max: 4)
             )
         } else {
             XCTFail("Expected reconnecting state after unexpected exit, got \(manager.state)")
@@ -325,12 +463,19 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testRestartFromErrorActuallyRelaunches() async {
         let (manager, _, launcher, _) = await makeManager()
-        manager.setStateForTesting(.error("lost connection"))
+        launcher.shouldFailLaunch = true
+        manager.start()
+        guard case .error = manager.state else {
+            XCTFail("Expected launch-failure error, got \(manager.state)")
+            return
+        }
+        launcher.shouldFailLaunch = false
+        let launchesBeforeRestart = launcher.makeCount
 
         await manager.restart(reason: .user)
 
         XCTAssertEqual(manager.state, .running)
-        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertEqual(launcher.makeCount, launchesBeforeRestart + 1)
         manager.stop()
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
@@ -377,7 +522,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testUserStopNoAutoRetry() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [0.01], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [0.01], stabilityWindow: 15)
         )
 
         manager.start()
@@ -385,7 +530,8 @@ final class BridgeProcessManagerTests: XCTestCase {
         manager.stop()
 
         // A recoverable stale-ring exit must not override the user's stop.
-        manager.appendStderrForTesting("stale shm ring: invalid header")
+        writeStderr("stale shm ring: invalid header", launcher: launcher)
+        await settlePipeDelivery()
         launcher.nextTerminationStatus = 42
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
@@ -428,7 +574,7 @@ final class BridgeProcessManagerTests: XCTestCase {
     func testQuitApplicationCancelsReconnectWithoutLaunchingOrReloadingDriver() async {
         var didTerminate = false
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [60], stabilityWindow: 15)
         ) {
             didTerminate = true
         }
@@ -618,7 +764,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testReconnectingRetryCanBeInterruptedByStop() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [60], stabilityWindow: 15)
         )
 
         manager.start()
@@ -648,7 +794,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         launcher.failLaunchesAfterFirstSuccess = true
         let (manager, _, _, _) = await makeManager(
             launcher: launcher,
-            timing: BridgeRetryTiming(retryDelays: [0], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [0], stabilityWindow: 15)
         )
 
         manager.start()
@@ -666,6 +812,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         if case .error(let message) = manager.state {
             assertStoppedAfterUnstableLaunches(message, lastExit: 1)
+            XCTAssertEqual(manager.bannerMessage, message, "exhausted retry counter must surface as the banner")
         } else {
             XCTFail("Expected final error after retries from zero, got \(manager.state)")
         }
@@ -673,7 +820,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testCrashLoopExhaustsAfterFourShortLivedSuccessfulLaunches() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [0], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [0], stabilityWindow: 15)
         )
 
         manager.start()
@@ -697,16 +844,16 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         if case .error(let message) = manager.state {
             assertStoppedAfterUnstableLaunches(message, lastExit: 17)
+            XCTAssertEqual(manager.bannerMessage, message, "exhausted retry counter must surface as the banner")
         } else {
             XCTFail("Expected bounded crash-loop error, got \(manager.state)")
         }
         XCTAssertEqual(launcher.makeCount, 4, "A fifth unhealthy launch must never occur")
-        XCTAssertEqual(manager.retryAttemptForTesting, 4)
     }
 
     func testRetryBudgetResetsOnlyAfterMetricsAndStabilityWindow() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [0], stabilityWindow: 0)
+            timing: BridgeTiming(retryDelays: [0], stabilityWindow: 0)
         )
 
         manager.start()
@@ -718,20 +865,16 @@ final class BridgeProcessManagerTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTAssertEqual(launcher.makeCount, 2)
-        XCTAssertEqual(manager.processHealthForTesting, .spawning)
-        XCTAssertEqual(manager.retryAttemptForTesting, 1)
+        XCTAssertNil(manager.latestMetrics, "fresh retry launch must not have metrics yet")
         XCTAssertEqual(
             manager.bannerMessage,
             AppStrings.reconnectingAttempt(current: 1, max: 4)
         )
 
-        manager.applyMetricsForTesting(sampleMetrics())
-        for _ in 0..<100 where manager.processHealthForTesting != .stable {
-            try? await Task.sleep(nanoseconds: 1_000_000)
-        }
+        writeStdout(metricsJSONLine, launcher: launcher)
+        await pollUntil("metrics from stdout pipe") { manager.latestMetrics != nil }
+        await pollUntil("stability reset clears retry banner") { manager.bannerMessage == nil }
 
-        XCTAssertEqual(manager.processHealthForTesting, .stable)
-        XCTAssertEqual(manager.retryAttemptForTesting, 0)
         XCTAssertNil(manager.bannerMessage, "Recovery must remove its reconnecting banner")
 
         manager.stop()
@@ -742,7 +885,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testStopAndStartDuringRecoveryClearsRetryBanner() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [0], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [0], stabilityWindow: 15)
         )
         manager.start()
         launcher.nextTerminationStatus = 17
@@ -772,20 +915,36 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testStableRecoveryPreservesUnrelatedNotice() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(
-                retryDelays: BridgeRetryTiming.live.retryDelays,
+            timing: BridgeTiming(
+                retryDelays: BridgeTiming.live.retryDelays,
                 stabilityWindow: 0
             )
         )
-        manager.setRetryAttemptForTesting(1)
-        manager.start(resetRetryAttempt: false)
-        manager.bannerMessage = "Could not enable launch at login"
-        manager.applyMetricsForTesting(sampleMetrics())
-        for _ in 0..<100 where manager.processHealthForTesting != .stable {
-            try? await Task.sleep(nanoseconds: 1_000_000)
+        // Reach retry attempt 1 through a real unexpected exit...
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        launcher.nextTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
         }
-        XCTAssertEqual(manager.processHealthForTesting, .stable)
+        guard case .reconnecting = manager.state else {
+            XCTFail("Expected reconnecting before retry, got \(manager.state)")
+            return
+        }
+        XCTAssertEqual(manager.bannerMessage, AppStrings.reconnectingAttempt(current: 1, max: 4))
+        // ...and relaunch the way the scheduled retry would, preserving the attempt.
+        manager.start(resetRetryAttempt: false)
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.reconnectingAttempt(current: 1, max: 4))
+        manager.bannerMessage = "Could not enable launch at login"
+        writeStdout(metricsJSONLine, launcher: launcher)
+        await pollUntil("metrics from stdout pipe") { manager.latestMetrics != nil }
         XCTAssertEqual(manager.bannerMessage, "Could not enable launch at login")
+        // Clearing the notice must not reveal a reconnecting banner: the
+        // stability reset cleared the retry counter underneath the notice.
+        manager.bannerMessage = nil
+        await pollUntil("stability reset clears retry counter") { manager.bannerMessage == nil }
+        XCTAssertNil(manager.bannerMessage)
         manager.stop()
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
@@ -794,13 +953,14 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     func testRecoverableStaleRingExitTriggersRetry() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [60], stabilityWindow: 15)
         )
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
 
-        manager.appendStderrForTesting("stale shm ring: could not remap shared-memory ring")
+        writeStderr("stale shm ring: could not remap shared-memory ring", launcher: launcher)
+        await settlePipeDelivery()
         launcher.nextTerminationStatus = 42
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
@@ -809,7 +969,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         if case .reconnecting = manager.state {
             XCTAssertEqual(
                 manager.bannerMessage,
-                AppStrings.reconnectingAttempt(current: manager.retryAttemptForTesting, max: 4)
+                AppStrings.reconnectingAttempt(current: 1, max: 4)
             )
         } else {
             XCTFail("Expected reconnecting after recoverable stale ring exit, got \(manager.state)")
@@ -817,10 +977,21 @@ final class BridgeProcessManagerTests: XCTestCase {
     }
 
     func testStaleRingFailureMessageIsActionable() async {
-        let (manager, _, _, _) = await makeManager()
-        manager.appendStderrForTesting("stale shm ring: invalid shm ring header")
-        let message = manager.bridgeFailureMessageForTesting(defaultMessage: "Lost connection to bridge.")
-        XCTAssertEqual(message, AppStrings.ipcFailed())
+        let (manager, _, launcher, _) = await makeManager()
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        writeStderr("stale shm ring: invalid shm ring header", launcher: launcher)
+        await settlePipeDelivery()
+        // `.starting` is synchronously transient, so force it to cover the
+        // termination-during-start failure path.
+        manager.setStateForTesting(.starting)
+        launcher.nextTerminationStatus = 1
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+
+        XCTAssertEqual(manager.state, .error(AppStrings.ipcFailed()))
     }
 
     func testSettingsRestartWaitsForTermination() async {
@@ -958,7 +1129,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(BridgeProcessManager.loadedDriverBuildMismatchExitStatus, 44)
         for preState in ["running", "starting"] {
             let (manager, _, launcher, _) = await makeManager(
-                timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+                timing: BridgeTiming(retryDelays: [60], stabilityWindow: 15)
             )
 
             manager.start()
@@ -977,21 +1148,38 @@ final class BridgeProcessManagerTests: XCTestCase {
             if case .reconnecting = manager.state {
                 XCTFail("Exit 44 must not auto-retry (pre-state \(preState)), got reconnecting")
             }
-            XCTAssertEqual(manager.retryAttemptForTesting, 0, "pre-state \(preState)")
             XCTAssertEqual(manager.bannerMessage, AppStrings.loadedDriverBuildMismatch, "pre-state \(preState)")
             XCTAssertEqual(manager.retryGeneration, generationBefore, "pre-state \(preState)")
             XCTAssertEqual(launcher.makeCount, 1, "pre-state \(preState)")
+            // Clearing the notice must not reveal a reconnecting banner: exit 44 schedules no retry.
+            manager.bannerMessage = nil
+            XCTAssertNil(manager.bannerMessage, "pre-state \(preState)")
         }
     }
 
     func testLoadedDriverBuildMismatchResetsExistingRetryBudget() async {
         let (manager, _, launcher, _) = await makeManager(
-            timing: BridgeRetryTiming(retryDelays: [60], stabilityWindow: 15)
+            timing: BridgeTiming(retryDelays: [0], stabilityWindow: 15)
         )
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
-        manager.setRetryAttemptForTesting(2)
+        // Reach retry attempt 2 through two real short-lived crashes.
+        for expectedAttempt in 1...2 {
+            launcher.nextTerminationStatus = 1
+            if let proc = launcher.lastProcess {
+                await launcher.fireTermination(for: proc)
+            }
+            let expectedLaunches = expectedAttempt + 1
+            for _ in 0..<200 where launcher.makeCount < expectedLaunches {
+                try? await Task.sleep(nanoseconds: 2_000_000)
+            }
+            XCTAssertEqual(launcher.makeCount, expectedLaunches)
+            XCTAssertEqual(
+                manager.bannerMessage,
+                AppStrings.reconnectingAttempt(current: expectedAttempt, max: 4)
+            )
+        }
 
         launcher.nextTerminationStatus = 44
         if let proc = launcher.lastProcess {
@@ -999,9 +1187,11 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         XCTAssertEqual(manager.state, .error(AppStrings.loadedDriverBuildMismatch))
-        XCTAssertEqual(manager.retryAttemptForTesting, 0)
         XCTAssertEqual(manager.bannerMessage, AppStrings.loadedDriverBuildMismatch)
-        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertEqual(launcher.makeCount, 3)
+        // Clearing the notice must not reveal a reconnecting banner: exit 44 reset the budget.
+        manager.bannerMessage = nil
+        XCTAssertNil(manager.bannerMessage)
     }
 
     func testSettingsRestartWhileIdleLeavesApplyingFalse() async {

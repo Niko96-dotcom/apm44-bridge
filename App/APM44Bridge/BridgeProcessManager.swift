@@ -107,7 +107,8 @@ final class BridgeProcessManager: ObservableObject {
 
     private let processLauncher: ProcessLaunching
     private let binaryURLOverride: URL?
-    private let retryTiming: BridgeRetryTiming
+    private let timing: BridgeTiming
+    private let bridgeClock: any BridgeClock
     private let deviceSource: any BridgeDeviceSource
     private let applicationTerminator: @MainActor () -> Void
 
@@ -117,25 +118,27 @@ final class BridgeProcessManager: ObservableObject {
     internal private(set) var retryGeneration = 0
 
     private var retryDelays: [TimeInterval] {
-        retryTiming.retryDelays
+        timing.retryDelays
     }
 
     private var stabilityWindow: TimeInterval {
-        retryTiming.stabilityWindow
+        timing.stabilityWindow
     }
 
     init(
         settings: BridgeSettings,
         processLauncher: ProcessLaunching? = nil,
         binaryURLOverride: URL? = nil,
-        retryTiming: BridgeRetryTiming = .live,
+        timing: BridgeTiming = .live,
+        clock: any BridgeClock = LiveBridgeClock(),
         deviceSource: any BridgeDeviceSource = LiveBridgeDeviceSource(),
         applicationTerminator: @escaping @MainActor () -> Void = { NSApplication.shared.terminate(nil) }
     ) {
         self.settings = settings
         self.processLauncher = processLauncher ?? LiveProcessLauncher()
         self.binaryURLOverride = binaryURLOverride
-        self.retryTiming = retryTiming
+        self.timing = timing
+        self.bridgeClock = clock
         self.deviceSource = deviceSource
         self.applicationTerminator = applicationTerminator
         self.cachedBinaryURL = binaryURLOverride ?? BridgeBinaryLocator.resolve()
@@ -219,16 +222,10 @@ final class BridgeProcessManager: ObservableObject {
         return blockedReason == nil
     }
 
+    // `.starting` is synchronously transient under injected launchers, so termination-from-starting is otherwise unreachable.
     internal func setStateForTesting(_ newState: BridgeRunState) {
         state = newState
     }
-
-    internal func setRetryAttemptForTesting(_ value: Int) {
-        retryAttempt = value
-    }
-
-    internal var retryAttemptForTesting: Int { retryAttempt }
-    internal var processHealthForTesting: BridgeProcessHealth { processHealth }
 
     private func updateReadinessCaches(halPresent: Bool, appID: String?, driverID: String?) {
         let mode: RoutingMode = halPresent ? .halVirtualDevice : .blackHoleFallback
@@ -820,7 +817,7 @@ final class BridgeProcessManager: ObservableObject {
         }
         lastKnownFrameLoss = snapshot.knownFrameLoss
         latestMetrics = snapshot
-        lastMetricsAt = Date()
+        lastMetricsAt = bridgeClock.now()
         metricsStale = false
         if processHealth == .spawning {
             processHealth = .handshaking
@@ -856,19 +853,25 @@ final class BridgeProcessManager: ObservableObject {
     private func triggerGlitchFlash() {
         glitchFlash = true
         glitchTask?.cancel()
+        let flashDuration = timing.glitchFlashDuration
         glitchTask = Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            try? await Task.sleep(for: .seconds(flashDuration))
+            // A newer glitch cancels this task and owns the flash; clearing
+            // it here would cut the newer flash short.
+            guard !Task.isCancelled else { return }
             glitchFlash = false
         }
     }
 
     private func scheduleStaleWatch() {
         staleTask?.cancel()
+        let checkInterval = timing.staleCheckInterval
+        let staleAfter = timing.staleAfter
         staleTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(for: .seconds(checkInterval))
                 guard isRunning else { continue }
-                if let last = lastMetricsAt, Date().timeIntervalSince(last) > 2 {
+                if let last = lastMetricsAt, bridgeClock.now().timeIntervalSince(last) > staleAfter {
                     metricsStale = true
                 }
             }
@@ -884,28 +887,8 @@ final class BridgeProcessManager: ObservableObject {
         }
     }
 
-    internal func appendStderrForTesting(_ text: String) {
-        appendStderr(text)
-    }
-
-    internal func applyMetricsForTesting(_ snapshot: BridgeMetricsSnapshot) {
-        applyMetrics(snapshot)
-    }
-
-    internal func markMetricsStaleForTesting() {
-        metricsStale = true
-    }
-
-    internal var hasLastMetricsTimestampForTesting: Bool {
-        lastMetricsAt != nil
-    }
-
     private func isRecoverableStaleRingExit(status: Int32, stderr: String) -> Bool {
         status == 42 && stderr.localizedCaseInsensitiveContains("stale shm ring")
-    }
-
-    internal func bridgeFailureMessageForTesting(defaultMessage: String) -> String {
-        bridgeFailureMessage(defaultMessage: defaultMessage)
     }
 
     private func bridgeFailureMessage(defaultMessage: String) -> String {
