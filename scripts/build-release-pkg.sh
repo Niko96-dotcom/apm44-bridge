@@ -349,6 +349,7 @@ apm44_reload_coreaudio() {
 }
 # Preinstall already deleted the old driver, so a failed check below must still
 # reload Core Audio. Otherwise coreaudiod keeps running the deleted driver.
+# Bash also runs this trap when TERM or HUP kills the script.
 trap apm44_reload_coreaudio EXIT
 chown -R root:wheel "$DRIVER"
 xattr -d com.apple.quarantine "$DRIVER" 2>/dev/null || true

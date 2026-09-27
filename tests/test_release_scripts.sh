@@ -812,19 +812,25 @@ make_postinstall_root() {
 
 # Run the generated postinstall against a fixture root. BASH_ENV functions
 # replace every side-effecting command, and the sandbox makes a missing shim
-# unable to write the real install locations or signal a real process.
+# unable to run them, write the real install locations or signal a real process.
+# An empty root selects the production paths. SHELLOPTS is cleared so this
+# harness's nounset and pipefail do not leak into the script under test.
 run_postinstall_case() {
   local postinstall="$1"
   local root="$2"
   local label="$3"
   local pkg_path="$4"
   local launchctl_status="$5"
+  local chown_status="${6:-0}"
+  local term_at_xattr="${7:-0}"
   : >"$TMP/$label.calls"
   local status=0
-  env \
+  env -u SHELLOPTS \
     APM44_INSTALL_ROOT="$root" \
     APM44_TEST_CALLS="$TMP/$label.calls" \
     APM44_TEST_LAUNCHCTL_STATUS="$launchctl_status" \
+    APM44_TEST_CHOWN_STATUS="$chown_status" \
+    APM44_TEST_TERM_AT_XATTR="$term_at_xattr" \
     BASH_ENV="$TMP/postinstall-shims.bash" \
     sandbox-exec -f "$TMP/installer-sandbox.sb" \
     /bin/bash "$postinstall" "$pkg_path" / / >"$TMP/$label.out" 2>"$TMP/$label.err" || status=$?
@@ -841,6 +847,13 @@ assert_postinstall_status() {
     cat "$TMP/$label.err" "$TMP/$label.calls" >&2
     exit 1
   }
+}
+
+# One call-log line, quoted the way the shims quote it, so word splitting shows.
+postinstall_call() {
+  local line
+  line="$(printf '%q ' "$@")"
+  printf '%s' "${line% }"
 }
 
 # Assert that the call log holds exactly these lines, in this order.
@@ -861,72 +874,78 @@ run_postinstall_execution_cases() {
   local postinstall="$TMP/postinstall-under-test"
   cp "$ROOT/build/signing/pkg-scripts/postinstall" "$postinstall"
   cat >"$TMP/postinstall-shims.bash" <<'EOF'
-apm44_test_log() { printf '%s\n' "$*" >>"$APM44_TEST_CALLS"; }
-chown() { apm44_test_log "chown $*"; }
-xattr() { apm44_test_log "xattr $*"; }
-launchctl() { apm44_test_log "launchctl $*"; return "$APM44_TEST_LAUNCHCTL_STATUS"; }
-killall() { apm44_test_log "killall $*"; }
-sleep() { apm44_test_log "sleep $*"; }
-sudo() { apm44_test_log "sudo $*"; }
-open() { apm44_test_log "open $*"; }
-stat() { apm44_test_log "stat $*"; echo musician; }
+apm44_test_log() {
+  local line
+  line="$(printf '%q ' "$@")"
+  printf '%s\n' "${line% }" >>"$APM44_TEST_CALLS"
+}
+chown() { apm44_test_log chown "$@"; return "$APM44_TEST_CHOWN_STATUS"; }
+xattr() {
+  apm44_test_log xattr "$@"
+  if [[ "$APM44_TEST_TERM_AT_XATTR" == "1" ]]; then
+    kill -TERM $$
+  fi
+}
+launchctl() { apm44_test_log launchctl "$@"; return "$APM44_TEST_LAUNCHCTL_STATUS"; }
+killall() { apm44_test_log killall "$@"; }
+sleep() { apm44_test_log sleep "$@"; }
+sudo() { apm44_test_log sudo "$@"; }
+open() { apm44_test_log open "$@"; }
+stat() { apm44_test_log stat "$@"; echo musician; }
 EOF
   cat >"$TMP/installer-sandbox.sb" <<'EOF'
 (version 1)
 (allow default)
 (deny file-write* (subpath "/Applications") (subpath "/Library/Audio"))
-(deny signal)
+(deny process-exec* (literal "/bin/launchctl") (literal "/usr/bin/killall") (literal "/usr/bin/sudo") (literal "/usr/bin/open"))
+(deny signal (target others))
 EOF
 
   local root="$TMP/postinstall-root"
   local app="$root/Applications/APM44 Bridge.app"
   local driver="$root/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
-  local kickstart="launchctl kickstart -k system/com.apple.audio.coreaudiod"
+  local manual_pkg="/Users/musician/Downloads/APM44Bridge-9.9.9.pkg"
   local sparkle_pkg="/private/var/root/Library/Caches/com.niko.apm44.menu/org.sparkle-project.Sparkle/Installation/ABC/APM44Bridge-9.9.9.pkg"
+  local chown_call xattr_call kickstart sleep_call
+  chown_call="$(postinstall_call chown -R root:wheel "$driver")"
+  xattr_call="$(postinstall_call xattr -d com.apple.quarantine "$driver")"
+  kickstart="$(postinstall_call launchctl kickstart -k system/com.apple.audio.coreaudiod)"
+  sleep_call="$(postinstall_call sleep 4)"
 
   # A failed check still reloads Core Audio, after preinstall deleted the old driver.
   make_postinstall_root "$root" "9.9.9+abc" "9.9.9+def"
-  run_postinstall_case "$postinstall" "$root" "postinstall-build-id-mismatch" "/Users/musician/Downloads/APM44Bridge-9.9.9.pkg" 0
+  run_postinstall_case "$postinstall" "$root" "postinstall-build-id-mismatch" "$manual_pkg" 0
   assert_postinstall_status "postinstall-build-id-mismatch" 1
   assert_contains "$TMP/postinstall-build-id-mismatch.err" "build ID mismatch: app=9.9.9+abc driver=9.9.9+def"
-  assert_postinstall_calls "postinstall-build-id-mismatch" \
-    "chown -R root:wheel $driver" \
-    "xattr -d com.apple.quarantine $driver" \
-    "$kickstart" \
-    "sleep 4"
+  assert_postinstall_calls "postinstall-build-id-mismatch" "$chown_call" "$xattr_call" "$kickstart" "$sleep_call"
 
-  # A command failing under set -e takes the same path as an explicit exit 1.
-  make_postinstall_root "$root" "9.9.9+abc" "9.9.9+abc"
-  rm "$app/Contents/Info.plist"
-  run_postinstall_case "$postinstall" "$root" "postinstall-app-plist-missing" "" 0
-  assert_postinstall_status "postinstall-app-plist-missing" 1
-  assert_postinstall_calls "postinstall-app-plist-missing" \
-    "chown -R root:wheel $driver" \
-    "xattr -d com.apple.quarantine $driver" \
-    "$kickstart" \
-    "sleep 4"
+  # With no root set, a failing chown under set -e stops at the production driver
+  # path and still reloads. Nothing after chown reads the real install.
+  run_postinstall_case "$postinstall" "" "postinstall-production-chown-fails" "$manual_pkg" 0 1
+  assert_postinstall_status "postinstall-production-chown-fails" 1
+  assert_postinstall_calls "postinstall-production-chown-fails" \
+    "$(postinstall_call chown -R root:wheel /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver)" \
+    "$kickstart" "$sleep_call"
+
+  # SIGTERM mid-install still reloads, and the exit status reports the signal.
+  run_postinstall_case "$postinstall" "$root" "postinstall-sigterm" "$manual_pkg" 0 0 1
+  assert_postinstall_status "postinstall-sigterm" 143
+  assert_postinstall_calls "postinstall-sigterm" "$chown_call" "$xattr_call" "$kickstart" "$sleep_call"
 
   # Success under Sparkle: fall back to killall, wait, and leave the relaunch to Sparkle.
   make_postinstall_root "$root" "9.9.9+abc" "9.9.9+abc"
   run_postinstall_case "$postinstall" "$root" "postinstall-sparkle-success" "$sparkle_pkg" 1
   assert_postinstall_status "postinstall-sparkle-success" 0
   assert_postinstall_calls "postinstall-sparkle-success" \
-    "chown -R root:wheel $driver" \
-    "xattr -d com.apple.quarantine $driver" \
-    "$kickstart" \
-    "killall coreaudiod" \
-    "sleep 4"
+    "$chown_call" "$xattr_call" "$kickstart" "$(postinstall_call killall coreaudiod)" "$sleep_call"
 
   # Success from a manual install: reload once, then open the app as the console user.
-  run_postinstall_case "$postinstall" "$root" "postinstall-manual-success" "/Users/musician/Downloads/APM44Bridge-9.9.9.pkg" 0
+  run_postinstall_case "$postinstall" "$root" "postinstall-manual-success" "$manual_pkg" 0
   assert_postinstall_status "postinstall-manual-success" 0
   assert_postinstall_calls "postinstall-manual-success" \
-    "chown -R root:wheel $driver" \
-    "xattr -d com.apple.quarantine $driver" \
-    "$kickstart" \
-    "sleep 4" \
-    "stat -f%Su /dev/console" \
-    "sudo -u musician open $app"
+    "$chown_call" "$xattr_call" "$kickstart" "$sleep_call" \
+    "$(postinstall_call stat -f%Su /dev/console)" \
+    "$(postinstall_call sudo -u musician open "$app")"
 }
 
 write_guard_test_plist() {
