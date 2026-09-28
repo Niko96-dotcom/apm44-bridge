@@ -109,6 +109,8 @@ INSTALL_BTN_WAIT="${APM44_E2E_INSTALL_BUTTON_WAIT:-60}"
 NEW_PID_WAIT="${APM44_E2E_NEW_PID_WAIT:-180}"
 FEED_WAIT="${APM44_E2E_FEED_WAIT:-30}"
 QUIT_WAIT="${APM44_E2E_QUIT_WAIT:-20}"
+LAUNCH_WAIT="${APM44_E2E_LAUNCH_WAIT:-10}"
+LAUNCH_SETTLE="${APM44_E2E_LAUNCH_SETTLE:-3}"
 
 APP_EXEC="$APP_PATH/Contents/MacOS/APM44 Bridge"
 APP_PROC_PATTERN="^${APP_EXEC}( |\$)"
@@ -181,6 +183,24 @@ e2e_log_updates() {
 
 e2e_log_bridge() {
   "$LOG_CMD" show --start "$RUN_LOG_START" --info --style compact --predicate 'process == "APM44 Bridge" AND category == "Bridge"' 2>/dev/null || true
+}
+
+# macOS 26 can hide the menu bar item; AppKit then terminates the app about
+# 0.3 s after launch with exit 0. Control Center credits the item to the app
+# that launched it (e.g. Claude Desktop or Codex running this script), so that
+# app's System Settings > Menu Bar switch counts, not only APM44 Bridge's.
+e2e_fail_app_exited() {
+  local where="${1:-}"
+  echo "FAIL: APM44 Bridge exited right after relaunch ($where)" >&2
+  # AppKit logs its line at Info level. Capture first: with pipefail, grep -q
+  # closing the pipe early would make the whole check fail.
+  local app_log
+  app_log="$("$LOG_CMD" show --start "$RUN_LOG_START" --info --style compact --predicate 'process == "APM44 Bridge"' 2>/dev/null || true)"
+  if grep -Eq "terminating on removal|hid the menu bar item" <<<"$app_log"; then
+    echo "cause: macOS hid the app's menu bar item and AppKit terminated the app (\"terminating on removal\")" >&2
+  fi
+  echo "hint: Control Center credits the menu bar item to the app that launched APM44 Bridge. In System Settings > Menu Bar, allow APM44 Bridge and any app that launches it (e.g. Codex, Claude, your terminal), or run from an allowed terminal, then re-run." >&2
+  echo "check: /usr/bin/log show --last 5m --info --predicate 'process == \"APM44 Bridge\" OR (process == \"ControlCenter\" AND category == \"appStatusItems\")' | grep -iE 'terminating on removal|blocked list'" >&2
 }
 
 e2e_resolve_sign_update() {
@@ -320,6 +340,27 @@ if [[ "$START_BRIDGE" -eq 1 ]]; then
 else
   "$OPEN_CMD" -a "$APP_PATH" --args -AppleLanguages '(en)' -AppleLocale en_US -SUFeedURL "$FEED_URL" -APM44AutomationCheckForUpdates YES >/dev/null 2>&1
 fi
+LAUNCH_START="$(date +%s)"
+LAUNCH_SEEN=""
+while true; do
+  if [[ -n "$(e2e_app_pids || true)" ]]; then
+    LAUNCH_SEEN=1
+    break
+  fi
+  NOW="$(date +%s)"
+  if [[ $((NOW - LAUNCH_START)) -ge "$LAUNCH_WAIT" ]]; then
+    break
+  fi
+  sleep "$POLL"
+done
+if [[ -n "$LAUNCH_SEEN" ]]; then
+  sleep "$LAUNCH_SETTLE"
+fi
+# AppKit quits an app whose menu bar item macOS hides ~0.3 s after launch, often after `open` has returned.
+if [[ -z "$LAUNCH_SEEN" ]] || [[ -z "$(e2e_app_pids || true)" ]]; then
+  e2e_fail_app_exited "STEP 3"
+  exit 1
+fi
 echo "STEP 3: OK (relaunched with feed $FEED_URL)"
 
 # STEP 4: Bridge running before update
@@ -331,6 +372,10 @@ if [[ "$START_BRIDGE" -eq 1 ]]; then
     if "$PGREP" -f "apm44-bridge --virtual-device" >/dev/null 2>&1; then
       BRIDGE_WAS_RUNNING=1
       break
+    fi
+    if [[ -z "$(e2e_app_pids || true)" ]]; then
+      e2e_fail_app_exited "STEP 4"
+      exit 1
     fi
     NOW="$(date +%s)"
     if [[ $((NOW - B_START)) -ge "$BRIDGE_WAIT" ]]; then
