@@ -91,6 +91,7 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   devices_ = devices;
   options_ = options;
   virtualDevice_ = options.virtualDevice;
+  stopRequestedDuringPrepare_ = false;
 
   if (virtualDevice_) {
     constexpr auto kPollInterval = std::chrono::milliseconds(100);
@@ -99,6 +100,11 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
     bool printedWaitHint = false;
     ShmMismatchDebounce mismatchDebounce;
     while (!virtualFeed_.open()) {
+      if (gStopRequested != 0) {
+        std::cerr << "Stop requested while waiting for APM44 Bridge shm.\n";
+        stopRequestedDuringPrepare_ = true;
+        return false;
+      }
       if (!printedWaitHint) {
         std::cerr << "Waiting for APM44 Bridge shm: the HAL driver should create "
                   << kShmRingName
@@ -503,6 +509,8 @@ void BridgeEngine::stop() {
 }
 
 void BridgeEngine::requestStop() { gStopRequested = 1; }
+
+void BridgeEngine::clearStopRequestForTesting() { gStopRequested = 0; }
 
 BridgeEngine::VirtualFeedStaleAction BridgeEngine::pollVirtualFeedStaleRing() {
   if (!virtualDevice_ || !running_ || outputProc_ == nullptr) {

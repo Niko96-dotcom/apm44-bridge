@@ -112,6 +112,9 @@ int RunPrintConfig(const apm44::CliOptions& options) {
 
   apm44::BridgeEngine engine;
   if (!engine.prepare(*pair, engineOptions)) {
+    if (engine.stopRequestedDuringPrepare()) {
+      return 0;
+    }
     std::cerr << "error: engine prepare failed\n";
     return 1;
   }
@@ -288,6 +291,9 @@ int main(int argc, char* argv[]) {
 
   apm44::BridgeEngine engine;
   if (!engine.prepare(*pair, engineOptions)) {
+    if (engine.stopRequestedDuringPrepare()) {
+      return 0;
+    }
     const int code = apm44::ExitCodeForPrepareFailure(options.virtualDevice,
                                                       engine.virtualFeedLastOpenErrorCode());
     if (code == apm44::kExitFailure) {

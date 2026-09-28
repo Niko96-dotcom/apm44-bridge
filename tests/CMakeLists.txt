@@ -34,6 +34,7 @@ apm44_add_test(test_shm_object_identity test_shm_object_identity.cpp)
 apm44_add_test(test_shm_io_handler test_shm_io_handler.cpp)
 apm44_add_test(test_virtual_device_feed test_virtual_device_feed.cpp)
 apm44_add_test(test_io_proc_callbacks test_io_proc_callbacks.cpp)
+apm44_add_test(test_engine_prepare_stop test_engine_prepare_stop.cpp)
 apm44_add_test(test_daemon_exit_codes test_daemon_exit_codes.cpp)
 apm44_add_test(test_mmap_shm_validation test_mmap_shm_validation.cpp)
 apm44_add_test(test_process_lifecycle test_process_lifecycle.cpp)
@@ -74,6 +75,18 @@ target_sources(test_io_proc_callbacks PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/VirtualDeviceFeed.cpp
 )
 target_link_libraries(test_io_proc_callbacks PRIVATE
+  samplerate::samplerate
+  "-framework CoreAudio"
+  "-framework CoreFoundation"
+)
+
+target_sources(test_engine_prepare_stop PRIVATE
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/IoProcHandlers.cpp
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/BridgeEngine.cpp
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/LibSamplerateSrc.cpp
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/VirtualDeviceFeed.cpp
+)
+target_link_libraries(test_engine_prepare_stop PRIVATE
   samplerate::samplerate
   "-framework CoreAudio"
   "-framework CoreFoundation"
