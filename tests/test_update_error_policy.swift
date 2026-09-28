@@ -109,6 +109,33 @@ final class UpdateErrorPolicyTests: XCTestCase {
         )
     }
 
+    func testUpdateCycleErrorClassificationAuthorizeLaterDeferred() {
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.13"),
+                error: NSError(domain: "SUSparkleErrorDomain", code: 4007),
+                currentVersion: "0.12.12"
+            ),
+            .cancelled
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.13"),
+                error: NSError(domain: "SUSparkleErrorDomain", code: 4008),
+                currentVersion: "0.12.12"
+            ),
+            .deferred
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .checking,
+                error: NSError(domain: "SUSparkleErrorDomain", code: 4001),
+                currentVersion: "0.12.12"
+            ),
+            .failed
+        )
+    }
+
     func testEmptyDescriptionDiffers() {
         let empty = NSError(
             domain: "com.example.empty",

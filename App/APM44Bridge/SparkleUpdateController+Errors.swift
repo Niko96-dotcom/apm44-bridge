@@ -51,11 +51,15 @@ extension SparkleUpdateController {
         case alreadyInstalled
         case noUpdate
         case cancelled
+        case deferred
         case failed
     }
 
     // Sparkle's SUInstallationCanceledError.
     nonisolated private static var installationCanceledErrorCode: Int { 4007 }
+
+    // Sparkle's SUInstallationAuthorizeLaterError.
+    nonisolated private static var installationAuthorizeLaterErrorCode: Int { 4008 }
 
     /// The one decision for an error that ends an update cycle. Sparkle
     /// usually reports the same error to `didAbortWithError` and then to
@@ -78,6 +82,9 @@ extension SparkleUpdateController {
         let nsError = error as NSError
         if nsError.domain == SUSparkleErrorDomain, nsError.code == installationCanceledErrorCode {
             return .cancelled
+        }
+        if nsError.domain == SUSparkleErrorDomain, nsError.code == installationAuthorizeLaterErrorCode {
+            return .deferred
         }
         return .failed
     }

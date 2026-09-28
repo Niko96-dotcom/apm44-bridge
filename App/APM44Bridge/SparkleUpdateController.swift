@@ -325,6 +325,20 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
         case .cancelled:
             logger.info("Update cancelled")
             state = .cancelled
+        case .deferred:
+            logger.info("Update install deferred until authorization")
+            if let version = lastOfferedVersion {
+                state = .available(version: version)
+            } else {
+                switch state {
+                case let .installing(version: version),
+                     let .readyToInstall(version: version),
+                     let .available(version: version):
+                    state = .available(version: version)
+                default:
+                    state = .idle
+                }
+            }
         case .failed:
             fail(error)
         }
