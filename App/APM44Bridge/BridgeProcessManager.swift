@@ -89,6 +89,8 @@ final class BridgeProcessManager: ObservableObject {
     private var stabilityTask: Task<Void, Never>?
     private var processHealth: BridgeProcessHealth = .stopped
     private var resumeAfterSystemWake = false
+    // Every sleep bumps this so a wake can tell a newer sleep superseded it.
+    private var systemSleepGeneration = 0
     /// The newest device-list refresh; superseded refreshes await it.
     private var newestDeviceRefresh: (generation: Int, task: Task<Bool?, Never>)?
     private var hotplugEventGeneration = 0
@@ -646,6 +648,8 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func handleSystemWillSleep() async {
+        // Count every sleep first so a wake in flight sees it was superseded.
+        systemSleepGeneration += 1
         let shouldResume: Bool
         switch state {
         case .running, .starting, .reconnecting:
@@ -672,6 +676,7 @@ final class BridgeProcessManager: ObservableObject {
     func handleSystemDidWake() async {
         // The intent stays in resumeAfterSystemWake across every await below,
         // so a user stop meanwhile cancels it; it is consumed only at the end.
+        let wakeGeneration = systemSleepGeneration
         var sleepStopUnfinished = false
         if resumeAfterSystemWake, case .stopping = state {
             // The sleep stop is still in flight and start() would ignore
@@ -680,6 +685,12 @@ final class BridgeProcessManager: ObservableObject {
             if case .stopping = state { sleepStopUnfinished = true }
         }
         let refreshed = await refreshDevices()
+        // A sleep that landed during the refresh owns the intent now; the
+        // next wake handles it, so keep the flag without starting or parking.
+        if wakeGeneration != systemSleepGeneration {
+            logger.info("Bridge slept again during wake")
+            return
+        }
         let shouldResume = resumeAfterSystemWake
         resumeAfterSystemWake = false
         guard shouldResume else { return }
