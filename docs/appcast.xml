@@ -8,27 +8,52 @@
     <description>Signed APM44 Bridge updates</description>
     <language>en</language>
     <item>
-      <title>APM44 Bridge 0.12.15</title>
-      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.15</link>
-      <sparkle:version>0.12.15</sparkle:version>
-      <sparkle:shortVersionString>0.12.15</sparkle:shortVersionString>
+      <title>APM44 Bridge 0.12.16</title>
+      <link>https://github.com/Niko96-dotcom/apm44-bridge/releases/tag/v0.12.16</link>
+      <sparkle:version>0.12.16</sparkle:version>
+      <sparkle:shortVersionString>0.12.16</sparkle:shortVersionString>
       <description sparkle:format="markdown"><![CDATA[
-## 0.12.15 - 2026-09-26
+## 0.12.16 - 2026-09-28
 
-- If an update window opens while you are working in another app, the APM44
-  Bridge Dock icon now bounces until you look at it.
+- If the bridge was running when the Mac went to sleep, it now starts again
+  after wake in more cases: when an audio device reconnects during wake, when
+  the Mac wakes before the bridge has finished stopping for sleep, and when
+  the Mac goes back to sleep while it is still waking up.
+  Clicking Stop during wake still keeps it stopped.
+- If the helper does not quit when asked, Stop and Quit now force it to quit
+  after a few seconds instead of waiting forever. If even that fails, the menu
+  says the bridge did not stop instead of staying stuck, and it recovers on
+  its own once the helper exits.
+- Stopping or quitting while the helper is still waiting for the audio driver
+  now ends it at once, so a quick restart no longer reports that another
+  helper is already running.
+- An update that is waiting for your administrator approval now shows as
+  available instead of "update failed".
+- Cancelling an update (for example at the password prompt) now shows as
+  cancelled instead of "update failed".
+- If another APM44 Bridge helper is already running, the app now says so
+  right away instead of retrying several times and reporting unstable launches.
+- If the installer's final checks fail, it now still reloads Core Audio, so
+  Core Audio no longer keeps running the removed audio driver.
+- `scripts/uninstall-apm44.sh` now quits the app and its helper before it
+  deletes them.
+- When the helper gives up on a stale audio connection, it no longer starts
+  audio output again right before it exits.
+- Internal: the helper supervision, update controller and menu code were
+  split into smaller parts, CI and release checks were tightened, and the
+  PKG build and notarization dry run no longer leave app copies in `build/`.
 ]]></description>
       <sparkle:fullReleaseNotesLink>https://github.com/Niko96-dotcom/apm44-bridge/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <pubDate>Sat, 26 Sep 2026 20:52:39 +0200</pubDate>
-      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.15/APM44Bridge-0.12.15.pkg"
-                 sparkle:edSignature="q9kb7mxnyFkPuAHa/bIfPHgO221BbI9nKdiSmuf8K/csMkG2ThV88n0VqvlclQXmQwKhXhAuhFcBr5M5nop4Bg=="
+      <pubDate>Mon, 28 Sep 2026 10:28:03 +0200</pubDate>
+      <enclosure url="https://github.com/Niko96-dotcom/apm44-bridge/releases/download/v0.12.16/APM44Bridge-0.12.16.pkg"
+                 sparkle:edSignature="YFnRlm9WWCtF+D7ALRcyjYTNlQBW9opwx1R4pmvSpvyFIFsj7uD/q1WGvu9VTnA0jz57XjXxQGdLa8knAp0RDg=="
                  sparkle:installationType="package"
-                 length="5064781"
+                 length="5076028"
                  type="application/octet-stream" />
     </item>
   </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: or1R4tB4md2avJe+9TxL4vFE4Qq9UnK/rV8Ssqwal8rOparNqb9IBwWF3H5Y0dUUSxZnWNKoWLVXuzUijeaOAw==
-length: 1481
+edSignature: Fi9YHtmX0AHJYppCQz6VNe00euy/9G0xfMu2uawqdXUFpQ4bE9uK6rNQG/A4VXtwqe19r8C6I9lOp2PQHXC/Bw==
+length: 3089
 -->
