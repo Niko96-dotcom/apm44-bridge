@@ -655,6 +655,69 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 1)
     }
 
+    func testSecondSleepDuringWakeRefreshKeepsResumeIntent() async {
+        let (manager, _, launcher, source) = await makeManager()
+        manager.start()
+        await sleepCompletingTermination(manager: manager, launcher: launcher)
+        XCTAssertEqual(manager.state, .idle)
+
+        let gate = source.gateNextListing()
+        addTeardownBlock { gate.release() }
+        let wake = Task { await manager.handleSystemDidWake() }
+        await waitUntil { gate.isHolding }
+        XCTAssertTrue(gate.isHolding)
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        let restartedProcess = launcher.lastProcess
+        let secondSleep = Task { await manager.handleSystemWillSleep() }
+        await waitUntil { manager.state == .stopping }
+        XCTAssertEqual(manager.state, .stopping)
+        gate.release()
+        await wake.value
+        if let proc = restartedProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await secondSleep.value
+        XCTAssertEqual(manager.state, .idle)
+
+        await manager.handleSystemDidWake()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 3)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testSleepDuringIdleWakeRefreshDefersResumeToNextWake() async {
+        let (manager, _, launcher, source) = await makeManager()
+        manager.start()
+        await sleepCompletingTermination(manager: manager, launcher: launcher)
+        XCTAssertEqual(manager.state, .idle)
+
+        let gate = source.gateNextListing()
+        addTeardownBlock { gate.release() }
+        let wake = Task { await manager.handleSystemDidWake() }
+        await waitUntil { gate.isHolding }
+        XCTAssertTrue(gate.isHolding)
+        await manager.handleSystemWillSleep()
+        gate.release()
+        await wake.value
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        await manager.handleSystemDidWake()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
     func testUserStopNoAutoRetry() async {
         let (manager, _, launcher, _) = await makeManager(
             timing: BridgeTiming(retryDelays: [0.01], stabilityWindow: 15)
