@@ -91,6 +91,10 @@ final class BridgeProcessManager: ObservableObject {
     private var stabilityTask: Task<Void, Never>?
     private var processHealth: BridgeProcessHealth = .stopped
     private var resumeAfterSystemWake = false
+    /// Tracks a stuck-helper .error without comparing localized strings in
+    /// handleTermination. Set only via markStuckHelper(), cleared in
+    /// transitionToIdle() and when start() launches.
+    private var awaitingStuckHelperExit = false
     // Every sleep bumps this so a wake can tell a newer sleep superseded it.
     private var systemSleepGeneration = 0
     /// The newest device-list refresh; superseded refreshes await it.
@@ -508,6 +512,7 @@ final class BridgeProcessManager: ObservableObject {
             // token and closes automatically if the app crashes.
             parentPipe.fileHandleForReading.closeFile()
             runningOutputFingerprint = selectedOutput
+            awaitingStuckHelperExit = false
             state = .running
             logger.info("Bridge running")
             wasRunningBeforeDisconnect = false
@@ -535,14 +540,31 @@ final class BridgeProcessManager: ObservableObject {
 
     func stop() {
         if initiateUserStop() {
-            Task { await finishStopWithEscalation() }
+            Task { await finishUserStop() }
         }
     }
 
     func stopAsync() async {
         if initiateUserStop() {
-            await finishStopWithEscalation()
+            await finishUserStop()
         }
+    }
+
+    /// Shared user-stop completion for stop() and stopAsync(): awaits the
+    /// escalation and surfaces a stuck helper as .error. Guarded so a late
+    /// exit that already idled is not overwritten with a false error.
+    private func finishUserStop() async {
+        let stopped = await finishStopWithEscalation()
+        if !stopped && process != nil {
+            markStuckHelper()
+        }
+    }
+
+    /// Records a helper that survived SIGKILL; its late exit frees the slot.
+    private func markStuckHelper() {
+        state = .error(AppStrings.bridgeDidNotStop)
+        connectionPhase = .stopped
+        awaitingStuckHelperExit = true
     }
 
     private func initiateUserStop() -> Bool {
@@ -645,8 +667,8 @@ final class BridgeProcessManager: ObservableObject {
         lastStopReason = reason
         if process != nil {
             let stopped = await terminateProcessWithEscalation(reason: reason)
-            if !stopped {
-                state = .error(AppStrings.bridgeDidNotStop)
+            if !stopped && process != nil {
+                markStuckHelper()
                 return
             }
         }
@@ -965,6 +987,7 @@ final class BridgeProcessManager: ObservableObject {
     private func transitionToIdle() {
         cancelStabilityTask()
         processHealth = .stopped
+        awaitingStuckHelperExit = false
         runningOutputFingerprint = nil
         clearPipeHandlers()
         resetMetricsState()
@@ -1088,6 +1111,31 @@ final class BridgeProcessManager: ObservableObject {
         staleTask?.cancel()
         if case .stopping = state {
             transitionToIdle()
+            return
+        }
+        if awaitingStuckHelperExit, case .error = state {
+            // Stuck helper outlived SIGKILL; its late exit frees the slot.
+            transitionToIdle()
+            return
+        }
+        if case .reconnecting = state, wasRunningBeforeDisconnect, lastStopReason == .internal {
+            // Wake parked over an unfinished sleep stop; the stuck helper
+            // just exited, so finish the resume the park was waiting for.
+            // A failed hotplug stop can also leave a tracked process in
+            // .reconnecting, but its reason is .hotplug so it falls through
+            // to classify below instead of resuming here.
+            if let uid = settings.outputDeviceUid,
+               let selected = devices.first(where: { $0.uid == uid }),
+               selected.isAlive,
+               selected.isMonitoringCompatible {
+                bannerMessage = nil
+                resumeTerminationWaiters()
+                start()
+            } else {
+                // Output still missing; keep the park for the next hotplug.
+                connectionPhase = .stopped
+                resumeTerminationWaiters()
+            }
             return
         }
         let exitStatus = processLauncher.terminationStatus(of: proc)

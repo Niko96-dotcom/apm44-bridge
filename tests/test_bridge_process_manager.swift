@@ -1378,13 +1378,17 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertTrue(elapsed < .seconds(2), "stopAsync hung: elapsed \(elapsed)")
         XCTAssertEqual(launcher.forceKilled.count, 1)
-        // Even SIGKILL failed, so finishStop returns false and stopAsync
-        // leaves the manager parked in .stopping with the process entry.
-        XCTAssertEqual(manager.state, .stopping)
+        // FIX 1: a failed SIGKILL surfaces .error(bridgeDidNotStop) instead
+        // of parking in .stopping with Quit/Stop/Restart disabled.
+        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
 
+        // FIX 2a: the mock Process never launched, so stub the exit status
+        // that handleTermination reads outside .stopping.
+        launcher.nextTerminationStatus = 9
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
+        await waitUntil { manager.state == .idle }
         XCTAssertEqual(manager.state, .idle)
     }
 
@@ -1411,12 +1415,158 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForDevicesAfterWake)
 
         await sleep.value
+        // FIX 2b: the stuck helper's late exit resumes the parked wake when
+        // the selected output is present. The mock Process never launched,
+        // so stub the exit status that handleTermination reads.
+        launcher.nextTerminationStatus = 9
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await waitUntil { manager.state == .running }
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        XCTAssertNil(manager.bannerMessage)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testFailedUserStopShowsErrorAndReenablesQuit() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        // Helper survives SIGKILL (no termination on force-kill).
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        await manager.stopAsync()
+
+        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(manager.connectionPhase, .stopped)
+        let presentation = MenuPresentation(
+            state: manager.state,
+            isApplyingSettings: manager.isApplyingSettings,
+            connectionPhase: manager.connectionPhase,
+            bannerMessage: manager.bannerMessage,
+            metricsStale: manager.metricsStale,
+            startBlockedReason: manager.startBlockedReason,
+            latestMetrics: manager.latestMetrics,
+            heldMetrics: nil
+        )
+        XCTAssertFalse(presentation.quitDisabled)
+
+        // Settle the stuck helper so the test leaves no live process.
         // The mock Process never launched, so stub the exit status that
         // handleTermination reads outside .stopping.
         launcher.nextTerminationStatus = 9
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
+        await waitUntil { manager.state == .idle }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testStuckHelperLateExitAfterFailedStopGoesIdle() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        await manager.stopAsync()
+        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+
+        // The mock Process never launched, so stub the exit status that
+        // handleTermination reads outside .stopping.
+        launcher.nextTerminationStatus = 9
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await waitUntil { manager.state == .idle }
+        XCTAssertEqual(manager.state, .idle)
+
+        manager.start()
+        XCTAssertEqual(launcher.makeCount, 2)
+        XCTAssertEqual(manager.state, .running)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testLateExitAfterWakeParkResumesWhenOutputPresent() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        // Helper never terminates, so the sleep stop never finishes.
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        let sleep = Task { await manager.handleSystemWillSleep() }
+        await waitUntil { manager.state == .stopping }
+        await manager.handleSystemDidWake()
+        XCTAssertEqual(manager.state, .reconnecting)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForDevicesAfterWake)
+        await sleep.value
+
+        // The mock Process never launched, so stub the exit status that
+        // handleTermination reads outside .stopping.
+        launcher.nextTerminationStatus = 9
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await waitUntil { manager.state == .running }
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        XCTAssertNil(manager.bannerMessage)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testLateExitAfterWakeParkStaysParkedWhenOutputMissing() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, source) = await makeManager(timing: t)
+        // Helper never terminates, so the sleep stop never finishes.
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        let sleep = Task { await manager.handleSystemWillSleep() }
+        await waitUntil { manager.state == .stopping }
+        await manager.handleSystemDidWake()
+        XCTAssertEqual(manager.state, .reconnecting)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForDevicesAfterWake)
+        await sleep.value
+
+        // Take the selected output away and sync the manager's cached list
+        // so the late-exit resume check sees it missing.
+        source.devices = []
+        await manager.refreshDevices()
+        XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForDevicesAfterWake)
+
+        // The mock Process never launched, so stub the exit status that
+        // handleTermination reads outside .stopping.
+        launcher.nextTerminationStatus = 9
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        // Let any resume attempt run; the park must survive it.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(manager.state, .reconnecting)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForDevicesAfterWake)
+        XCTAssertEqual(launcher.makeCount, 1)
+        manager.stop()
+        XCTAssertEqual(manager.state, .idle)
     }
 
     func testConcurrentStopAsyncWaitersBothReleasedBySingleTermination() async {
@@ -2006,6 +2156,57 @@ final class BridgeProcessManagerTests: XCTestCase {
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testMenuStopWithStuckHelperShowsErrorAndLateExitGoesIdle() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        // Menu Stop path: fire-and-forget stop(), not stopAsync().
+        manager.stop()
+        await waitUntil { manager.state == .error(AppStrings.bridgeDidNotStop) }
+        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+
+        launcher.nextTerminationStatus = 9
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        await waitUntil { manager.state == .idle }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testHotplugParkLateExitDoesNotStart() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, source) = await makeManager(timing: t)
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        // Hotplug loss parks with the stuck helper still tracked.
+        source.devices = []
+        await manager.handleHotplug()
+        guard case .reconnecting = manager.state else {
+            XCTFail("Expected reconnecting park, got \(manager.state)")
+            return
+        }
+        XCTAssertEqual(manager.lastStopReason, .hotplug)
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        launcher.nextTerminationStatus = 9
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        // Let any resume attempt run; the park must survive it.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(manager.state, .reconnecting)
+        XCTAssertEqual(launcher.makeCount, 1)
+        manager.stop()
         XCTAssertEqual(manager.state, .idle)
     }
 }
