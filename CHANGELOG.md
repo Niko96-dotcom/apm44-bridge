@@ -4,10 +4,22 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+## 0.12.16 - 2026-09-28
+
 - If the bridge was running when the Mac went to sleep, it now starts again
-  after wake in more cases: when an audio device reconnects during wake, and
-  when the Mac wakes before the bridge has finished stopping for sleep.
+  after wake in more cases: when an audio device reconnects during wake, when
+  the Mac wakes before the bridge has finished stopping for sleep, and when
+  the Mac goes back to sleep while it is still waking up.
   Clicking Stop during wake still keeps it stopped.
+- If the helper does not quit when asked, Stop and Quit now force it to quit
+  after a few seconds instead of waiting forever. If even that fails, the menu
+  says the bridge did not stop instead of staying stuck, and it recovers on
+  its own once the helper exits.
+- Stopping or quitting while the helper is still waiting for the audio driver
+  now ends it at once, so a quick restart no longer reports that another
+  helper is already running.
+- An update that is waiting for your administrator approval now shows as
+  available instead of "update failed".
 - Cancelling an update (for example at the password prompt) now shows as
   cancelled instead of "update failed".
 - If another APM44 Bridge helper is already running, the app now says so
