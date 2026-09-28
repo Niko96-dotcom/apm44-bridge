@@ -108,6 +108,18 @@ APM44_PREINSTALL_GUARD_ONLY=1 /bin/bash /tmp/apm44-pkgx/Scripts/preinstall pkg /
 - Cause: the app refuses to start the bridge without its output; AirPods Max over USB-C drop out of Core Audio when unplugged or asleep.
 - Fix: ask the user to plug in and put on the AirPods; confirm with `"/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge" --list-devices | grep -i airpods` (ALIVE column 1); rerun. Nothing was changed by the failed run.
 
+## E2E: app exits right after relaunch (menu bar item hidden)
+
+- Symptom: `FAIL: APM44 Bridge exited right after relaunch (STEP 3)` or `(STEP 4)`, often with `cause: macOS hid the app's menu bar item`. Older harness versions instead timed out with `FAIL: bridge helper (--virtual-device) did not appear within 60s`; preflight may show `pid=none`. The app "does not start" when opened by hand either.
+- Cause: macOS 26 hid the status item, and AppKit terminates the app with exit 0 about 0.3 s after launch (`[com.apple.AppKit:StatusBar] 0 terminating on removal`, Info level). Control Center credits the item to the apps that launch APM44 Bridge (claude-code, Cursor, Codex, a terminal): its `trackedApplications` list them with `com.niko.apm44.menu` under `menuItemLocations`. If any of them has its Menu Bar switch off, Control Center blocks the item (`Moving host to blocked list; (bid:com.niko.apm44.menu-Item-0-<pid>)`) even though APM44 Bridge itself is allowed. Observed 2026-09-28: Codex (`com.openai.codex`) was off; enabling Codex fixed it, enabling Claude did not. Toggling APM44 Bridge's switch, `killall ControlCenter`, deleting `NSStatusItem VisibleCC Item-0` and Launch Services cleanup do not help. Apps with the fix also log `Quitting because macOS hid the menu bar item` (category `App`).
+- Fix: confirm with `/usr/bin/log show --last 5m --info --predicate 'process == "APM44 Bridge" OR (process == "ControlCenter" AND category == "appStatusItems")' | grep -iE 'terminating on removal|blocked list'` (use `/usr/bin/log`: zsh has a `log` builtin; without `--info` the AppKit line is not shown). List the apps Control Center credits with the item:
+
+```bash
+/usr/bin/python3 -c 'import os,plistlib as P;f=os.path.expanduser("~/Library/Group Containers/group.com.apple.controlcenter/Library/Preferences/group.com.apple.controlcenter.plist");t=P.load(open(f,"rb"))["trackedApplications"];t=P.loads(t) if isinstance(t,bytes) else t;[print(e["location"]["bundle"]["_0"],"isAllowed="+str(e.get("isAllowed"))) for e in t if isinstance(e,dict) and "location" in e and "com.niko.apm44.menu" in repr(e.get("menuItemLocations"))]'
+```
+
+Enable every entry with `isAllowed=False` in System Settings > Menu Bar (or run the E2E from an allowed terminal), then rerun the same E2E command. Nothing was installed by the failed run.
+
 ## E2E: port 8765 already in use
 
 - Symptom: `FAIL: port 8765 is already in use` in preflight.

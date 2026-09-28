@@ -276,6 +276,24 @@ if echo "\$args" | grep -q "SUFeedURL"; then
   exit 1
 fi
 if echo "\$args" | grep -q "apm44-bridge --virtual-device"; then
+  if [[ -f "\$STATE_DIR/helper_misses" ]]; then
+    n="\$(cat "\$STATE_DIR/helper_misses" 2>/dev/null || echo 0)"
+    if [[ "\$n" =~ ^[0-9]+$ ]] && [[ "\$n" -gt 0 ]]; then
+      printf '%s\n' "\$((n - 1))" > "\$STATE_DIR/helper_misses"
+      exit 1
+    fi
+  fi
+  if [[ -f "\$STATE_DIR/exits_after_launch" ]]; then
+    if [[ -f "\$STATE_DIR/exits_after_launch_seen" ]]; then
+      rm -f "\$STATE_DIR/bridge_running"
+      : > "\$STATE_DIR/app_pid"
+      rm -f "\$STATE_DIR/app_has_test_args"
+      exit 1
+    else
+      touch "\$STATE_DIR/exits_after_launch_seen"
+      exit 1
+    fi
+  fi
   if [[ -f "\$STATE_DIR/bridge_running" ]]; then
     cat "\$STATE_DIR/helper_pid"
     exit 0
@@ -283,6 +301,16 @@ if echo "\$args" | grep -q "apm44-bridge --virtual-device"; then
   exit 1
 fi
 if echo "\$args" | grep -q "APM44 Bridge"; then
+  if [[ -f "\$STATE_DIR/dies_after_first_check" ]]; then
+    pid="\$(cat "\$STATE_DIR/app_pid" 2>/dev/null || true)"
+    if [[ -n "\$pid" ]]; then
+      printf '%s\n' "\$pid"
+      rm -f "\$STATE_DIR/dies_after_first_check"
+      : > "\$STATE_DIR/app_pid"
+      rm -f "\$STATE_DIR/app_has_test_args"
+      exit 0
+    fi
+  fi
   if [[ -f "\$STATE_DIR/app_pid" ]]; then
     pid="\$(cat "\$STATE_DIR/app_pid" 2>/dev/null || true)"
     if [[ -n "\$pid" ]]; then
@@ -361,6 +389,12 @@ set -euo pipefail
 STATE_DIR="$state"
 args="\$*"
 printf '%s\n' "\$*" >>"\$STATE_DIR/log_args"
+# AppKit logs "terminating on removal" at Info level: only --info shows it.
+if [[ -f "\$STATE_DIR/status_item_removed" ]] && printf '%s' "\$args" | grep -Fq -- "--info"; then
+  if ! printf '%s' "\$args" | grep -q 'category =='; then
+    echo 'APM44 Bridge: (AppKit) [com.apple.AppKit:StatusBar] 0 terminating on removal'
+  fi
+fi
 if printf '%s' "\$args" | grep -q 'category == "Bridge"'; then
   if [[ -f "\$STATE_DIR/updated" ]]; then
     echo "Bridge resuming after update"
@@ -472,12 +506,22 @@ EOF
 set -euo pipefail
 STATE_DIR="$state"
 if printf '%s' "\$*" | grep -q "SUFeedURL"; then
-  if [[ -f "\$STATE_DIR/feed_pid" ]]; then
-    cat "\$STATE_DIR/feed_pid" > "\$STATE_DIR/app_pid"
-  elif [[ ! -s "\$STATE_DIR/app_pid" ]]; then
-    cat "\$STATE_DIR/old_pid" > "\$STATE_DIR/app_pid"
+  if [[ -f "\$STATE_DIR/exits_on_launch" ]]; then
+    if [[ -f "\$STATE_DIR/feed_pid" ]]; then
+      cat "\$STATE_DIR/feed_pid" > "\$STATE_DIR/app_pid"
+    elif [[ ! -s "\$STATE_DIR/app_pid" ]]; then
+      cat "\$STATE_DIR/old_pid" > "\$STATE_DIR/app_pid"
+    fi
+    touch "\$STATE_DIR/app_has_test_args"
+    touch "\$STATE_DIR/dies_after_first_check"
+  else
+    if [[ -f "\$STATE_DIR/feed_pid" ]]; then
+      cat "\$STATE_DIR/feed_pid" > "\$STATE_DIR/app_pid"
+    elif [[ ! -s "\$STATE_DIR/app_pid" ]]; then
+      cat "\$STATE_DIR/old_pid" > "\$STATE_DIR/app_pid"
+    fi
+    touch "\$STATE_DIR/app_has_test_args"
   fi
-  touch "\$STATE_DIR/app_has_test_args"
 else
   if [[ ! -s "\$STATE_DIR/app_pid" ]]; then
     cat "\$STATE_DIR/old_pid" > "\$STATE_DIR/app_pid"
@@ -598,6 +642,9 @@ run_roundtrip_happy_case() {
   if [[ "$click_errors" == "click-errors" ]]; then
     touch "$state/install_click_errors"
   fi
+  if [[ "$click_errors" == "slow-helper" ]]; then
+    printf '2\n' >"$state/helper_misses"
+  fi
   # Empty windows file means no windows.
   : >"$state/windows"
   # After update the fake osascript copies new_build (NEW456) everywhere, but
@@ -634,6 +681,7 @@ run_roundtrip_happy_case() {
     APM44_E2E_FAKE_STATE="$state" \
     APM44_E2E_SETTLE_SECONDS=0 \
     APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_LAUNCH_SETTLE=0 \
     /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --label "$label" --start-bridge --yes >"$out" 2>&1; then
     status=0
   else
@@ -685,6 +733,9 @@ run_roundtrip_happy_case() {
     assert_contains "$out" "CHECK bridge-resuming: PASS"
     assert_contains "$out" "CHECK bridge-helper: PASS"
     assert_contains "$out" "CHECK audio-flow: PASS"
+  fi
+  if [[ "$click_errors" == "slow-helper" ]]; then
+    assert_not_contains "$out" "exited right after relaunch"
   fi
   # Must never touch the real install.
   assert_not_contains "$out" "/Applications/APM44 Bridge.app"
@@ -742,6 +793,7 @@ run_roundtrip_feed_pid_cases() {
     APM44_E2E_NEW_PID_WAIT=2 \
     APM44_E2E_POLL_INTERVAL=1 \
     APM44_E2E_SETTLE_SECONDS=0 \
+    APM44_E2E_LAUNCH_SETTLE=0 \
     /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
     status=0
   else
@@ -794,6 +846,7 @@ run_roundtrip_feed_pid_cases() {
     APM44_E2E_NEW_PID_WAIT=2 \
     APM44_E2E_POLL_INTERVAL=1 \
     APM44_E2E_SETTLE_SECONDS=0 \
+    APM44_E2E_LAUNCH_SETTLE=0 \
     /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg2" --expect-version "0.12.15" --yes >"$out2" 2>&1; then
     status2=0
   else
@@ -848,6 +901,7 @@ run_roundtrip_pkill_pattern_case() {
     APM44_E2E_QUIT_WAIT=2 \
     APM44_E2E_POLL_INTERVAL=1 \
     APM44_E2E_SETTLE_SECONDS=0 \
+    APM44_E2E_LAUNCH_SETTLE=0 \
     /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
     status=0
   else
@@ -899,6 +953,7 @@ run_roundtrip_stale_logs_case() {
     APM44_E2E_POLL_INTERVAL=1 \
     APM44_E2E_QUIT_WAIT=2 \
     APM44_E2E_SETTLE_SECONDS=0 \
+    APM44_E2E_LAUNCH_SETTLE=0 \
     /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
     status=0
   else
@@ -977,6 +1032,7 @@ run_roundtrip_restores_app_on_fail_case() {
     APM44_E2E_UPDATE_WAIT=2 \
     APM44_E2E_QUIT_WAIT=1 \
     APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_LAUNCH_SETTLE=0 \
     /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
     echo "a run without 'Update available' must fail" >&2
     cat "$out" >&2
@@ -1021,6 +1077,7 @@ run_roundtrip_windows_fail_case() {
     APM44_E2E_FAKE_STATE="$state" \
     APM44_E2E_SETTLE_SECONDS=0 \
     APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_LAUNCH_SETTLE=0 \
     /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
     status=0
   else
@@ -1033,6 +1090,127 @@ run_roundtrip_windows_fail_case() {
   fi
   assert_contains "$out" "CHECK no-windows: FAIL"
   assert_contains "$out" "Result: FAIL"
+  assert_server_stopped "$state"
+}
+
+run_roundtrip_exits_on_launch_case() {
+  local state="$TMP/case-rt-state-exits-on-launch"
+  setup_roundtrip_state "$state" ""
+  : >"$state/windows"
+  printf '0.12.15\n' >"$state/app_version"
+  printf '0.12.15\n' >"$state/expected_label"
+  touch "$state/exits_on_launch"
+  touch "$state/status_item_removed"
+  write_roundtrip_fakes "$state"
+  local fake_app="$TMP/case-rt-app-exits-on-launch/APM44 Bridge.app"
+  mkdir -p "$fake_app/Contents"
+  printf 'fake app\n' >"$fake_app/Contents/Info.plist"
+  local pkg="$TMP/case-rt-pkg-exits-on-launch.pkg"
+  printf 'candidate pkg bytes' >"$pkg"
+  local out="$TMP/case-rt-exits-on-launch.out"
+  local status=0
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    SPARKLE_SIGN_UPDATE="$FAKE_BIN/sign_update" \
+    APM44_E2E_APP_PATH="$fake_app" \
+    APM44_E2E_HELPER="$FAKE_BIN/apm44-bridge" \
+    APM44_E2E_OSASCRIPT="$FAKE_BIN/osascript" \
+    APM44_E2E_OPEN="$FAKE_BIN/open" \
+    APM44_E2E_PGREP="$FAKE_BIN/pgrep" \
+    APM44_E2E_PKILL="$FAKE_BIN/pkill" \
+    APM44_E2E_LOG="$FAKE_BIN/log" \
+    APM44_E2E_DEFAULTS="$FAKE_BIN/defaults" \
+    APM44_E2E_CURL="$FAKE_BIN/curl" \
+    APM44_E2E_PYTHON3="$FAKE_BIN/python3" \
+    APM44_E2E_PLISTBUDDY="$FAKE_BIN/PlistBuddy" \
+    APM44_E2E_FEED_SCRIPT="$ROOT/scripts/e2e-local-update-feed.sh" \
+    APM44_E2E_FAKE_STATE="$state" \
+    APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_LAUNCH_WAIT=2 \
+    APM44_E2E_LAUNCH_SETTLE=1 \
+    APM44_E2E_SETTLE_SECONDS=0 \
+    /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --yes >"$out" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" -eq 0 ]]; then
+    echo "exits-on-launch should fail" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "FAIL: APM44 Bridge exited right after relaunch"
+  assert_contains "$out" "cause: macOS hid the app's menu bar item"
+  assert_contains "$out" "System Settings > Menu Bar"
+  assert_not_contains "$out" "STEP 3: OK"
+  assert_not_contains "$out" "STEP 5:"
+  assert_server_stopped "$state"
+}
+
+run_roundtrip_exits_during_bridge_wait_case() {
+  local state="$TMP/case-rt-state-exits-during-bridge"
+  setup_roundtrip_state "$state" ""
+  : >"$state/windows"
+  printf '0.12.15\n' >"$state/app_version"
+  printf '0.12.15\n' >"$state/expected_label"
+  touch "$state/exits_after_launch"
+  write_roundtrip_fakes "$state"
+  local fake_app="$TMP/case-rt-app-exits-bridge/APM44 Bridge.app"
+  local fake_driver="$TMP/case-rt-driver-exits-bridge/APM44Bridge.driver"
+  mkdir -p "$fake_app/Contents" "$fake_driver/Contents"
+  printf 'fake app\n' >"$fake_app/Contents/Info.plist"
+  printf 'fake driver\n' >"$fake_driver/Contents/Info.plist"
+  local pkg="$TMP/case-rt-pkg-exits-bridge.pkg"
+  printf 'candidate pkg bytes' >"$pkg"
+  local out="$TMP/case-rt-exits-bridge.out"
+  local status=0
+  local t0 t1 elapsed
+  t0="$(date +%s)"
+  if env \
+    PATH="$FAKE_BIN:$PATH" \
+    SPARKLE_SIGN_UPDATE="$FAKE_BIN/sign_update" \
+    APM44_E2E_APP_PATH="$fake_app" \
+    APM44_E2E_DRIVER_PATH="$fake_driver" \
+    APM44_E2E_HELPER="$FAKE_BIN/apm44-bridge" \
+    APM44_E2E_OSASCRIPT="$FAKE_BIN/osascript" \
+    APM44_E2E_OPEN="$FAKE_BIN/open" \
+    APM44_E2E_PGREP="$FAKE_BIN/pgrep" \
+    APM44_E2E_PKILL="$FAKE_BIN/pkill" \
+    APM44_E2E_LOG="$FAKE_BIN/log" \
+    APM44_E2E_DEFAULTS="$FAKE_BIN/defaults" \
+    APM44_E2E_CURL="$FAKE_BIN/curl" \
+    APM44_E2E_PYTHON3="$FAKE_BIN/python3" \
+    APM44_E2E_PLISTBUDDY="$FAKE_BIN/PlistBuddy" \
+    APM44_E2E_FEED_SCRIPT="$ROOT/scripts/e2e-local-update-feed.sh" \
+    APM44_E2E_AUDIO_FLOW_SCRIPT="$FAKE_BIN/fake-audio-flow.sh" \
+    APM44_E2E_FAKE_STATE="$state" \
+    APM44_E2E_POLL_INTERVAL=1 \
+    APM44_E2E_LAUNCH_WAIT=2 \
+    APM44_E2E_BRIDGE_WAIT=30 \
+    APM44_E2E_LAUNCH_SETTLE=0 \
+    APM44_E2E_SETTLE_SECONDS=0 \
+    /bin/bash "$ROOT/scripts/e2e-update-roundtrip.sh" --pkg "$pkg" --expect-version "0.12.15" --start-bridge --yes >"$out" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  t1="$(date +%s)"
+  elapsed=$((t1 - t0))
+  if [[ "$status" -eq 0 ]]; then
+    echo "exits-during-bridge-wait should fail" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "STEP 3: OK"
+  assert_contains "$out" "FAIL: APM44 Bridge exited right after relaunch"
+  assert_contains "$out" "System Settings > Menu Bar"
+  assert_not_contains "$out" "did not appear within"
+  assert_not_contains "$out" "cause: macOS hid"
+  if [[ "$elapsed" -ge 15 ]]; then
+    echo "exits-during-bridge-wait took too long: ${elapsed}s (must be < 15)" >&2
+    cat "$out" >&2
+    exit 1
+  fi
   assert_server_stopped "$state"
 }
 
@@ -1064,11 +1242,14 @@ run_roundtrip_missing_pkg_case
 run_roundtrip_happy_case 0.12.14 0.12.15
 run_roundtrip_happy_case 0.12.15 99.0.0
 run_roundtrip_happy_case 0.12.15 99.0.0 click-errors
+run_roundtrip_happy_case 0.12.15 99.0.0 slow-helper
 run_roundtrip_output_missing_case
 run_roundtrip_restores_app_on_fail_case
 run_roundtrip_windows_fail_case
 run_roundtrip_feed_pid_cases
 run_roundtrip_pkill_pattern_case
 run_roundtrip_stale_logs_case
+run_roundtrip_exits_on_launch_case
+run_roundtrip_exits_during_bridge_wait_case
 
 echo "e2e script tests: OK"

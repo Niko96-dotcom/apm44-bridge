@@ -4,6 +4,11 @@ All notable user-facing changes will be documented here.
 
 ## Unreleased
 
+- If macOS hides the menu bar icon, the app still quits right after launch,
+  but it now logs why and how to fix it: allow APM44 Bridge in
+  System Settings > Menu Bar. If another app opened it, that app must be
+  allowed there too.
+
 ## 0.12.16 - 2026-09-28
 
 - If the bridge was running when the Mac went to sleep, it now starts again

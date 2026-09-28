@@ -49,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        let visibility = MenuBarItemVisibility.statusItems(in: NSApp.windows).map(\.isVisible)
+        if let reason = MenuBarItemVisibility.terminationReason(statusItemVisibility: visibility) {
+            logger.error("\(reason, privacy: .public)")
+        }
         if let becomeActiveMenuObserver {
             NotificationCenter.default.removeObserver(becomeActiveMenuObserver)
             self.becomeActiveMenuObserver = nil
