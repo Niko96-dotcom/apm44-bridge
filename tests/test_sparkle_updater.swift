@@ -310,6 +310,47 @@ final class SparkleUpdaterTests: XCTestCase {
     }
 
     @MainActor
+    func testFinishWithInstallationAuthorizeLaterEndsAvailable() {
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            menuPanelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { true },
+            startUpdater: false
+        )
+        controller.seedStateForTests(.installing(version: "0.12.13"))
+        let deferred = NSError(domain: "SUSparkleErrorDomain", code: 4008)
+        controller.handleFinish(error: deferred)
+        XCTAssertEqual(controller.state, .available(version: "0.12.13"))
+        if case .failed = controller.state {
+            XCTFail("deferred install must not become .failed")
+        }
+        if case .cancelled = controller.state {
+            XCTFail("deferred install must not become .cancelled")
+        }
+    }
+
+    @MainActor
+    func testFinishDeferredWithNoKnownVersionEndsIdle() {
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            menuPanelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { true },
+            startUpdater: false
+        )
+        controller.seedStateForTests(.checking)
+        XCTAssertNil(controller.lastOfferedVersion)
+        let deferred = NSError(domain: "SUSparkleErrorDomain", code: 4008)
+        controller.handleFinish(error: deferred)
+        XCTAssertEqual(controller.state, .idle)
+    }
+
+    @MainActor
     func testAbortThenFinishWithInstallationCancelledGivesSingleCancelled() {
         let controller = SparkleUpdateController(
             currentVersion: "0.12.12",
@@ -376,6 +417,14 @@ final class SparkleUpdaterTests: XCTestCase {
                 currentVersion: "0.12.12"
             ),
             .cancelled
+        )
+        XCTAssertEqual(
+            SparkleUpdateController.classifyUpdateCycleError(
+                state: .installing(version: "0.12.13"),
+                error: NSError(domain: "SUSparkleErrorDomain", code: 4008),
+                currentVersion: "0.12.12"
+            ),
+            .deferred
         )
         XCTAssertEqual(
             SparkleUpdateController.classifyUpdateCycleError(
