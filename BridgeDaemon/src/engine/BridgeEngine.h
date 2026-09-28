@@ -34,6 +34,9 @@ class BridgeEngine {
   void stop();
   void runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick = nullptr);
   static void requestStop();
+  bool stopRequestedDuringPrepare() const { return stopRequestedDuringPrepare_; }
+  // Test-only: resets the global stop flag set by requestStop()/signals.
+  static void clearStopRequestForTesting();
 
   using VirtualFeedStaleAction = apm44::VirtualFeedStaleAction;
   VirtualFeedStaleAction pollVirtualFeedStaleRing();
@@ -112,6 +115,7 @@ class BridgeEngine {
 
   VirtualDeviceFeed virtualFeed_;
   bool virtualDevice_ = false;
+  bool stopRequestedDuringPrepare_ = false;
   std::size_t targetFillFrames_ = 0;
 };
 
