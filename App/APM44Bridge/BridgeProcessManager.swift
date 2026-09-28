@@ -77,7 +77,9 @@ final class BridgeProcessManager: ObservableObject {
     private var staleTask: Task<Void, Never>?
     private var lastMetricsAt: Date?
     private var stderrTail = DaemonStderrTail()
-    private var terminationContinuations: [CheckedContinuation<Void, Never>] = []
+    private var terminationWaiters: [UInt64: CheckedContinuation<Bool, Never>] = [:]
+    private var terminationWaiterTimers: [UInt64: Task<Void, Never>] = [:]
+    private var nextTerminationWaiterID: UInt64 = 0
     private var restartTask: Task<Void, Never>?
     private var pendingRestartReason: StopReason?
     private var wasRunningBeforeDisconnect = false
@@ -389,6 +391,11 @@ final class BridgeProcessManager: ObservableObject {
         case .idle, .error, .reconnecting: break
         default: return
         }
+        // Refuse to launch over a stuck helper that survived escalation.
+        guard process == nil else {
+            logger.error("Bridge start refused: previous helper still running")
+            return
+        }
         if resetRetryAttempt {
             cancelRetryTask()
             cancelStabilityTask()
@@ -681,7 +688,8 @@ final class BridgeProcessManager: ObservableObject {
         if resumeAfterSystemWake, case .stopping = state {
             // The sleep stop is still in flight and start() would ignore
             // .stopping, so wait for the termination first.
-            try? await waitForTermination(timeout: .seconds(11))
+            // Outlast one full escalation (SIGTERM wait + SIGKILL wait).
+            try? await waitForTermination(timeout: .seconds(timing.stopTimeout * 2 + 1))
             if case .stopping = state { sleepStopUnfinished = true }
         }
         let refreshed = await refreshDevices()
@@ -794,26 +802,33 @@ final class BridgeProcessManager: ObservableObject {
     private func waitForTermination(timeout: Duration = .seconds(5)) async throws {
         if state == .idle, process == nil { return }
 
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { @MainActor in
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    if self.state == .idle, self.process == nil {
-                        continuation.resume()
-                        return
-                    }
-                    // PROC-03: support concurrent termination waiters. Each
-                    // caller appends its own continuation; the termination
-                    // handler drains the full list. A single optional slot
-                    // would let the second caller overwrite the first.
-                    self.terminationContinuations.append(continuation)
-                }
+        // Each waiter gets its own id so the timeout timer removes only
+        // itself; a plain array would need index juggling on removal.
+        let terminated: Bool = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            if self.state == .idle, self.process == nil {
+                continuation.resume(returning: true)
+                return
             }
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                throw TerminationWaitError.timedOut
+            // PROC-03: support concurrent termination waiters. Each caller
+            // registers under its own id; the termination handler drains
+            // the full map. A single optional slot would let the second
+            // caller overwrite the first.
+            let id = self.nextTerminationWaiterID
+            self.nextTerminationWaiterID += 1
+            self.terminationWaiters[id] = continuation
+            // The timer owns only this id: on fire it removes that waiter
+            // (if still present) and resumes it with false, so the wait
+            // times out even when the process never exits.
+            self.terminationWaiterTimers[id] = Task { @MainActor in
+                try? await Task.sleep(for: timeout)
+                guard !Task.isCancelled else { return }
+                guard let waiter = self.terminationWaiters.removeValue(forKey: id) else { return }
+                self.terminationWaiterTimers.removeValue(forKey: id)
+                waiter.resume(returning: false)
             }
-            _ = try await group.next()
-            group.cancelAll()
+        }
+        if !terminated {
+            throw TerminationWaitError.timedOut
         }
     }
 
@@ -918,24 +933,24 @@ final class BridgeProcessManager: ObservableObject {
             return true
         }
         do {
-            try await waitForTermination(timeout: .seconds(5))
+            try await waitForTermination(timeout: .seconds(timing.stopTimeout))
             return true
         } catch {
-            if let proc = process, processLauncher.isProcessRunning(proc), proc.isRunning {
+            if let proc = process, processLauncher.isProcessRunning(proc) {
                 logger.error("Bridge stop timed out; sending SIGKILL")
-                kill(proc.processIdentifier, SIGKILL)
+                processLauncher.forceKill(proc)
             }
             do {
-                try await waitForTermination(timeout: .seconds(5))
+                try await waitForTermination(timeout: .seconds(timing.stopTimeout))
                 return true
             } catch {
                 // PROC-01: ensure any in-flight termination waiter
-                // unblocks with a final result instead of hanging. Clear
-                // pipe handlers and resume every queued continuation so
-                // the caller gets a deterministic `false`.
+                // unblocks with failure instead of hanging. Clear
+                // pipe handlers and resume every queued continuation with
+                // false so siblings also observe the failure.
                 logger.error("Bridge stop failed after SIGKILL")
                 clearPipeHandlers()
-                resumeTerminationWaiters()
+                resumeTerminationWaiters(terminated: false)
                 return false
             }
         }
@@ -971,14 +986,20 @@ final class BridgeProcessManager: ObservableObject {
         Task { @MainActor in await restart(reason: pending) }
     }
 
-    private func resumeTerminationWaiters() {
-        // PROC-03: resume all queued termination continuations, not just
-        // one. Drain the list, then clear it so a new waiter that arrives
-        // after this point is not immediately resumed.
-        let pending = terminationContinuations
-        terminationContinuations = []
-        for continuation in pending {
-            continuation.resume()
+    private func resumeTerminationWaiters(terminated: Bool = true) {
+        // PROC-03: resume all queued termination waiters, not just one.
+        // Drain the map, then clear it so a new waiter that arrives after
+        // this point is not immediately resumed.
+        let pending = terminationWaiters
+        terminationWaiters = [:]
+        // Cancel each timer so a drained waiter is never resumed twice
+        // (once here with true, once later by its timeout with false).
+        for (_, timer) in terminationWaiterTimers {
+            timer.cancel()
+        }
+        terminationWaiterTimers = [:]
+        for (_, continuation) in pending {
+            continuation.resume(returning: terminated)
         }
     }
 

@@ -12,6 +12,8 @@ final class MockProcessLauncher: ProcessLaunching {
     var nextTerminationStatus: Int32?
     private var successfulLaunches = 0
     private var running = Set<ObjectIdentifier>()
+    private(set) var forceKilled: [Process] = []
+    var terminateOnForceKill = false
 
     func makeProcess() -> Process {
         makeCount += 1
@@ -41,6 +43,16 @@ final class MockProcessLauncher: ProcessLaunching {
             return stubbed
         }
         return process.terminationStatus
+    }
+
+    func forceKill(_ process: Process) {
+        forceKilled.append(process)
+        // Mock processes never really run, so mirror fireTermination
+        // synchronously: drop the running token and invoke the handler.
+        if terminateOnForceKill {
+            running.remove(ObjectIdentifier(process))
+            process.terminationHandler?(process)
+        }
     }
 
     func fireTermination(for proc: Process) async {
@@ -1295,8 +1307,8 @@ final class BridgeProcessManagerTests: XCTestCase {
 
     // PROC-03: two concurrent termination waiters must both unblock when
     // the daemon terminates. The old single-slot continuation would
-    // overwrite the first waiter; the new list-based implementation
-    // appends each caller and drains the full list on termination.
+    // overwrite the first waiter; the new id-keyed map registers each
+    // caller and drains the full map on termination.
     func testConcurrentTerminationWaitersAllComplete() async {
         let (manager, _, launcher, _) = await makeManager()
 
@@ -1305,7 +1317,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         // Kick off two concurrent stop calls. Each invokes
         // `finishStopWithEscalation` → `waitForTermination` →
-        // `terminationContinuations.append`. Both must unblock when
+        // `terminationWaiters[id] =`. Both must unblock when
         // the daemon fires its termination handler.
         let stop1 = Task { @MainActor in
             manager.stop()
@@ -1314,8 +1326,8 @@ final class BridgeProcessManagerTests: XCTestCase {
             manager.stop()
         }
 
-        // Give both tasks a moment to enter waitForTermination and append
-        // their continuations to the list.
+        // Give both tasks a moment to enter waitForTermination and register
+        // in the waiter map.
         try? await Task.sleep(nanoseconds: 20_000_000)
 
         if let proc = launcher.lastProcess {
@@ -1323,6 +1335,103 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         // Both awaiters must complete without hanging.
+        await stop1.value
+        await stop2.value
+
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testStopEscalatesToSigkillWhenHelperIgnoresSigterm() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        launcher.terminateOnForceKill = true
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let started = launcher.lastProcess
+        XCTAssertNotNil(started)
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        await manager.stopAsync()
+        let elapsed = clock.now - start
+
+        XCTAssertTrue(elapsed < .seconds(2), "stopAsync hung: elapsed \(elapsed)")
+        XCTAssertEqual(launcher.forceKilled.count, 1)
+        XCTAssertTrue(launcher.forceKilled.first === started)
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testStopReturnsWhenHelperSurvivesSigkill() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        // Helper ignores SIGTERM and survives SIGKILL (no termination).
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        await manager.stopAsync()
+        let elapsed = clock.now - start
+
+        XCTAssertTrue(elapsed < .seconds(2), "stopAsync hung: elapsed \(elapsed)")
+        XCTAssertEqual(launcher.forceKilled.count, 1)
+        // Even SIGKILL failed, so finishStop returns false and stopAsync
+        // leaves the manager parked in .stopping with the process entry.
+        XCTAssertEqual(manager.state, .stopping)
+
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testWakeParksWhenSleepStopNeverFinishes() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        // Helper never terminates, so the sleep stop never finishes.
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        let sleep = Task { await manager.handleSystemWillSleep() }
+        await waitUntil { manager.state == .stopping }
+        XCTAssertEqual(manager.state, .stopping)
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        await manager.handleSystemDidWake()
+        let elapsed = clock.now - start
+
+        XCTAssertTrue(elapsed < .seconds(2), "wake hung: elapsed \(elapsed)")
+        XCTAssertEqual(manager.state, .reconnecting)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForDevicesAfterWake)
+
+        await sleep.value
+        // The mock Process never launched, so stub the exit status that
+        // handleTermination reads outside .stopping.
+        launcher.nextTerminationStatus = 9
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testConcurrentStopAsyncWaitersBothReleasedBySingleTermination() async {
+        let (manager, _, launcher, _) = await makeManager()
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        let stop1 = Task { @MainActor in await manager.stopAsync() }
+        let stop2 = Task { @MainActor in await manager.stopAsync() }
+        // Let both enter waitForTermination before the single exit.
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
         await stop1.value
         await stop2.value
 
@@ -1830,5 +1939,73 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .stopping, blockedReason: nil))
         XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .reconnecting, blockedReason: nil))
         XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .error("x"), blockedReason: nil))
+    }
+
+    // PROC-01: concurrent escalations must both observe failure when the
+    // helper survives SIGKILL. restart() only escalates from .running, so
+    // it must win the race: a restart arriving after .stopping only queues
+    // pending and never joins the escalation. restart() therefore enters
+    // first and stopAsync() joins ~300ms later, during the restart's SIGKILL
+    // wait, so the restart's final catch drains the stop's still-pending
+    // first wait. Before the fix that drain resumed with true and the
+    // sibling skipped its SIGKILL (forceKilled stayed 1); after the fix
+    // both escalate and fail, the restart surfaces .error(bridgeDidNotStop)
+    // with no relaunch.
+    func testConcurrentStopsBothFailWhenHelperSurvivesSigkill() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.2
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        let restartTask = Task { @MainActor in await manager.restart(reason: .settingsChange) }
+        await waitUntil { manager.state == .stopping }
+        // Start the sibling during the restart's SIGKILL wait so the
+        // restart's final catch drains a still-pending first wait.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        let stopTask = Task { @MainActor in await manager.stopAsync() }
+        await restartTask.value
+        await stopTask.value
+        let elapsed = clock.now - start
+
+        XCTAssertTrue(elapsed < .seconds(2), "concurrent stops hung: elapsed \(elapsed)")
+        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertEqual(launcher.forceKilled.count, 2)
+    }
+
+    func testStartRefusedWhileStuckHelperStillRunning() async {
+        var t = BridgeTiming.live
+        t.stopTimeout = 0.05
+        let (manager, _, launcher, _) = await makeManager(timing: t)
+        launcher.terminateOnForceKill = false
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+
+        await manager.restart(reason: .settingsChange)
+        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        manager.start()
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+
+        // The mock Process never launched, so stub the exit status that
+        // handleTermination reads outside .stopping.
+        launcher.nextTerminationStatus = 9
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        manager.start()
+        XCTAssertEqual(launcher.makeCount, 2)
+        XCTAssertEqual(manager.state, .running)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertEqual(manager.state, .idle)
     }
 }

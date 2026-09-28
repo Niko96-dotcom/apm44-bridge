@@ -8,13 +8,15 @@ struct BridgeTiming: Equatable, Sendable {
     var staleCheckInterval: TimeInterval = 0.5
     var staleAfter: TimeInterval = 2.0
     var glitchFlashDuration: TimeInterval = 2.0
+    var stopTimeout: TimeInterval = 5.0
 
     static let live = BridgeTiming(
         retryDelays: [1.0, 2.0, 4.0, 4.0],
         stabilityWindow: 15.0,
         staleCheckInterval: 0.5,
         staleAfter: 2.0,
-        glitchFlashDuration: 2.0
+        glitchFlashDuration: 2.0,
+        stopTimeout: 5.0
     )
 }
 
