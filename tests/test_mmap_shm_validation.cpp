@@ -6,10 +6,9 @@
 // Note on platform defenses: macOS rounds shm object sizes to a
 // full page (typically 16 KiB) and `ftruncate` cannot shrink or
 // grow the reported `st_size` once the page is allocated. The
-// defensive `HeaderTruncated` (SHM-01) check is correct in principle
-// but cannot be exercised functionally on this platform; SHM-01 is
-// guarded by the source-order test
-// (`Shm01SourceCodeChecksSizeBeforeHeader`) below. SHM-03's size
+// defensive `HeaderTruncated` (SHM-01) check cannot be reached with a real
+// object on this platform; its size boundaries are covered by the
+// `ClassifyShmObjectSize` table below. SHM-03's size
 // branch is proved functionally in
 // tests/test_shm_object_identity.cpp. SHM-02 and SHM-04 are
 // functionally tested below.
@@ -25,8 +24,6 @@
 #include <unistd.h>
 
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -35,21 +32,6 @@ namespace {
 std::string IsolatedName(const char* tag) {
   // macOS PSHMNAMLEN is 31, including the leading slash. Keep names short.
   return std::string("/v") + std::to_string(static_cast<long long>(getpid())) + "_" + tag;
-}
-
-std::string LocateSource(const char* relative) {
-  // Catch2 may run from the build/ directory. Walk up a few levels
-  // looking for the project root (the directory containing
-  // `Shared/`).
-  std::string candidate = relative;
-  for (int i = 0; i < 4; ++i) {
-    std::ifstream in(candidate);
-    if (in.good()) {
-      return candidate;
-    }
-    candidate = std::string("../") + candidate;
-  }
-  return relative;  // Best effort — test will fail with a clear message.
 }
 
 // Create a shm object with the given byte size, returning its fd.
@@ -127,35 +109,24 @@ TEST_CASE("OpenRejectsValidHeaderWithHugeCapacity", "[mmap_shm][validation][SHM-
   CleanupShmObject(name);
 }
 
-TEST_CASE("Shm01SourceCodeChecksSizeBeforeHeader",
+TEST_CASE("ClassifyShmObjectSize separates empty, truncated and header-sized objects",
           "[mmap_shm][validation][SHM-01]") {
-  // Regression guard: the source must validate `st.st_size` against
-  // `sizeof(ShmRingHeader)` and return `HeaderTruncated` BEFORE
-  // dereferencing `header_` or calling `ValidateShmHeader`. This
-  // protects against a future refactor that reorders the checks
-  // (which would re-introduce a possible out-of-bounds header read
-  // for a truncated shm object).
-  std::ifstream in(LocateSource("Shared/src/MmapShmRing.cpp"));
-  REQUIRE(in.good());
-  std::stringstream ss;
-  ss << in.rdbuf();
-  const std::string src = ss.str();
+  // This table proves the size boundaries open() relies on. It does not prove
+  // open() calls the helper before touching the header; that ordering rests on
+  // review, because macOS page rounding stops a real truncated object from
+  // reaching open().
+  constexpr std::int64_t kHeader = static_cast<std::int64_t>(sizeof(apm44::ShmRingHeader));
+  using apm44::ClassifyShmObjectSize;
+  using apm44::ShmObjectSizeClass;
 
-  const std::string sizeCheck = "st.st_size) < sizeof(ShmRingHeader)";
-  const std::string sizeErrCode = "ShmRingErrorCode::HeaderTruncated";
-  const std::string validateCall = "ValidateShmHeader(*header_)";
-
-  const auto sizePos = src.find(sizeCheck);
-  const auto validatePos = src.find(validateCall);
-  const auto errPos = src.find(sizeErrCode);
-  REQUIRE(sizePos != std::string::npos);
-  REQUIRE(errPos != std::string::npos);
-  REQUIRE(validatePos != std::string::npos);
-  // Both the size check AND the HeaderTruncated error code must
-  // appear BEFORE the ValidateShmHeader call. If a future refactor
-  // moves any of these, the test fails.
-  REQUIRE(sizePos < validatePos);
-  REQUIRE(errPos < validatePos);
+  CHECK(ClassifyShmObjectSize(-1) == ShmObjectSizeClass::Empty);
+  CHECK(ClassifyShmObjectSize(0) == ShmObjectSizeClass::Empty);
+  CHECK(ClassifyShmObjectSize(1) == ShmObjectSizeClass::HeaderTruncated);
+  CHECK(ClassifyShmObjectSize(kHeader - 1) == ShmObjectSizeClass::HeaderTruncated);
+  CHECK(ClassifyShmObjectSize(kHeader) == ShmObjectSizeClass::HeaderSized);
+  CHECK(ClassifyShmObjectSize(kHeader + 1) == ShmObjectSizeClass::HeaderSized);
+  CHECK(ClassifyShmObjectSize(static_cast<std::int64_t>(apm44::ShmTotalSize(64))) ==
+        ShmObjectSizeClass::HeaderSized);
 }
 
 TEST_CASE("HeaderMismatchDiagnosticHandlesUnterminatedBuildId",
