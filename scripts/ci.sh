@@ -48,6 +48,9 @@ bash tests/test_e2e_scripts.sh
 echo "== Sparkle appcast tests =="
 bash tests/test_appcast.sh
 
+echo "== Publish preflight tests =="
+bash tests/test_publish_preflight.sh
+
 echo "== Compiler probe tests =="
 bash tests/test_compiler_probe.sh
 

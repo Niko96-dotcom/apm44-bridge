@@ -19,37 +19,10 @@ APPCAST="${APM44_APPCAST_PATH:-$ROOT/docs/appcast.xml}"
 
 fail() { echo "error: $*" >&2; exit 1; }
 
-[[ -z "${APM44_RELEASE_TAG:-}" || "$APM44_RELEASE_TAG" == "$TAG" ]] || \
-  fail "APM44_RELEASE_TAG=$APM44_RELEASE_TAG does not match VERSION=$VERSION"
+# shellcheck source=lib/publish-preflight.sh
+source "$ROOT/scripts/lib/publish-preflight.sh"
 
-for command_name in gh git curl shasum python3; do
-  command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required to publish v$VERSION"
-done
-
-for artifact in "$DMG" "$PKG" "$DMG_SHA" "$PKG_SHA" "$APPCAST"; do
-  [[ -f "$artifact" ]] || fail "required gated release artifact is missing: $artifact"
-done
-
-[[ -z "$(git -C "$ROOT" status --porcelain=v1)" ]] || \
-  fail "worktree must be clean before publication; commit docs/appcast.xml and release metadata first"
-
-HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD)"
-TAG_SHA="$(git -C "$ROOT" rev-list -n 1 "$TAG" 2>/dev/null || true)"
-[[ -n "$TAG_SHA" ]] || fail "signed tag $TAG is missing; create and push it before publishing"
-[[ "$TAG_SHA" == "$HEAD_SHA" ]] || fail "tag $TAG does not point at HEAD ($HEAD_SHA)"
-REMOTE_TAG_REFS="$(git -C "$ROOT" ls-remote --tags origin \
-  "refs/tags/$TAG" "refs/tags/$TAG^{}")"
-REMOTE_TAG_SHA="$(awk -v tag="$TAG" '
-  $2 == "refs/tags/" tag "^{}" { print $1; found = 1; exit }
-  $2 == "refs/tags/" tag { direct = $1 }
-  END { if (!found && direct != "") print direct }
-' <<<"$REMOTE_TAG_REFS")"
-[[ "$REMOTE_TAG_SHA" == "$HEAD_SHA" ]] || \
-  fail "origin tag $TAG is missing or points to $REMOTE_TAG_SHA instead of $HEAD_SHA"
-
-if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  fail "GitHub release $TAG already exists; refusing to overwrite it"
-fi
+publish_preflight
 
 SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-$($ROOT/scripts/ensure-sparkle-tools.sh)}"
 # --pkg ties the enclosure to the exact PKG being uploaded: a PKG rebuilt or
