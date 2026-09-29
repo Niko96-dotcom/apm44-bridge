@@ -9,6 +9,8 @@
 namespace apm44 {
 
 struct CliOptions {
+  // Set for any malformed invocation; main() exits 2 before doing any work.
+  bool usageError = false;
   bool showHelp = false;
   bool showVersion = false;
   bool listDevices = false;

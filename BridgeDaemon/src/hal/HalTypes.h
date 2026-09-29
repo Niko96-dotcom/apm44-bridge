@@ -22,6 +22,9 @@ struct AudioDeviceInfo {
   uint32_t transportType = 0;
   uint32_t outputFormatId = 0;
   uint32_t outputFormatBits = 0;
+  // The current output stream passes the same float32 stereo layout check
+  // that FormatNegotiator applies at start (sample rate is checked apart).
+  bool outputFloat32Stereo = false;
   bool supports48000 = false;
 };
 

@@ -58,4 +58,7 @@ struct AppUpdateVersionComparator {
 
 extension Notification.Name {
     static let apm44WillInstallUpdate = Notification.Name("apm44.willInstallUpdate")
+    /// An update cycle ended in failure, cancellation or deferral, so the
+    /// running app was not replaced and no relaunch will resume the bridge.
+    static let apm44UpdateInstallAbandoned = Notification.Name("apm44.updateInstallAbandoned")
 }

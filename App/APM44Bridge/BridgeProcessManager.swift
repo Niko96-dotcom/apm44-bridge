@@ -97,6 +97,9 @@ final class BridgeProcessManager: ObservableObject {
     private var awaitingStuckHelperExit = false
     // Every sleep bumps this so a wake can tell a newer sleep superseded it.
     private var systemSleepGeneration = 0
+    // Every user stop bumps this so a restart awaiting its old helper can tell
+    // the user stopped the bridge meanwhile.
+    private var userStopGeneration = 0
     /// The newest device-list refresh; superseded refreshes await it.
     private var newestDeviceRefresh: (generation: Int, task: Task<Bool?, Never>)?
     private var hotplugEventGeneration = 0
@@ -104,6 +107,7 @@ final class BridgeProcessManager: ObservableObject {
     /// retained without explicit removal.
     private var outputDeviceObserver: NSObjectProtocol?
     private var willInstallUpdateObserver: NSObjectProtocol?
+    private var updateInstallAbandonedObserver: NSObjectProtocol?
 
     private let processLauncher: ProcessLaunching
     private let binaryURLOverride: URL?
@@ -166,6 +170,17 @@ final class BridgeProcessManager: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.handleWillInstallUpdate()
+            }
+        }
+        // Posted when an install that already announced itself fails or is
+        // cancelled: this app keeps running, so there is no relaunch to resume.
+        updateInstallAbandonedObserver = NotificationCenter.default.addObserver(
+            forName: .apm44UpdateInstallAbandoned,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.settings.resumeAfterUpdateRequestedAt = nil
             }
         }
     }
@@ -480,19 +495,24 @@ final class BridgeProcessManager: ObservableObject {
         let errPipe = Pipe()
         stderrPipe = errPipe
         proc.standardError = errPipe
-        errPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        // Output already queued when this child is replaced must not reach
+        // the replacement's metrics, phase, glitch flash or stderr tail, so
+        // each Task checks that its child is still the live one.
+        errPipe.fileHandleForReading.readabilityHandler = { [weak self, weak proc] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             Task { @MainActor in
-                self?.appendStderr(text)
+                guard let self, let proc, self.process === proc else { return }
+                self.appendStderr(text)
             }
         }
 
-        outPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        outPipe.fileHandleForReading.readabilityHandler = { [weak self, weak proc] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
             Task { @MainActor in
-                self?.consumeStdout(data)
+                guard let self, let proc, self.process === proc else { return }
+                self.consumeStdout(data)
             }
         }
 
@@ -568,8 +588,12 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func initiateUserStop() -> Bool {
+        userStopGeneration += 1
         wasRunningBeforeDisconnect = false
         resumeAfterSystemWake = false
+        // A stop outranks a pending post-update resume, or a later hotplug or
+        // relaunch within its window would start the bridge again.
+        settings.resumeAfterUpdateRequestedAt = nil
         cancelRetryTask()
         cancelStabilityTask()
         retryBudget.clearAttemptKeepingDiagnostics()
@@ -665,12 +689,22 @@ final class BridgeProcessManager: ObservableObject {
         }
 
         lastStopReason = reason
+        let sleepGeneration = systemSleepGeneration
+        let stopGeneration = userStopGeneration
         if process != nil {
             let stopped = await terminateProcessWithEscalation(reason: reason)
             if !stopped && process != nil {
                 markStuckHelper()
                 return
             }
+        }
+        // A user stop while the old helper exited cancels the relaunch.
+        guard stopGeneration == userStopGeneration else { return }
+        // So does a sleep: handleSystemWillSleep kept the intent for the wake,
+        // which relaunches with the newest settings once devices are back.
+        guard sleepGeneration == systemSleepGeneration else {
+            logger.info("Bridge restart deferred to wake")
+            return
         }
 
         start()
@@ -683,6 +717,13 @@ final class BridgeProcessManager: ObservableObject {
         switch state {
         case .running, .starting, .reconnecting:
             shouldResume = true
+        case .stopping where restartTask != nil:
+            // A restart is replacing the helper, so the bridge is logically
+            // running. Its old helper is already stopping, and performRestart
+            // sees this sleep and leaves the relaunch to the wake.
+            resumeAfterSystemWake = true
+            logger.info("Bridge pausing for sleep during restart")
+            return
         default:
             shouldResume = false
         }

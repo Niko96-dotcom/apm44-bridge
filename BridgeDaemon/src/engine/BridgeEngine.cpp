@@ -174,6 +174,7 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   lastOutputSample0_ = 0.0f;
   lastOutputSample1_ = 0.0f;
   recoveryFadeFramesRemaining_ = kUnderrunFadeFrames;
+  converterPrimed_ = false;
   inputDemand_.reset();
   virtualPrebuffer_.reset(targetFillFrames_);
 
@@ -208,6 +209,7 @@ bool BridgeEngine::resetVirtualStreamEpoch() {
   lastOutputSample0_ = 0.0f;
   lastOutputSample1_ = 0.0f;
   recoveryFadeFramesRemaining_ = kUnderrunFadeFrames;
+  converterPrimed_ = false;
   return src_.reset();
 }
 
@@ -215,6 +217,7 @@ void BridgeEngine::resetConverterAfterStarvation() {
   // The vendored libsamplerate src_reset path only clears preallocated
   // filter storage (src_sinc.c); it performs no allocation or locking.
   src_.reset();
+  converterPrimed_ = false;
   converterResetEvents_.fetch_add(1, std::memory_order_relaxed);
   drift_.resetAfterDiscontinuity();
   inputDemand_.reset();
@@ -340,7 +343,19 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
 
   std::size_t converted = 0;
   const float* inCh[2] = {popCh[0], popCh[1]};
-  if (!src_.process(inCh, popped, channels, frames, converted) || converted == 0) {
+  const bool processed = src_.process(inCh, popped, channels, frames, converted);
+  if (processed && converted == 0 && !converterPrimed_) {
+    // The converter accepted this input into its filter lookahead. Resetting
+    // here would discard it again, which at small callback sizes kept the
+    // High/Best converters silent forever.
+    FadeSamplesToSilence(channels[0], channels[1], 0, frames,
+                         lastOutputSample0_, lastOutputSample1_);
+    lastOutputSample0_ = 0.0f;
+    lastOutputSample1_ = 0.0f;
+    armRecoveryFade(false);
+    return;
+  }
+  if (!processed || converted == 0) {
     FadeSamplesToSilence(channels[0], channels[1], 0, frames,
                          lastOutputSample0_, lastOutputSample1_);
     lastOutputSample0_ = 0.0f;
@@ -354,6 +369,7 @@ void BridgeEngine::onOutput(float* const channels[2], std::size_t frames) {
 
   applyRecoveryFade(channels[0], channels[1], converted);
 
+  converterPrimed_ = true;
   if (converted < frames) {
     outputStarvationFrames_.fetch_add(frames - converted, std::memory_order_relaxed);
     FadeSamplesToSilence(channels[0], channels[1], converted, frames,

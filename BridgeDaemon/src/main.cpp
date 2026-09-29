@@ -132,7 +132,7 @@ int RunPrintConfig(const apm44::CliOptions& options) {
 
 int RunListDevices() {
   apm44::DeviceEnumerator enumerator;
-  std::cout << "UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\tSUPPORTS_48000\n";
+  std::cout << "UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\tSUPPORTS_48000\tFLOAT32_STEREO\n";
   for (const auto& device : enumerator.listAll()) {
     std::string io;
     if (device.hasInput) {
@@ -145,7 +145,8 @@ int RunListDevices() {
               << '\t' << (device.isAlive ? 1 : 0) << '\t' << device.outputChannels << '\t'
               << device.bufferFrameSize << '\t' << device.transportType << '\t'
               << device.outputFormatId << '\t' << device.outputFormatBits << '\t'
-              << (device.supports48000 ? 1 : 0) << '\n';
+              << (device.supports48000 ? 1 : 0) << '\t'
+              << (device.outputFloat32Stereo ? 1 : 0) << '\n';
   }
   return 0;
 }
@@ -243,6 +244,10 @@ int RunShmStatus() {
 int main(int argc, char* argv[]) {
   const apm44::CliOptions options = apm44::ParseCliOptions(argc, argv);
 
+  if (options.usageError) {
+    std::cerr << "Run " << argv[0] << " --help for usage.\n";
+    return 2;
+  }
   if (options.showVersion) {
     std::cout << "apm44-bridge " << apm44::kVersionString
               << " build=" << apm44::kBuildId << "\n";

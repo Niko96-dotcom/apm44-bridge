@@ -55,6 +55,12 @@ final class MockProcessLauncher: ProcessLaunching {
         }
     }
 
+    /// Marks a process as exited without delivering its termination
+    /// callback, so the manager's next stop handles it synchronously.
+    func markExited(_ proc: Process) {
+        running.remove(ObjectIdentifier(proc))
+    }
+
     func fireTermination(for proc: Process) async {
         if terminationDelayNanoseconds > 0 {
             try? await Task.sleep(nanoseconds: terminationDelayNanoseconds)
@@ -579,6 +585,70 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .running)
         XCTAssertEqual(launcher.makeCount, 2)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testSleepDuringSettingsRestartDefersRelaunchToWake() async {
+        let (manager, _, launcher, _) = await makeManager()
+        manager.start()
+        guard let old = launcher.lastProcess else { return XCTFail("no process") }
+
+        let restart = Task { await manager.restartForSettingsChange() }
+        await waitUntil { manager.state == .stopping }
+        await manager.handleSystemWillSleep()
+        await launcher.fireTermination(for: old)
+        await restart.value
+
+        XCTAssertEqual(manager.state, .idle, "no relaunch while the system sleeps")
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        await manager.handleSystemDidWake()
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2, "the wake relaunches exactly once")
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testUserStopDuringSettingsRestartCancelsRelaunch() async {
+        let (manager, _, launcher, _) = await makeManager()
+        manager.start()
+        guard let old = launcher.lastProcess else { return XCTFail("no process") }
+
+        let restart = Task { await manager.restartForSettingsChange() }
+        await waitUntil { manager.state == .stopping }
+        let stop = Task { await manager.stopAsync() }
+        await launcher.fireTermination(for: old)
+        await stop.value
+        await restart.value
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testQueuedOutputFromReplacedHelperDoesNotReachReplacement() async {
+        let (manager, _, launcher, _) = await makeManager()
+        manager.start()
+        guard let old = launcher.lastProcess else { return XCTFail("no process") }
+
+        // Let the pipe handler queue its main-actor Task while the main actor
+        // is blocked, then replace the child before that Task can run.
+        writeStdout(metricsJSONLine, launcher: launcher)
+        Thread.sleep(forTimeInterval: 0.3)
+        launcher.markExited(old)
+        manager.stop()
+        manager.start()
+        XCTAssertNotIdentical(launcher.lastProcess, old)
+        XCTAssertNil(manager.latestMetrics)
+
+        await settlePipeDelivery()
+
+        XCTAssertNil(manager.latestMetrics, "the old child's metrics reached its replacement")
         manager.stop()
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
@@ -2066,6 +2136,38 @@ final class BridgeProcessManagerTests: XCTestCase {
             await launcher.fireTermination(for: proc)
         }
         XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testUserStopRevokesPendingUpdateResume() async {
+        let (manager, settings, launcher, _) = await makeManager()
+        manager.start()
+        NotificationCenter.default.post(name: .apm44WillInstallUpdate, object: nil)
+        XCTAssertNotNil(settings.resumeAfterUpdateRequestedAt)
+
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+
+        await manager.handleHotplug()
+        manager.resumeAfterUpdateIfRequested(now: Date())
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testAbandonedUpdateInstallRevokesResume() async {
+        let (manager, settings, launcher, _) = await makeManager()
+        manager.start()
+        NotificationCenter.default.post(name: .apm44WillInstallUpdate, object: nil)
+        NotificationCenter.default.post(name: .apm44UpdateInstallAbandoned, object: nil)
+
+        XCTAssertNil(settings.resumeAfterUpdateRequestedAt)
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
     }
 
     // (6b) Posting while idle records nothing.

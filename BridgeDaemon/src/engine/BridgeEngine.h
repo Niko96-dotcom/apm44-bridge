@@ -104,6 +104,10 @@ class BridgeEngine {
   float lastOutputSample0_ = 0.0f;
   float lastOutputSample1_ = 0.0f;
   std::size_t recoveryFadeFramesRemaining_ = 0;
+  // False from a converter reset until the converter first produces output.
+  // The sinc filters buffer their lookahead first, so an empty result while
+  // unprimed is warmup, not starvation.
+  bool converterPrimed_ = false;
   bool running_ = false;
 
   MetricsPublisherState publisher_;

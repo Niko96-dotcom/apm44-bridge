@@ -310,6 +310,34 @@ final class SparkleUpdaterTests: XCTestCase {
     }
 
     @MainActor
+    func testInstallThatDoesNotCompleteRevokesTheResumeRequest() {
+        let controller = SparkleUpdateController(
+            currentVersion: "0.12.12",
+            activationPolicySetter: { _ in true },
+            appActivator: {},
+            menuPanelDismisser: {},
+            deferredRunner: { work in work() },
+            isAppActive: { true },
+            startUpdater: false
+        )
+        var abandoned = 0
+        let observer = NotificationCenter.default.addObserver(
+            forName: .apm44UpdateInstallAbandoned, object: nil, queue: nil
+        ) { _ in abandoned += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        for code in [4007, 4008, 4005] {
+            controller.seedStateForTests(.installing(version: "0.12.13"))
+            controller.handleFinish(error: NSError(domain: "SUSparkleErrorDomain", code: code))
+        }
+        XCTAssertEqual(abandoned, 3)
+
+        controller.seedStateForTests(.checking)
+        controller.handleFinish(error: NSError(domain: "SUSparkleErrorDomain", code: 1001))
+        XCTAssertEqual(abandoned, 3, "a check without an update never started an install")
+    }
+
+    @MainActor
     func testFinishWithInstallationAuthorizeLaterEndsAvailable() {
         let controller = SparkleUpdateController(
             currentVersion: "0.12.12",

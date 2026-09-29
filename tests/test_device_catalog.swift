@@ -19,8 +19,8 @@ final class DeviceCatalogTests: XCTestCase {
 
     func testParsesSelectedEndpointFingerprintFields() {
         let text = """
-        UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\tSUPPORTS_48000
-        USB-UID\tUSB Headphones\t48000\tO\t1\t2\t512\t1970496032\t1819304813\t32\t1
+        UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\tSUPPORTS_48000\tFLOAT32_STEREO
+        USB-UID\tUSB Headphones\t48000\tO\t1\t2\t512\t1970496032\t1819304813\t32\t1\t1
         """
 
         let row = DeviceCatalog.parseListDevicesOutput(text).first
@@ -58,6 +58,25 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertEqual(DeviceCatalog.preferredDefault(from: [bluetooth, usb])?.uid, "USB")
         let rows = DeviceCatalog.parseListDevicesOutput(fixture)
         XCTAssertEqual(DeviceCatalog.preferredDefault(from: rows)?.uid, "AP-UID")
+    }
+
+    func testStreamTheHelperRefusesIsNotReady() {
+        // 32-bit integer stereo and a single 8-channel float stream both
+        // report LPCM/32 bits; only the helper's layout check tells them apart.
+        let text = """
+        UID\tNAME\tRATE\tI/O\tALIVE\tOUTPUT_CHANNELS\tBUFFER_FRAMES\tTRANSPORT\tFORMAT_ID\tFORMAT_BITS\tSUPPORTS_48000\tFLOAT32_STEREO
+        INT-UID\tInteger DAC\t48000\tO\t1\t2\t512\t1970496032\t1819304813\t32\t1\t0
+        MULTI-UID\tEight Channel\t48000\tO\t1\t8\t512\t1970496032\t1819304813\t32\t1\t0
+        """
+
+        let rows = DeviceCatalog.parseListDevicesOutput(text)
+
+        XCTAssertEqual(rows.count, 2)
+        for row in rows {
+            XCTAssertFalse(row.isMonitoringCompatible, row.uid)
+            XCTAssertEqual(row.compatibilityIssue, "A 32-bit float stereo stream is required")
+        }
+        XCTAssertNil(DeviceCatalog.preferredDefault(from: rows))
     }
 
     func testIncompatibleOutputRemainsVisibleButCannotBeStarted() {
@@ -110,6 +129,34 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertTrue(DeviceCatalog.filterMonitoringOutputs([apm44Bridge]).isEmpty)
         let filtered = DeviceCatalog.filterMonitoringOutputs([airpods, usb])
         XCTAssertEqual(filtered.count, 2)
+    }
+
+    private func makeListingHelper(_ body: String) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("apm44-listing-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("apm44-bridge")
+        try "#!/bin/sh\n\(body)\n".write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        return url
+    }
+
+    func testRefreshTimesOutWhenTheHelperHoldsStdoutOpen() throws {
+        let wedged = try makeListingHelper("exec /bin/sleep 30")
+        let started = Date()
+
+        XCTAssertThrowsError(try DeviceCatalog.refresh(binaryURL: wedged, timeout: 0.5)) { error in
+            XCTAssertEqual((error as NSError).code, Int(ETIMEDOUT))
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+
+        // A later refresh still works once the helper answers.
+        let healthy = try makeListingHelper(
+            "printf 'UID\\tNAME\\tRATE\\tI/O\\nAP-UID\\tAirPods Max\\t48000\\tO\\n'"
+        )
+        let rows = try DeviceCatalog.refresh(binaryURL: healthy, timeout: 5)
+        XCTAssertEqual(rows.map(\.uid), ["AP-UID"])
     }
 
     func testRefreshDoesNotUseUnreadStderrPipe() throws {

@@ -307,8 +307,11 @@ In-app updates use Sparkle: `SparkleUpdateController.swift`
 while running posts the notification behind the post-relaunch resume
 (section 5). The PKG preinstall inlines
 `scripts/lib/apm44-stop-running.sh` / `apm44_stop_app_and_helper`
-(quit app, TERM/KILL app and helper); the postinstall restarts Core
-Audio (`scripts/build-release-pkg.sh`). See `docs/release.md` and
+(quit app, TERM/KILL app and helper), then moves the installed app and
+driver to `/Library/Application Support/APM44 Bridge/InstallBackup`.
+The postinstall checks the new pair. If a check fails, it moves the
+backup back; if all pass, it deletes the backup. Either way it restarts
+Core Audio (`scripts/build-release-pkg.sh`). See `docs/release.md` and
 `docs/install.md`.
 
 ## 8. Where to look

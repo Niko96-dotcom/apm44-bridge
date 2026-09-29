@@ -154,8 +154,7 @@ bool SupportsNominalRate(AudioDeviceID deviceId, double wantedRate) {
 bool IsCompatibleMonitoringOutput(const AudioDeviceInfo& device) {
   return device.hasOutput && device.isAlive && device.outputChannels >= 2 &&
          device.supports48000 && std::abs(device.nominalRate - kOutputSampleRate) <= 1.0 &&
-         (device.outputFormatId == 0 || device.outputFormatId == kAudioFormatLinearPCM) &&
-         (device.outputFormatBits == 0 || device.outputFormatBits == 32);
+         device.outputFloat32Stereo;
 }
 
 }  // namespace
@@ -247,6 +246,7 @@ std::vector<AudioDeviceInfo> DeviceEnumerator::listAll() {
     const auto format = GetOutputStreamFormat(deviceId);
     info.outputFormatId = format.mFormatID;
     info.outputFormatBits = format.mBitsPerChannel;
+    info.outputFloat32Stereo = AsbdMatchesFloat32Stereo(format, format.mSampleRate);
     info.supports48000 = SupportsNominalRate(deviceId, kOutputSampleRate);
     result.push_back(std::move(info));
   }

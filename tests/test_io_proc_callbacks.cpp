@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -287,4 +288,69 @@ TEST_CASE("input overrun counts the frames actually rejected by the ring", "[io_
   const auto metrics = engine.metricsSnapshot();
   REQUIRE(metrics.overruns == 2);
   REQUIRE(metrics.inputDroppedFrames == 8);
+}
+
+TEST_CASE("sinc warmup at small callback sizes reaches audible output without resets",
+          "[io_proc][src][warmup]") {
+  using Quality = apm44::LibSamplerateSrc::Quality;
+  for (const Quality quality : {Quality::Medium, Quality::High, Quality::Best}) {
+    for (const std::size_t frames : {32u, 64u, 128u, 256u, 512u}) {
+      INFO("quality=" << static_cast<int>(quality) << " frames=" << frames);
+      apm44::BridgeEngine engine;
+      apm44::BridgeDevicePair devices;
+      devices.inputAsbd = apm44::MakeFloat32StereoNonInterleaved(apm44::kInputSampleRate);
+      devices.outputAsbd = apm44::MakeFloat32StereoNonInterleaved(apm44::kOutputSampleRate);
+      apm44::BridgeEngineOptions options;
+      options.targetFillMs = 0.0;
+      options.srcQuality = quality;
+      REQUIRE(engine.prepare(devices, options));
+
+      std::vector<float> input0(1024, 0.25f);
+      std::vector<float> input1(1024, 0.25f);
+      const float* inputChannels[2] = {input0.data(), input1.data()};
+      // A reserve keeps every callback supplied, so any silence is the
+      // converter's doing rather than input starvation.
+      engine.onInput(inputChannels, 256);
+
+      std::vector<float> output0(frames);
+      std::vector<float> output1(frames);
+      float* outputChannels[2] = {output0.data(), output1.data()};
+      constexpr int kCallbacks = 300;
+      int firstAudibleCallback = -1;
+      double inputOwed = 0.0;
+      for (int callback = 0; callback < kCallbacks; ++callback) {
+        inputOwed += static_cast<double>(frames) * apm44::kInputSampleRate /
+                     apm44::kOutputSampleRate;
+        const auto feed = static_cast<std::size_t>(inputOwed);
+        inputOwed -= static_cast<double>(feed);
+        engine.onInput(inputChannels, feed);
+        engine.onOutput(outputChannels, frames);
+        if (firstAudibleCallback < 0 &&
+            std::any_of(output0.begin(), output0.end(),
+                        [](float sample) { return std::abs(sample) > 0.1f; })) {
+          firstAudibleCallback = callback;
+        }
+      }
+
+      const auto metrics = engine.metricsSnapshot();
+      INFO("first audible=" << firstAudibleCallback
+                            << " resets=" << metrics.converterResetEvents
+                            << " starvation=" << metrics.outputStarvationFrames
+                            << " dropped=" << metrics.inputDroppedFrames
+                            << " partial=" << metrics.partialShortageEvents);
+      REQUIRE(metrics.inputDroppedFrames == 0);
+      REQUIRE(metrics.partialShortageEvents == 0);
+      REQUIRE(metrics.converterResetEvents == 0);
+      // The first partial callback and rounding can each leave a few frames
+      // short; only a reset loop starves whole callbacks over and over.
+      REQUIRE(metrics.outputStarvationFrames < 2 * frames);
+      REQUIRE(firstAudibleCallback >= 0);
+      REQUIRE(firstAudibleCallback < 40);
+      // Steady state: the final callback is fully converted signal.
+      for (std::size_t i = 0; i < frames; ++i) {
+        REQUIRE(std::abs(output0[i] - 0.25f) < 0.05f);
+        REQUIRE(std::abs(output1[i] - 0.25f) < 0.05f);
+      }
+    }
+  }
 }

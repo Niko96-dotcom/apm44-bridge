@@ -134,3 +134,4 @@
 "Set the current rate to 48 kHz" = "Aktuelle Rate auf 48 kHz stellen";
 "Linear PCM output is required" = "Linear-PCM-Ausgabe erforderlich";
 "32-bit float output is required" = "32-Bit-Float-Ausgabe erforderlich";
+"A 32-bit float stereo stream is required" = "Stereo-Stream mit 32-Bit-Float erforderlich";

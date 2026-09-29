@@ -8,6 +8,29 @@ All notable user-facing changes will be documented here.
   but it now logs why and how to fix it: allow APM44 Bridge in
   System Settings > Menu Bar. If another app opened it, that app must be
   allowed there too.
+- With High or Best quality on an output that keeps a small buffer (128
+  frames or less), the bridge no longer stays silent. It used to throw away
+  the converter's startup audio on every callback.
+- If an update fails its final checks, the installer now puts the previous
+  app and audio driver back instead of leaving neither installed. Until the
+  new pair checks out, the old pair waits in
+  `/Library/Application Support/APM44 Bridge`.
+- The output menu now marks outputs whose stream the helper cannot use
+  (32-bit integer, or one multichannel stream) as unsupported, instead of
+  offering them and then failing at Start.
+- If the Mac sleeps while a settings change is restarting the bridge, the
+  bridge now starts again after wake instead of right away during sleep.
+  Stop during that restart keeps it stopped.
+- After a restart, the menu no longer shows fill, loss or glitch values from
+  the helper it just replaced.
+- Stop now cancels a pending "resume after update", and so does an update
+  that fails or is cancelled. A later reconnect or relaunch no longer starts
+  the bridge again on its own.
+- Listing outputs now gives up after 10 seconds if the helper hangs, so wake
+  and reconnect no longer wait forever.
+- `apm44-bridge` now exits with status 2 for invalid options, blank device
+  UIDs and malformed `--target-fill-ms` values such as `nan` or `15junk`,
+  instead of reporting success or using a partly read number.
 
 ## 0.12.16 - 2026-09-28
 

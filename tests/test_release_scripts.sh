@@ -450,8 +450,8 @@ apm44_stop_app_and_helper() {
   fi
 }
 apm44_stop_app_and_helper
-rm -rf "/Applications/APM44 Bridge.app"
-rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+apm44_move_aside "$APP" "$BACKUP_DIR/app"
+apm44_move_aside "$DRIVER" "$BACKUP_DIR/driver"
 exit 0
 PRE
     cat >"$dest/Scripts/postinstall" <<'POST'
@@ -460,6 +460,7 @@ set -e
 [[ -d "/Applications/APM44 Bridge.app" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
 [[ -d "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver" ]] || { echo "APM44Bridge.driver missing after install" >&2; exit 1; }
 echo "Installed app/driver/helper build ID mismatch" >&2
+trap apm44_fail_install EXIT
 # Skip relaunch for Sparkle-driven installs (Sparkle relaunches itself).
 apm44_should_launch_app() { case "$1" in */org.sparkle-project.Sparkle/*) return 1;; esac; return 0; }
 if apm44_should_launch_app "$1"; then
@@ -800,20 +801,27 @@ run_postinstall_launch_guard_behavior_check() {
   fi
 }
 
-# Build an installed-layout fixture under $1 for the postinstall checks.
-make_postinstall_root() {
+# Write an installed app/driver pair under root $1, replacing only the bundles.
+write_installed_pair() {
   local root="$1"
-  local app_build="$2"
-  local driver_build="$3"
+  local version="$2"
+  local app_build="$3"
+  local driver_build="$4"
   local app="$root/Applications/APM44 Bridge.app"
   local driver="$root/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
-  rm -rf "$root"
+  rm -rf "$app" "$driver"
   mkdir -p "$app/Contents/MacOS" "$driver/Contents/MacOS"
-  /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 9.9.9" -c "Add :APM44BuildID string $app_build" "$app/Contents/Info.plist" >/dev/null
-  /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 9.9.9" -c "Add :APM44BuildID string $driver_build" "$driver/Contents/Info.plist" >/dev/null
-  printf '#!/bin/bash\necho "apm44-bridge 9.9.9 build=%s"\n' "$app_build" >"$app/Contents/MacOS/apm44-bridge"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" -c "Add :APM44BuildID string $app_build" "$app/Contents/Info.plist" >/dev/null
+  /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" -c "Add :APM44BuildID string $driver_build" "$driver/Contents/Info.plist" >/dev/null
+  printf '#!/bin/bash\necho "apm44-bridge %s build=%s"\n' "$version" "$app_build" >"$app/Contents/MacOS/apm44-bridge"
   chmod +x "$app/Contents/MacOS/apm44-bridge"
   printf 'driver' >"$driver/Contents/MacOS/APM44Bridge"
+}
+
+# Build an installed-layout fixture under $1 for the postinstall checks.
+make_postinstall_root() {
+  rm -rf "$1"
+  write_installed_pair "$1" 9.9.9 "$2" "$3"
 }
 
 # Run the generated postinstall against a fixture root. BASH_ENV functions
@@ -905,7 +913,7 @@ EOF
   cat >"$TMP/installer-sandbox.sb" <<'EOF'
 (version 1)
 (allow default)
-(deny file-write* (subpath "/Applications") (subpath "/Library/Audio"))
+(deny file-write* (subpath "/Applications") (subpath "/Library/Audio") (subpath "/Library/Application Support/APM44 Bridge"))
 (deny process-exec* (literal "/bin/launchctl") (literal "/usr/bin/killall") (literal "/usr/bin/sudo") (literal "/usr/bin/open"))
 (deny signal (target others))
 EOF
@@ -1051,12 +1059,15 @@ run_preinstall_case() {
   local console_user="${5:-musician}"
   : >"$TMP/$label.calls"
   local status=0
+  local root="${APM44_TEST_INSTALL_ROOT:-$TMP/$label.root}"
+  mkdir -p "$root"
   env -u SHELLOPTS -u APM44_PREINSTALL_GUARD_ONLY \
+    APM44_INSTALL_ROOT="$root" \
     APM44_TEST_CALLS="$TMP/$label.calls" \
     APM44_TEST_PGREP_RUNNING="$pgrep_running" \
     APM44_TEST_CONSOLE_USER="$console_user" \
-    BASH_ENV="$TMP/preinstall-shims.bash" \
-    sandbox-exec -f "$TMP/preinstall-sandbox.sb" \
+    BASH_ENV="${APM44_TEST_SHIMS:-$TMP/preinstall-shims.bash}" \
+    sandbox-exec -f "${APM44_TEST_SANDBOX:-$TMP/preinstall-sandbox.sb}" \
     /bin/bash "$preinstall" "$PKG" / "$target" >"$TMP/$label.out" 2>"$TMP/$label.err" || status=$?
   printf '%s\n' "$status" >"$TMP/$label.status"
 }
@@ -1110,18 +1121,16 @@ EOF
   cat >"$TMP/preinstall-sandbox.sb" <<'EOF'
 (version 1)
 (allow default)
-(deny file-read* (subpath "/Applications/APM44 Bridge.app") (subpath "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"))
-(deny file-write* (subpath "/Applications") (subpath "/Library/Audio"))
+(deny file-read* (subpath "/Applications/APM44 Bridge.app") (subpath "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver") (subpath "/Library/Application Support/APM44 Bridge"))
+(deny file-write* (subpath "/Applications") (subpath "/Library/Audio") (subpath "/Library/Application Support/APM44 Bridge"))
 (deny process-exec* (literal "/bin/rm") (literal "/usr/bin/pkill") (literal "/usr/bin/pgrep") (literal "/usr/bin/killall") (literal "/bin/launchctl") (literal "/usr/bin/sudo") (literal "/usr/bin/osascript"))
 (deny signal (target others))
 EOF
 
   local app_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
   local helper_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge([[:space:]]|$)'
-  local quit_call rm_app rm_driver
+  local quit_call
   quit_call="$(installer_call launchctl asuser 501 sudo -u musician osascript -e 'tell application id "com.niko.apm44.menu" to quit')"
-  rm_app="$(installer_call rm -rf "/Applications/APM44 Bridge.app")"
-  rm_driver="$(installer_call rm -rf /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver)"
 
   # Another volume is refused before anything is quit, killed or deleted.
   run_preinstall_case "$preinstall" "$TMP/other-volume" "preinstall-other-volume" 1000
@@ -1129,15 +1138,16 @@ EOF
   assert_contains "$TMP/preinstall-other-volume.err" "can only be installed on the startup disk (target: $TMP/other-volume)"
   assert_installer_calls "preinstall-other-volume"
 
-  # The app quits within the polite wait: no signals, then both bundles go.
+  # The app quits within the polite wait: no signals. Nothing is deleted;
+  # run_install_rollback_cases covers moving the bundles aside.
   run_preinstall_case "$preinstall" / "preinstall-quits-in-time" 5
   assert_installer_status "preinstall-quits-in-time" 0
-  assert_installer_calls "preinstall-quits-in-time" "$quit_call" "$rm_app" "$rm_driver"
+  assert_installer_calls "preinstall-quits-in-time" "$quit_call"
 
   # At the login window the console user is root: nobody to ask, so no quit.
   run_preinstall_case "$preinstall" / "preinstall-root-console" 0 root
   assert_installer_status "preinstall-root-console" 0
-  assert_installer_calls "preinstall-root-console" "$rm_app" "$rm_driver"
+  assert_installer_calls "preinstall-root-console"
 
   # Still running after the 20-poll wait: TERM each, and both exit before KILL.
   run_preinstall_case "$preinstall" / "preinstall-term" 21
@@ -1145,8 +1155,7 @@ EOF
   assert_installer_calls "preinstall-term" \
     "$quit_call" \
     "$(installer_call pkill -TERM -f "$app_pattern")" \
-    "$(installer_call pkill -TERM -f "$helper_pattern")" \
-    "$rm_app" "$rm_driver"
+    "$(installer_call pkill -TERM -f "$helper_pattern")"
 
   # Never exits: TERM, then KILL, for the app and then the helper.
   run_preinstall_case "$preinstall" / "preinstall-kill" 1000
@@ -1156,8 +1165,126 @@ EOF
     "$(installer_call pkill -TERM -f "$app_pattern")" \
     "$(installer_call pkill -KILL -f "$app_pattern")" \
     "$(installer_call pkill -TERM -f "$helper_pattern")" \
-    "$(installer_call pkill -KILL -f "$helper_pattern")" \
-    "$rm_app" "$rm_driver"
+    "$(installer_call pkill -KILL -f "$helper_pattern")"
+}
+
+assert_installed_build() {
+  local label="$1"
+  local bundle="$2"
+  local expected="$3"
+  local actual
+  actual="$(/usr/libexec/PlistBuddy -c 'Print:APM44BuildID' "$bundle/Contents/Info.plist" 2>/dev/null || true)"
+  [[ "$actual" == "$expected" ]] || {
+    echo "$label: expected build $expected at $bundle, got '${actual}'" >&2
+    exit 1
+  }
+}
+
+# Run the rollback fixture's postinstall; see run_install_rollback_cases.
+run_rollback_postinstall() {
+  local postinstall="$1"
+  local root="$2"
+  local label="$3"
+  : >"$TMP/$label.calls"
+  local status=0
+  env -u SHELLOPTS \
+    APM44_INSTALL_ROOT="$root" \
+    APM44_TEST_CALLS="$TMP/$label.calls" \
+    APM44_TEST_CONSOLE_USER=musician \
+    BASH_ENV="$TMP/rollback-shims.bash" \
+    sandbox-exec -f "$TMP/rollback-sandbox.sb" \
+    /bin/bash "$postinstall" /Users/musician/Downloads/APM44Bridge-9.9.9.pkg / / \
+    >"$TMP/$label.out" 2>"$TMP/$label.err" || status=$?
+  printf '%s\n' "$status" >"$TMP/$label.status"
+}
+
+# Preinstall moves the installed pair aside and postinstall either drops it
+# (success) or puts it back (failed check), so an update that fails after the
+# old pair is gone still leaves a working install. Real mkdir/mv/rm run inside
+# a fixture root; the sandbox keeps them away from the real install.
+run_install_rollback_cases() {
+  run_pkg_builder_case one success "pkg-install-rollback"
+
+  local preinstall="$TMP/rollback-preinstall"
+  local postinstall="$TMP/rollback-postinstall"
+  cp "$ROOT/build/signing/pkg-scripts/preinstall" "$preinstall"
+  cp "$ROOT/build/signing/pkg-scripts/postinstall" "$postinstall"
+  grep -v '^rm()' "$TMP/preinstall-shims.bash" >"$TMP/rollback-shims.bash"
+  cat >>"$TMP/rollback-shims.bash" <<'EOF'
+chown() { apm44_test_log chown "$@"; }
+xattr() { apm44_test_log xattr "$@"; }
+open() { apm44_test_log open "$@"; }
+EOF
+  cat >"$TMP/rollback-sandbox.sb" <<'EOF'
+(version 1)
+(allow default)
+(deny file-read* (subpath "/Applications/APM44 Bridge.app") (subpath "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver") (subpath "/Library/Application Support/APM44 Bridge"))
+(deny file-write* (subpath "/Applications") (subpath "/Library/Audio") (subpath "/Library/Application Support/APM44 Bridge"))
+(deny process-exec* (literal "/usr/bin/pkill") (literal "/usr/bin/pgrep") (literal "/usr/bin/killall") (literal "/bin/launchctl") (literal "/usr/bin/sudo") (literal "/usr/bin/osascript") (literal "/usr/bin/open"))
+(deny signal (target others))
+EOF
+
+  local root="$TMP/rollback-root"
+  local app="$root/Applications/APM44 Bridge.app"
+  local driver="$root/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+  local backup="$root/Library/Application Support/APM44 Bridge/InstallBackup"
+  export APM44_TEST_INSTALL_ROOT="$root"
+  export APM44_TEST_SHIMS="$TMP/rollback-shims.bash"
+  export APM44_TEST_SANDBOX="$TMP/rollback-sandbox.sb"
+
+  # A payload whose checks fail puts the previous pair back.
+  rm -rf "$root"
+  write_installed_pair "$root" 0.0.1 "0.0.1+old" "0.0.1+old"
+  run_preinstall_case "$preinstall" / "rollback-preinstall" 0
+  assert_installer_status "rollback-preinstall" 0
+  [[ ! -e "$app" && ! -e "$driver" ]] || { echo "rollback-preinstall: installed bundles were not moved aside" >&2; exit 1; }
+  assert_installed_build "rollback-preinstall" "$backup/app" "0.0.1+old"
+  assert_installed_build "rollback-preinstall" "$backup/driver" "0.0.1+old"
+  write_installed_pair "$root" 9.9.9 "9.9.9+abc" "9.9.9+def"
+  run_rollback_postinstall "$postinstall" "$root" "rollback-failed-check"
+  assert_installer_status "rollback-failed-check" 1
+  assert_contains "$TMP/rollback-failed-check.err" "Restoring the previous app after a failed install"
+  assert_installed_build "rollback-failed-check" "$app" "0.0.1+old"
+  assert_installed_build "rollback-failed-check" "$driver" "0.0.1+old"
+  [[ ! -e "$backup/app" && ! -e "$backup/driver" ]] || { echo "rollback-failed-check: backup left behind" >&2; exit 1; }
+
+  # A verified pair replaces the previous one, and the backup goes.
+  rm -rf "$root"
+  write_installed_pair "$root" 0.0.1 "0.0.1+old" "0.0.1+old"
+  run_preinstall_case "$preinstall" / "rollback-preinstall-success" 0
+  assert_installer_status "rollback-preinstall-success" 0
+  write_installed_pair "$root" 9.9.9 "9.9.9+abc" "9.9.9+abc"
+  run_rollback_postinstall "$postinstall" "$root" "rollback-success"
+  assert_installer_status "rollback-success" 0
+  assert_installed_build "rollback-success" "$app" "9.9.9+abc"
+  [[ ! -e "$root/Library/Application Support/APM44 Bridge" ]] || { echo "rollback-success: backup left behind" >&2; exit 1; }
+
+  # An install interrupted before its payload leaves only the backup; the retry
+  # keeps that backup instead of losing it, and still restores it on failure.
+  rm -rf "$root"
+  write_installed_pair "$root" 0.0.1 "0.0.1+old" "0.0.1+old"
+  run_preinstall_case "$preinstall" / "rollback-interrupted" 0
+  assert_installer_status "rollback-interrupted" 0
+  run_preinstall_case "$preinstall" / "rollback-retry" 0
+  assert_installer_status "rollback-retry" 0
+  assert_installed_build "rollback-retry" "$backup/app" "0.0.1+old"
+  write_installed_pair "$root" 9.9.9 "9.9.9+abc" "9.9.9+def"
+  run_rollback_postinstall "$postinstall" "$root" "rollback-retry-failed-check"
+  assert_installer_status "rollback-retry-failed-check" 1
+  assert_installed_build "rollback-retry-failed-check" "$app" "0.0.1+old"
+
+  # The downgrade guard reads a backup that stands in for a missing bundle.
+  rm -rf "$root"
+  write_installed_pair "$root" 99.0.0 "99.0.0+new" "99.0.0+new"
+  mkdir -p "$backup"
+  mv "$app" "$backup/app"
+  mv "$driver" "$backup/driver"
+  run_preinstall_case "$preinstall" / "rollback-guard-backup" 0
+  assert_installer_status "rollback-guard-backup" 1
+  assert_contains "$TMP/rollback-guard-backup.err" "refusing to replace it with older"
+  assert_installed_build "rollback-guard-backup" "$backup/app" "99.0.0+new"
+
+  unset APM44_TEST_INSTALL_ROOT APM44_TEST_SHIMS APM44_TEST_SANDBOX
 }
 
 # Run the uninstaller with shims replacing every side-effecting command, under a
@@ -1207,7 +1334,7 @@ EOF
 
   local app_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/APM44 Bridge([[:space:]]|$)'
   local helper_pattern='^/Applications/APM44 Bridge.app/Contents/MacOS/apm44-bridge([[:space:]]|$)'
-  local sudo_true quit_call app_term app_kill helper_term helper_kill rm_app rm_driver pkg_info pkg_forget killall_call
+  local sudo_true quit_call app_term app_kill helper_term helper_kill rm_app rm_driver rm_backup pkg_info pkg_forget killall_call
   sudo_true="$(installer_call sudo -n true)"
   quit_call="$(installer_call sudo launchctl asuser 501 sudo -u musician osascript -e 'tell application id "com.niko.apm44.menu" to quit')"
   app_term="$(installer_call sudo pkill -TERM -f "$app_pattern")"
@@ -1216,6 +1343,7 @@ EOF
   helper_kill="$(installer_call sudo pkill -KILL -f "$helper_pattern")"
   rm_app="$(installer_call sudo rm -rf "/Applications/APM44 Bridge.app")"
   rm_driver="$(installer_call sudo rm -rf /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver)"
+  rm_backup="$(installer_call sudo rm -rf "/Library/Application Support/APM44 Bridge")"
   pkg_info="$(installer_call pkgutil --pkg-info com.niko.apm44.pkg)"
   pkg_forget="$(installer_call sudo pkgutil --forget com.niko.apm44.pkg)"
   killall_call="$(installer_call sudo killall coreaudiod)"
@@ -1224,18 +1352,18 @@ EOF
   run_uninstall_case "uninstall-kill" --yes 1000 musician 0 1
   assert_installer_status "uninstall-kill" 0
   assert_installer_calls "uninstall-kill" "$sudo_true" "$quit_call" "$app_term" "$app_kill" \
-    "$helper_term" "$helper_kill" "$rm_app" "$rm_driver" "$pkg_info" "$pkg_forget" "$killall_call"
+    "$helper_term" "$helper_kill" "$rm_app" "$rm_driver" "$rm_backup" "$pkg_info" "$pkg_forget" "$killall_call"
   assert_contains "$TMP/uninstall-kill.out" "uninstall-apm44: OK"
 
   # The app quits within the polite wait: no signals, then both bundles go.
   run_uninstall_case "uninstall-quits-in-time" --yes 5 musician 0 0
   assert_installer_status "uninstall-quits-in-time" 0
-  assert_installer_calls "uninstall-quits-in-time" "$sudo_true" "$quit_call" "$rm_app" "$rm_driver" "$pkg_info" "$killall_call"
+  assert_installer_calls "uninstall-quits-in-time" "$sudo_true" "$quit_call" "$rm_app" "$rm_driver" "$rm_backup" "$pkg_info" "$killall_call"
 
   # At the login window the console user is root: nobody to ask, so no quit.
   run_uninstall_case "uninstall-root-console" --yes 0 root 0 0
   assert_installer_status "uninstall-root-console" 0
-  assert_installer_calls "uninstall-root-console" "$sudo_true" "$rm_app" "$rm_driver" "$pkg_info" "$killall_call"
+  assert_installer_calls "uninstall-root-console" "$sudo_true" "$rm_app" "$rm_driver" "$rm_backup" "$pkg_info" "$killall_call"
 
   # Without sudo the uninstaller stops before touching anything.
   run_uninstall_case "uninstall-no-sudo" --yes 0 musician 1 0
@@ -1508,6 +1636,7 @@ run_uninstall_script_check() {
   assert_contains "$out" "dry-run: would quit APM44 Bridge and stop its bridge helper"
   assert_contains "$out" "dry-run: would remove /Applications/APM44 Bridge.app"
   assert_contains "$out" "dry-run: would remove /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+  assert_contains "$out" "dry-run: would remove /Library/Application Support/APM44 Bridge"
   assert_contains "$out" "dry-run: would forget package receipt com.niko.apm44.pkg"
 }
 
@@ -2111,6 +2240,7 @@ run_postinstall_execution_cases
 
 run_preinstall_downgrade_guard_check
 run_preinstall_execution_cases
+run_install_rollback_cases
 run_uninstall_execution_cases
 
 run_dmg_checksum_artifact_check        # [DOC-04]

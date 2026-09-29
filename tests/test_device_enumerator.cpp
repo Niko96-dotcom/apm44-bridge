@@ -24,6 +24,7 @@ TEST_CASE("MatchAirPodsDefault prefers AirPods Max", "[device_enumerator]") {
   generic.nominalRate = 48'000;
   generic.outputChannels = 2;
   generic.supports48000 = true;
+  generic.outputFloat32Stereo = true;
   apm44::AudioDeviceInfo max;
   max.name = "AirPods Max";
   max.hasOutput = true;
@@ -31,6 +32,7 @@ TEST_CASE("MatchAirPodsDefault prefers AirPods Max", "[device_enumerator]") {
   max.nominalRate = 48'000;
   max.outputChannels = 2;
   max.supports48000 = true;
+  max.outputFloat32Stereo = true;
   devices.push_back(generic);
   devices.push_back(max);
 
@@ -48,6 +50,7 @@ TEST_CASE("MatchAirPodsDefault prefers compatible USB endpoint over Bluetooth",
   bluetooth.nominalRate = 48'000;
   bluetooth.outputChannels = 2;
   bluetooth.supports48000 = true;
+  bluetooth.outputFloat32Stereo = true;
   bluetooth.transportType = kAudioDeviceTransportTypeBluetooth;
 
   auto usb = bluetooth;
@@ -67,6 +70,22 @@ TEST_CASE("MatchAirPodsDefault rejects incompatible endpoint", "[device_enumerat
   device.nominalRate = 48'000;
   device.outputChannels = 2;
   device.supports48000 = false;
+
+  REQUIRE_FALSE(apm44::MatchAirPodsDefault({device}).has_value());
+}
+
+TEST_CASE("MatchAirPodsDefault rejects a stream the negotiator would refuse",
+          "[device_enumerator]") {
+  apm44::AudioDeviceInfo device;
+  device.name = "AirPods Max";
+  device.hasOutput = true;
+  device.isAlive = true;
+  device.nominalRate = 48'000;
+  device.outputChannels = 2;
+  device.supports48000 = true;
+  device.outputFormatId = kAudioFormatLinearPCM;
+  device.outputFormatBits = 32;
+  device.outputFloat32Stereo = false;
 
   REQUIRE_FALSE(apm44::MatchAirPodsDefault({device}).has_value());
 }

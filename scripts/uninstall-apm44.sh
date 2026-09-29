@@ -44,12 +44,16 @@ done
 
 APP="/Applications/APM44 Bridge.app"
 DRIVER="/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+# Holds the previous app/driver while an update installs; only an interrupted
+# or failed install leaves anything here.
+INSTALL_BACKUP="/Library/Application Support/APM44 Bridge"
 PKG_ID="com.niko.apm44.pkg"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo "dry-run: would quit APM44 Bridge and stop its bridge helper"
   echo "dry-run: would remove $APP"
   echo "dry-run: would remove $DRIVER"
+  echo "dry-run: would remove $INSTALL_BACKUP"
   echo "dry-run: would forget package receipt $PKG_ID when present"
   echo "dry-run: would reload Core Audio"
   exit 0
@@ -70,6 +74,7 @@ apm44_stop_app_and_helper sudo
 
 sudo rm -rf "$APP"
 sudo rm -rf "$DRIVER"
+sudo rm -rf "$INSTALL_BACKUP"
 if pkgutil --pkg-info "$PKG_ID" >/dev/null 2>&1; then
   sudo pkgutil --forget "$PKG_ID"
 fi

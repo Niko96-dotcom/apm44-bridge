@@ -175,6 +175,14 @@ set -e
 # Downgrade guard: refuse to replace a newer installed version with this older package.
 PKG_VERSION="@APM44_PKG_VERSION@"
 TARGET="${3:-/}"
+# Tests point this at a fixture tree; PackageKit never sets it.
+INSTALL_ROOT="${APM44_INSTALL_ROOT:-}"
+APP="$INSTALL_ROOT/Applications/APM44 Bridge.app"
+DRIVER="$INSTALL_ROOT/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+# The previous pair waits here until postinstall has verified the new one.
+# The names carry no .app/.driver extension, so neither Launch Services nor
+# Core Audio treats the backup as a bundle.
+BACKUP_DIR="$INSTALL_ROOT/Library/Application Support/APM44 Bridge/InstallBackup"
 # The replacement below always targets the startup disk, so installing onto
 # another volume would check one volume and delete from another.
 if [[ "$TARGET" != "/" && "${APM44_PREINSTALL_GUARD_ONLY:-}" != "1" ]]; then
@@ -182,8 +190,13 @@ if [[ "$TARGET" != "/" && "${APM44_PREINSTALL_GUARD_ONLY:-}" != "1" ]]; then
   exit 1
 fi
 if [[ "$TARGET" == "/" ]]; then
-  APP_INFO_PLIST="/Applications/APM44 Bridge.app/Contents/Info.plist"
-  DRIVER_INFO_PLIST="/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver/Contents/Info.plist"
+  APP_INFO_PLIST="$APP/Contents/Info.plist"
+  DRIVER_INFO_PLIST="$DRIVER/Contents/Info.plist"
+  # An interrupted earlier install can leave only the backup; guard on it.
+  [[ -e "$APP" || ! -f "$BACKUP_DIR/app/Contents/Info.plist" ]] ||
+    APP_INFO_PLIST="$BACKUP_DIR/app/Contents/Info.plist"
+  [[ -e "$DRIVER" || ! -f "$BACKUP_DIR/driver/Contents/Info.plist" ]] ||
+    DRIVER_INFO_PLIST="$BACKUP_DIR/driver/Contents/Info.plist"
 else
   TARGET_TRIMMED="${TARGET%/}"
   APP_INFO_PLIST="$TARGET_TRIMMED/Applications/APM44 Bridge.app/Contents/Info.plist"
@@ -285,8 +298,19 @@ cat "$ROOT/scripts/lib/apm44-stop-running.sh" >> "$SCRIPTS/preinstall"
 cat >> "$SCRIPTS/preinstall" <<'PRE'
 # Stop any running app and helper before replacing the bundles.
 apm44_stop_app_and_helper
-rm -rf "/Applications/APM44 Bridge.app"
-rm -rf "/Library/Audio/Plug-Ins/HAL/APM44Bridge.driver"
+# Move the installed pair aside rather than deleting it, so postinstall can
+# put it back when the new pair fails its checks. A bundle missing after an
+# interrupted install keeps its older backup instead.
+mkdir -p "$BACKUP_DIR"
+apm44_move_aside() {
+  local _apm44_installed="$1"
+  local _apm44_backup="$2"
+  [[ -e "$_apm44_installed" ]] || return 0
+  rm -rf "$_apm44_backup"
+  mv "$_apm44_installed" "$_apm44_backup"
+}
+apm44_move_aside "$APP" "$BACKUP_DIR/app"
+apm44_move_aside "$DRIVER" "$BACKUP_DIR/driver"
 exit 0
 PRE
 PREINSTALL_TMP="$SCRIPTS/preinstall.tmp"
@@ -319,10 +343,27 @@ apm44_reload_coreaudio() {
   fi
   sleep 4
 }
-# Preinstall already deleted the old driver, so a failed check below must still
-# reload Core Audio. Otherwise coreaudiod keeps running the deleted driver.
-# Bash also runs this trap when TERM or HUP kills the script.
-trap apm44_reload_coreaudio EXIT
+BACKUP_DIR="$INSTALL_ROOT/Library/Application Support/APM44 Bridge/InstallBackup"
+# Preinstall moved the previous pair into BACKUP_DIR. A failed check below puts
+# it back, so a broken update leaves the old install working, and reloads Core
+# Audio: coreaudiod would otherwise keep running the replaced driver. Bash also
+# runs this trap when TERM or HUP kills the script. Nothing in it may fail
+# under set -e, or the reload would be skipped.
+apm44_restore_previous_install() {
+  local _apm44_part _apm44_target
+  for _apm44_part in app driver; do
+    [[ -d "$BACKUP_DIR/$_apm44_part" ]] || continue
+    if [[ "$_apm44_part" == app ]]; then _apm44_target="$APP"; else _apm44_target="$DRIVER"; fi
+    echo "Restoring the previous $_apm44_part after a failed install" >&2
+    rm -rf "$_apm44_target" || true
+    mv "$BACKUP_DIR/$_apm44_part" "$_apm44_target" || true
+  done
+}
+apm44_fail_install() {
+  apm44_restore_previous_install
+  apm44_reload_coreaudio
+}
+trap apm44_fail_install EXIT
 chown -R root:wheel "$DRIVER"
 xattr -d com.apple.quarantine "$DRIVER" 2>/dev/null || true
 [[ -d "$APP" ]] || { echo "APM44 Bridge.app missing after install" >&2; exit 1; }
@@ -350,8 +391,11 @@ if [[ -z "$DRIVER_BIN" ]]; then
   echo "APM44Bridge.driver executable missing after install" >&2
   exit 1
 fi
-# Every check passed: reload now, before opening the app, instead of on exit.
+# Every check passed: drop the previous pair and reload now, before opening
+# the app, instead of on exit.
 trap - EXIT
+rm -rf "$BACKUP_DIR" || true
+rmdir "$(dirname "$BACKUP_DIR")" 2>/dev/null || true
 apm44_reload_coreaudio
 # Launch unless this is a Sparkle-driven install. Sparkle stages the package
 # under a path containing /org.sparkle-project.Sparkle/ (passed as $1) and

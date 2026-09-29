@@ -144,7 +144,9 @@ bool LibSamplerateSrc::process(const float* const inputChannels[2], std::size_t 
     outputChannels[0][i] = outputInterleaved_[i * 2 + 0];
     outputChannels[1][i] = outputInterleaved_[i * 2 + 1];
   }
-  return outputFramesWritten > 0;
+  // Success with zero output is normal while the sinc filter fills its
+  // lookahead; callers decide whether that is warmup or starvation.
+  return true;
 }
 
 bool LibSamplerateSrc::flush(float* const outputChannels[2], std::size_t outputCapacity,
@@ -179,7 +181,9 @@ bool LibSamplerateSrc::flush(float* const outputChannels[2], std::size_t outputC
     outputChannels[0][i] = outputInterleaved_[i * 2 + 0];
     outputChannels[1][i] = outputInterleaved_[i * 2 + 1];
   }
-  return outputFramesWritten > 0;
+  // Success with zero output is normal while the sinc filter fills its
+  // lookahead; callers decide whether that is warmup or starvation.
+  return true;
 }
 
 bool LibSamplerateSrc::reset() {

@@ -13,6 +13,10 @@ struct AudioDeviceRow: Identifiable, Equatable {
     let outputFormatId: UInt32
     let outputFormatBits: Int
     let supports48000: Bool
+    /// The helper's own start-time float32 stereo check on the current output
+    /// stream. Format ID and bit depth alone also pass 32-bit integer and
+    /// single multichannel streams that the helper then refuses to start.
+    let outputFloat32Stereo: Bool
 
     init(
         uid: String,
@@ -26,7 +30,8 @@ struct AudioDeviceRow: Identifiable, Equatable {
         transportType: UInt32 = 0,
         outputFormatId: UInt32 = 0,
         outputFormatBits: Int = 0,
-        supports48000: Bool = true
+        supports48000: Bool = true,
+        outputFloat32Stereo: Bool = true
     ) {
         self.uid = uid
         self.name = name
@@ -40,6 +45,7 @@ struct AudioDeviceRow: Identifiable, Equatable {
         self.outputFormatId = outputFormatId
         self.outputFormatBits = outputFormatBits
         self.supports48000 = supports48000
+        self.outputFloat32Stereo = outputFloat32Stereo
     }
 
     var id: String { uid }
@@ -81,6 +87,7 @@ struct AudioDeviceRow: Identifiable, Equatable {
         if outputFormatBits != 0 && outputFormatBits != 32 {
             return "32-bit float output is required"
         }
+        if !outputFloat32Stereo { return "A 32-bit float stereo stream is required" }
         return nil
     }
 
@@ -124,6 +131,7 @@ enum DeviceCatalog {
             let outputFormatId = parts.count > 8 ? UInt32(parts[8]) ?? 0 : 0
             let outputFormatBits = parts.count > 9 ? Int(parts[9]) ?? 0 : 0
             let supports48000 = parts.count > 10 ? parts[10] != "0" : true
+            let outputFloat32Stereo = parts.count > 11 ? parts[11] != "0" : true
             rows.append(
                 AudioDeviceRow(
                     uid: String(parts[0]),
@@ -137,7 +145,8 @@ enum DeviceCatalog {
                     transportType: transportType,
                     outputFormatId: outputFormatId,
                     outputFormatBits: outputFormatBits,
-                    supports48000: supports48000
+                    supports48000: supports48000,
+                    outputFloat32Stereo: outputFloat32Stereo
                 )
             )
         }
@@ -175,7 +184,15 @@ enum DeviceCatalog {
         return compatible.first
     }
 
-    static func refresh(binaryURL: URL) throws -> [AudioDeviceRow] {
+    /// Enumeration normally takes milliseconds; a helper that has not closed
+    /// stdout by then is wedged, so the refresh fails instead of hanging the
+    /// wake, hotplug and menu refreshes that await it.
+    static let listDevicesTimeout: TimeInterval = 10
+
+    static func refresh(
+        binaryURL: URL,
+        timeout: TimeInterval = listDevicesTimeout
+    ) throws -> [AudioDeviceRow] {
         let process = Process()
         process.executableURL = binaryURL
         process.arguments = ["--list-devices"]
@@ -183,11 +200,31 @@ enum DeviceCatalog {
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         try process.run()
+        // Killing the child closes its stdout, which ends the read below.
+        let timedOut = ListingDeadline()
+        let deadline = DispatchWorkItem {
+            guard process.isRunning else { return }
+            timedOut.fire()
+            process.terminate()
+            Thread.sleep(forTimeInterval: 1)
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+        }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: deadline)
         // Drain stdout before waiting. A child that fills the ~64 KB pipe
         // buffer blocks on write until the reader consumes it, so reading
         // only after waitUntilExit() can deadlock on a large device list.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
+        deadline.cancel()
+        if timedOut.fired {
+            throw NSError(
+                domain: "DeviceCatalog",
+                code: Int(ETIMEDOUT),
+                userInfo: [NSLocalizedDescriptionKey: "apm44-bridge --list-devices timed out"]
+            )
+        }
         guard process.terminationStatus == 0 else {
             throw NSError(
                 domain: "DeviceCatalog",
@@ -197,5 +234,23 @@ enum DeviceCatalog {
         }
         let text = String(data: data, encoding: .utf8) ?? ""
         return parseListDevicesOutput(text)
+    }
+}
+
+/// Set by the listing deadline on a global queue, read after the child exits.
+private final class ListingDeadline: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didFire = false
+
+    func fire() {
+        lock.lock()
+        didFire = true
+        lock.unlock()
+    }
+
+    var fired: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return didFire
     }
 }

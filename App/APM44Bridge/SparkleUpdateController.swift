@@ -317,6 +317,12 @@ final class SparkleUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
 
     private func applyUpdateCycleOutcome(_ outcome: UpdateCycleErrorOutcome, error: Error) {
         switch outcome {
+        case .cancelled, .deferred, .failed:
+            NotificationCenter.default.post(name: .apm44UpdateInstallAbandoned, object: nil)
+        case .alreadyInstalled, .noUpdate:
+            break
+        }
+        switch outcome {
         case .alreadyInstalled:
             markAlreadyInstalled()
         case .noUpdate:

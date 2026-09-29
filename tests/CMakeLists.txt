@@ -37,6 +37,11 @@ apm44_add_test(test_io_proc_callbacks test_io_proc_callbacks.cpp)
 apm44_add_test(test_engine_prepare_stop test_engine_prepare_stop.cpp)
 apm44_add_test(test_daemon_exit_codes test_daemon_exit_codes.cpp)
 apm44_add_test(test_mmap_shm_validation test_mmap_shm_validation.cpp)
+apm44_add_test(test_cli_options test_cli_options.cpp)
+target_sources(test_cli_options PRIVATE
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/CliOptions.cpp
+)
+target_link_libraries(test_cli_options PRIVATE samplerate::samplerate)
 apm44_add_test(test_process_lifecycle test_process_lifecycle.cpp)
 target_sources(test_process_lifecycle PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/ParentDeathWatch.cpp

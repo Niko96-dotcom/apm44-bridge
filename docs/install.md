@@ -165,6 +165,7 @@ installed app and HAL driver manually:
 ```bash
 sudo rm -rf "/Applications/APM44 Bridge.app"
 sudo rm -rf /Library/Audio/Plug-Ins/HAL/APM44Bridge.driver
+sudo rm -rf "/Library/Application Support/APM44 Bridge"
 sudo pkgutil --forget com.niko.apm44.pkg 2>/dev/null || true
 sudo killall coreaudiod 2>/dev/null || true
 ```

@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <string_view>
 
@@ -31,6 +34,21 @@ std::optional<std::string> ValueAfter(int argc, char* argv[], int& index) {
   }
   ++index;
   return TrimCopy(argv[index]);
+}
+
+// Accepts only a complete, finite decimal token: "15junk" and "nan" are
+// rejected rather than read as 15 and NaN.
+std::optional<double> ParseFiniteNumber(const std::string& value) {
+  if (value.empty()) {
+    return std::nullopt;
+  }
+  errno = 0;
+  char* end = nullptr;
+  const double parsed = std::strtod(value.c_str(), &end);
+  if (end != value.c_str() + value.size() || errno == ERANGE || !std::isfinite(parsed)) {
+    return std::nullopt;
+  }
+  return parsed;
 }
 
 std::optional<LibSamplerateSrc::Quality> ParseSrcQuality(std::string_view value) {
@@ -72,6 +90,11 @@ void PrintUsage(const char* programName) {
 
 CliOptions ParseCliOptions(int argc, char* argv[]) {
   CliOptions options;
+  const auto usageError = [&options](std::string_view message) {
+    std::cerr << "error: " << message << "\n";
+    options.usageError = true;
+    return options;
+  };
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg{argv[i]};
     if (arg == "--help" || arg == "-h") {
@@ -94,47 +117,39 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
       options.parentWatchStdin = true;
     } else if (arg == "--input-device") {
       options.inputDeviceUid = ValueAfter(argc, argv, i);
-      if (!options.inputDeviceUid) {
-        std::cerr << "error: --input-device requires a UID\n";
-        options.showHelp = true;
+      if (!options.inputDeviceUid || options.inputDeviceUid->empty()) {
+        return usageError("--input-device requires a UID");
       }
     } else if (arg == "--output-device") {
       options.outputDeviceUid = ValueAfter(argc, argv, i);
-      if (!options.outputDeviceUid) {
-        std::cerr << "error: --output-device requires a UID\n";
-        options.showHelp = true;
+      if (!options.outputDeviceUid || options.outputDeviceUid->empty()) {
+        return usageError("--output-device requires a UID");
       }
     } else if (arg == "--target-fill-ms") {
       const auto value = ValueAfter(argc, argv, i);
       if (!value) {
-        std::cerr << "error: --target-fill-ms requires a value\n";
-        std::exit(2);
+        return usageError("--target-fill-ms requires a value");
       }
-      try {
-        options.targetFillMs = std::stod(*value);
-      } catch (...) {
-        std::cerr << "error: invalid --target-fill-ms value\n";
-        std::exit(2);
+      const auto parsed = ParseFiniteNumber(*value);
+      if (!parsed) {
+        return usageError("invalid --target-fill-ms value");
       }
-      if (options.targetFillMs < 6.0 || options.targetFillMs > 120.0) {
-        std::cerr << "error: --target-fill-ms must be between 6 and 120\n";
-        std::exit(2);
+      if (*parsed < 6.0 || *parsed > 120.0) {
+        return usageError("--target-fill-ms must be between 6 and 120");
       }
+      options.targetFillMs = *parsed;
     } else if (arg == "--src-quality") {
       const auto value = ValueAfter(argc, argv, i);
       if (!value) {
-        std::cerr << "error: --src-quality requires medium|high|best\n";
-        std::exit(2);
+        return usageError("--src-quality requires medium|high|best");
       }
       const auto quality = ParseSrcQuality(*value);
       if (!quality) {
-        std::cerr << "error: unknown --src-quality (use medium|high|best)\n";
-        std::exit(2);
+        return usageError("unknown --src-quality (use medium|high|best)");
       }
       options.srcQuality = *quality;
     } else {
-      std::cerr << "error: unknown option " << arg << "\n";
-      options.showHelp = true;
+      return usageError("unknown option " + std::string{arg});
     }
   }
   return options;
