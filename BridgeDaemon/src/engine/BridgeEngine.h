@@ -17,6 +17,8 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace apm44 {
@@ -34,6 +36,12 @@ struct BridgeEngineOptions {
 
 class BridgeEngine {
  public:
+  // shmRingName is the ring the virtual-device feed waits on. Production
+  // callers use the default; tests pass an isolated name so they never touch
+  // the real driver's ring.
+  explicit BridgeEngine(std::string shmRingName = kShmRingName)
+      : virtualFeed_(std::move(shmRingName)) {}
+
   bool prepare(const BridgeDevicePair& devices, const BridgeEngineOptions& options = {});
   bool start();
   void stop();

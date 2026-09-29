@@ -3,7 +3,6 @@
 #include "engine/BridgeMetrics.h"
 
 #include <apm44/AudioFormats.h>
-#include <apm44/MmapShmRing.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,26 +12,25 @@
 #include <string>
 #include <thread>
 
+namespace {
+
+// An isolated, never-created ring name ("/apm44t<pid>.." like the shm unit
+// tests; macOS limits shm names to 31 chars). Virtual-device prepare waits on
+// it instead of the production ring, so these tests neither read nor create
+// kShmRingName and behave the same whether or not a real driver is loaded.
+std::string AbsentRingName(const std::string& suffix) {
+  return "/apm44t" + std::to_string(static_cast<long long>(::getpid())) + suffix;
+}
+
+}  // namespace
+
 TEST_CASE("prepare in virtual-device mode aborts promptly when stop is requested",
           "[engine][prepare][stop]") {
-  // BridgeEngine waits on the production ring name (kShmRingName) through its
-  // default-constructed VirtualDeviceFeed, which offers no injection point for
-  // a pid-suffixed test ring (the "/apm44t<pid>.." mechanism the shm unit
-  // tests use to avoid colliding with a real driver). So the missing-ring
-  // case is arranged by requiring the real driver ring to be absent. This
-  // test never creates or unlinks kShmRingName: unlinking would destroy a
-  // real driver's ring.
-  apm44::MmapShmRing probe;
-  if (probe.open(apm44::ShmRingRole::Observer)) {
-    probe.close();
-    SKIP("real APM44 Bridge shm ring is present; missing-ring case not applicable");
-  }
-
   apm44::BridgeDevicePair devices;
   apm44::BridgeEngineOptions options;
   options.virtualDevice = true;
 
-  apm44::BridgeEngine engine;
+  apm44::BridgeEngine engine(AbsentRingName("s"));
   apm44::BridgeEngine::requestStop();
   const auto start = std::chrono::steady_clock::now();
   const bool prepared = engine.prepare(devices, options);
@@ -119,16 +117,10 @@ TEST_CASE("metrics report the target fill a non-virtual engine prepared with",
 
 TEST_CASE("metrics report the HAL floor a virtual-device engine prepared with",
           "[engine][metrics][A003]") {
-  // Virtual-device prepare waits on the production shm ring, so like the
-  // stop test above it runs only when the real ring is absent, with stop
-  // pre-requested so prepare returns at once. The effective target is
-  // resolved before that wait, so it is observable on the failed prepare.
-  apm44::MmapShmRing probe;
-  if (probe.open(apm44::ShmRingRole::Observer)) {
-    probe.close();
-    SKIP("real APM44 Bridge shm ring is present; missing-ring case not applicable");
-  }
-
+  // Virtual-device prepare waits on the engine's shm ring, here an absent
+  // isolated one, with stop pre-requested so prepare returns at once. The
+  // effective target is resolved before that wait, so it is observable on the
+  // failed prepare.
   apm44::BridgeEngineOptions options;
   options.virtualDevice = true;
   double expectedMs = 0.0;
@@ -145,7 +137,7 @@ TEST_CASE("metrics report the HAL floor a virtual-device engine prepared with",
     expectedJson = "\"target_fill_ms\":60.000";
   }
 
-  apm44::BridgeEngine engine;
+  apm44::BridgeEngine engine(AbsentRingName("m"));
   apm44::BridgeEngine::requestStop();
   REQUIRE_FALSE(engine.prepare(MakeStereoPair(), options));
   apm44::BridgeEngine::clearStopRequestForTesting();
