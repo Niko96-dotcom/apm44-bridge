@@ -1519,6 +1519,8 @@ run_release_all_ready_sequence() {
   assert_log_order "$pkg_notarize" "$package_only"
   assert_log_order "$package_only" "$layout_verify"
   assert_log_order "$layout_verify" "$dmg_notarize"
+  # The candidate feed is checked against the intended version from VERSION.
+  assert_contains "$LOG" "bash scripts/validate-appcast.sh --expect-version $(/bin/bash "$ROOT/scripts/read-version.sh")"
 }
 
 run_dmg_checksum_artifact_check() {

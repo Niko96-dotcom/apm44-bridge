@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Structural and security validation for a Sparkle package-update appcast.
 #
-# Usage: validate-appcast.sh [--pkg <path>]
+# Usage: validate-appcast.sh [--pkg <path>] [--expect-version <version>]
+#   --expect-version  also require the candidate item (the first item; the
+#          generator emits the new release first) to advertise <version> in
+#          both sparkle:version and sparkle:shortVersionString. Pass a version
+#          learned independently of the feed (scripts/read-version.sh). Without
+#          it, older items in a multi-item feed are validated structurally only.
 #   --pkg  also require the enclosure that downloads <path> (matched by file
 #          name) to carry that file's byte length and a verifying EdDSA
 #          signature, so a PKG rebuilt after generate-appcast.sh cannot ship.
@@ -11,6 +16,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APPCAST="${APM44_APPCAST_PATH:-$ROOT/docs/appcast.xml}"
 SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-}"
 PKG=""
+EXPECT_VERSION=""
 
 fail() { echo "error: $*" >&2; exit 1; }
 
@@ -19,6 +25,11 @@ while [[ $# -gt 0 ]]; do
     --pkg)
       [[ $# -ge 2 && -n "$2" ]] || fail "--pkg needs a path"
       PKG="$2"
+      shift 2
+      ;;
+    --expect-version)
+      [[ $# -ge 2 && -n "$2" ]] || fail "--expect-version needs a version"
+      EXPECT_VERSION="$2"
       shift 2
       ;;
     *) fail "unknown argument: $1" ;;
@@ -41,13 +52,13 @@ except (OSError, ET.ParseError) as exc:
 PY
 fi
 
-python3 - "$APPCAST" <<'PY'
+python3 - "$APPCAST" "$EXPECT_VERSION" <<'PY'
 import base64
 import sys
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-path = sys.argv[1]
+path, expected_version = sys.argv[1:]
 sparkle = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 root = ET.parse(path).getroot()
 if root.tag != "rss":
@@ -55,6 +66,16 @@ if root.tag != "rss":
 items = root.findall("./channel/item")
 if not items:
     raise SystemExit("error: appcast must contain at least one release item")
+if expected_version:
+    candidate = items[0]
+    for field in ("version", "shortVersionString"):
+        advertised = candidate.findtext(f"{{{sparkle}}}{field}")
+        if advertised is None:
+            raise SystemExit(f"error: candidate item is missing sparkle:{field} (expected {expected_version})")
+        if advertised.strip() != expected_version:
+            raise SystemExit(
+                f"error: candidate sparkle:{field} is {advertised.strip()!r}, expected {expected_version!r}"
+            )
 for item in items:
     version = item.findtext(f"{{{sparkle}}}version")
     enclosure = item.find("enclosure")

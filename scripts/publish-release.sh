@@ -55,7 +55,7 @@ SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-$($ROOT/scripts/ensure-sparkle-tools.sh)}"
 # --pkg ties the enclosure to the exact PKG being uploaded: a PKG rebuilt or
 # re-stapled after generate-appcast.sh would fail every client's EdDSA check.
 SPARKLE_SIGN_UPDATE="$SIGN_UPDATE" \
-  bash "$ROOT/scripts/validate-appcast.sh" --pkg "$PKG"
+  bash "$ROOT/scripts/validate-appcast.sh" --pkg "$PKG" --expect-version "$VERSION"
 
 gh auth status >/dev/null 2>&1 || fail "GitHub CLI authentication is unavailable"
 

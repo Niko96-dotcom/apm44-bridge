@@ -75,7 +75,7 @@ if [[ "$NOTARY_READY" == "1" ]]; then
   echo "== Generate and validate signed Sparkle appcast =="
   bash scripts/generate-appcast.sh
   SPARKLE_SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-$(bash scripts/ensure-sparkle-tools.sh)}" \
-    bash scripts/validate-appcast.sh
+    bash scripts/validate-appcast.sh --expect-version "$(bash scripts/read-version.sh)"
 else
   echo "LOCAL-ONLY UNNOTARIZED: skipping notarization because APM44_ALLOW_UNNOTARIZED=1"
   echo "LOCAL-ONLY UNNOTARIZED: skipping public PKG gate because APM44_ALLOW_UNNOTARIZED=1"
