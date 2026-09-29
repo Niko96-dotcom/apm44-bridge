@@ -52,6 +52,8 @@ if [[ "$PLIST_EXECUTABLE" != "$(basename "$EXECUTABLE")" ]]; then
   exit 1
 fi
 
+bash scripts/verify-updater-security.sh "$APP/Contents/Info.plist"
+
 echo "Built app: $APP"
 echo "Executable: $EXECUTABLE"
 codesign --verify --deep --strict "$APP"

@@ -9,10 +9,82 @@ trap 'rm -rf "$TMP"' EXIT
 grep -Fq '<key>SUFeedURL</key>' "$ROOT/App/APM44Bridge/Info.plist"
 grep -Fq '<key>SUPublicEDKey</key>' "$ROOT/App/APM44Bridge/Info.plist"
 grep -Fq '<key>SUEnableAutomaticChecks</key>' "$ROOT/App/APM44Bridge/Info.plist"
-grep -Fq '<key>SURequireSignedFeed</key>' "$ROOT/App/APM44Bridge/Info.plist"
-grep -Fq '<key>SUVerifyUpdateBeforeExtraction</key>' "$ROOT/App/APM44Bridge/Info.plist"
 grep -Fq 'sparkle:installationType="package"' "$ROOT/scripts/generate-appcast.sh"
 grep -Fq 'sparkle:format="markdown"' "$ROOT/scripts/generate-appcast.sh"
+
+# The updater security settings are verified by parsed value and type, not by
+# key presence: a flipped, missing or string-typed value must fail.
+VERIFY_SECURITY="$ROOT/scripts/verify-updater-security.sh"
+security_plist() {
+  local path="$1" signed="$2" verify="$3" auto="$4"
+  cat >"$path" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+$signed
+$verify
+$auto
+</dict></plist>
+PLIST
+}
+SEC_SIGNED='<key>SURequireSignedFeed</key><true/>'
+SEC_VERIFY='<key>SUVerifyUpdateBeforeExtraction</key><true/>'
+SEC_AUTO='<key>SUAutomaticallyUpdate</key><false/>'
+
+expect_security_failure() {
+  local name="$1" expected="$2" output
+  if output="$(/bin/bash "$VERIFY_SECURITY" "$TMP/$name.plist" 2>&1)"; then
+    echo "expected updater security verification to fail for $name" >&2
+    exit 1
+  fi
+  [[ "$output" == *"$expected"* ]] || {
+    echo "expected '$expected' for $name, got: $output" >&2
+    exit 1
+  }
+}
+
+security_plist "$TMP/sec-good.plist" "$SEC_SIGNED" "$SEC_VERIFY" "$SEC_AUTO"
+/bin/bash "$VERIFY_SECURITY" "$TMP/sec-good.plist" >/dev/null
+
+# An app bundle path resolves to Contents/Info.plist.
+mkdir -p "$TMP/Fake.app/Contents"
+cp "$TMP/sec-good.plist" "$TMP/Fake.app/Contents/Info.plist"
+/bin/bash "$VERIFY_SECURITY" "$TMP/Fake.app" >/dev/null
+
+# Flipped values.
+security_plist "$TMP/sec-signed-false.plist" '<key>SURequireSignedFeed</key><false/>' "$SEC_VERIFY" "$SEC_AUTO"
+expect_security_failure sec-signed-false "SURequireSignedFeed must be true"
+security_plist "$TMP/sec-verify-false.plist" "$SEC_SIGNED" '<key>SUVerifyUpdateBeforeExtraction</key><false/>' "$SEC_AUTO"
+expect_security_failure sec-verify-false "SUVerifyUpdateBeforeExtraction must be true"
+security_plist "$TMP/sec-auto-true.plist" "$SEC_SIGNED" "$SEC_VERIFY" '<key>SUAutomaticallyUpdate</key><true/>'
+expect_security_failure sec-auto-true "SUAutomaticallyUpdate must be false"
+
+# Missing keys.
+security_plist "$TMP/sec-signed-missing.plist" '' "$SEC_VERIFY" "$SEC_AUTO"
+expect_security_failure sec-signed-missing "SURequireSignedFeed is missing"
+security_plist "$TMP/sec-verify-missing.plist" "$SEC_SIGNED" '' "$SEC_AUTO"
+expect_security_failure sec-verify-missing "SUVerifyUpdateBeforeExtraction is missing"
+security_plist "$TMP/sec-auto-missing.plist" "$SEC_SIGNED" "$SEC_VERIFY" ''
+expect_security_failure sec-auto-missing "SUAutomaticallyUpdate is missing"
+
+# Wrong types: strings and integers are not Booleans, even when they read "true".
+security_plist "$TMP/sec-signed-string.plist" '<key>SURequireSignedFeed</key><string>true</string>' "$SEC_VERIFY" "$SEC_AUTO"
+expect_security_failure sec-signed-string "SURequireSignedFeed must be a Boolean"
+security_plist "$TMP/sec-verify-integer.plist" "$SEC_SIGNED" '<key>SUVerifyUpdateBeforeExtraction</key><integer>1</integer>' "$SEC_AUTO"
+expect_security_failure sec-verify-integer "SUVerifyUpdateBeforeExtraction must be a Boolean"
+security_plist "$TMP/sec-auto-string.plist" "$SEC_SIGNED" "$SEC_VERIFY" '<key>SUAutomaticallyUpdate</key><string>false</string>'
+expect_security_failure sec-auto-string "SUAutomaticallyUpdate must be a Boolean"
+
+# Unusable input.
+printf 'not a plist' >"$TMP/sec-garbage.plist"
+expect_security_failure sec-garbage "not a valid property list"
+if /bin/bash "$VERIFY_SECURITY" "$TMP/does-not-exist.plist" >/dev/null 2>&1; then
+  echo "expected updater security verification to fail for a missing file" >&2
+  exit 1
+fi
+
+# The shipped source plist must satisfy the same gate.
+/bin/bash "$VERIFY_SECURITY" "$ROOT/App/APM44Bridge/Info.plist" >/dev/null
 
 SIGNATURE="$(python3 - <<'PY'
 import base64
