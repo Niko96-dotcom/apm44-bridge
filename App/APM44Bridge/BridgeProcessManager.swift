@@ -816,8 +816,17 @@ final class BridgeProcessManager: ObservableObject {
                 logger.info("Bridge output disconnected")
                 wasRunningBeforeDisconnect = false
                 bannerMessage = AppStrings.outputDisconnectedSelect
+                let stopGeneration = userStopGeneration
+                let sleepGeneration = systemSleepGeneration
                 _ = await terminateProcessWithEscalation(reason: .hotplug)
-                state = .error(AppStrings.outputDeviceDisconnected)
+                // A user stop or sleep during the wait owns the state now, and
+                // so does any path that moved on from the stop's own aftermath.
+                guard stopGeneration == userStopGeneration,
+                      sleepGeneration == systemSleepGeneration else { return }
+                switch state {
+                case .idle, .stopping: state = .error(AppStrings.outputDeviceDisconnected)
+                default: break
+                }
             }
             return
         }
@@ -837,9 +846,13 @@ final class BridgeProcessManager: ObservableObject {
             } else {
                 logger.info("Bridge waiting for output after hotplug")
                 wasRunningBeforeDisconnect = true
+                let stopGeneration = userStopGeneration
+                let sleepGeneration = systemSleepGeneration
                 _ = await terminateProcessWithEscalation(reason: .hotplug)
-                state = .reconnecting
-                bannerMessage = AppStrings.waitingForOutput(deviceDisplayName)
+                reconcileAfterOutputLossStop(
+                    userStopGeneration: stopGeneration,
+                    sleepGeneration: sleepGeneration
+                )
             }
             return
         }
@@ -860,6 +873,41 @@ final class BridgeProcessManager: ObservableObject {
         if case .idle = state {
             resumeAfterUpdateIfRequested(now: Date())
         }
+    }
+
+    /// Settles a bridge whose helper was stopped because its output vanished.
+    /// The stop can outlast newer events: a hotplug that saw the output return
+    /// meanwhile found `.stopping` and did nothing, and a user stop, sleep or
+    /// selection change may have landed. So decide from the current state and
+    /// device list, not from the list that triggered the stop.
+    private func reconcileAfterOutputLossStop(userStopGeneration stopGeneration: Int, sleepGeneration: Int) {
+        // A user stop already cleared the intent and idled the bridge.
+        guard stopGeneration == userStopGeneration else { return }
+        // A sleep kept the resume intent for the wake, which relaunches.
+        guard sleepGeneration == systemSleepGeneration else {
+            logger.info("Bridge output-loss stop deferred to wake")
+            return
+        }
+        // Anything but the stop's own aftermath (idle once the helper exited,
+        // or .stopping for a helper that outlived escalation) means another
+        // path, such as a manual Start, already owns the bridge.
+        switch state {
+        case .idle, .stopping: break
+        default: return
+        }
+        let outputAvailable = settings.outputDeviceUid.map { uid in
+            devices.contains { $0.uid == uid && $0.isAlive }
+        } ?? true
+        // Launching needs the old helper gone; a stuck one keeps the park.
+        if process == nil, outputAvailable {
+            logger.info("Bridge output returned during stop; relaunching")
+            bannerMessage = AppStrings.reconnectingTo(deviceDisplayName)
+            wasRunningBeforeDisconnect = false
+            start()
+            return
+        }
+        state = .reconnecting
+        bannerMessage = AppStrings.waitingForOutput(deviceDisplayName)
     }
 
     private func waitForTermination(timeout: Duration = .seconds(5)) async throws {

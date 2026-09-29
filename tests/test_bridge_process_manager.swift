@@ -1067,6 +1067,148 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
+    /// Starts the bridge, drops the selected output and returns the hotplug
+    /// handler left waiting on the old helper's exit, plus that helper.
+    private func beginOutputLossStop(
+        manager: BridgeProcessManager,
+        launcher: MockProcessLauncher,
+        source: FakeBridgeDeviceSource
+    ) async -> (loss: Task<Void, Never>, oldHelper: Process?) {
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let oldHelper = launcher.lastProcess
+        source.devices = []
+        let loss = Task { await manager.handleHotplug() }
+        await waitUntil { manager.state == .stopping }
+        XCTAssertEqual(manager.state, .stopping)
+        return (loss, oldHelper)
+    }
+
+    func testOutputReturningDuringLossStopRelaunchesOnce() async {
+        let (manager, _, launcher, source) = await makeManager()
+        let (loss, oldHelper) = await beginOutputLossStop(manager: manager, launcher: launcher, source: source)
+
+        // The output returns while the old helper is still stopping; this
+        // hotplug refreshes the list but finds .stopping and does nothing.
+        source.devices = [testDevice]
+        await manager.handleHotplug()
+        XCTAssertEqual(manager.state, .stopping)
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        if let oldHelper {
+            await launcher.fireTermination(for: oldHelper)
+        }
+        await loss.value
+        // A duplicate launch would replace the helper right away.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        XCTAssertNotEqual(manager.bannerMessage, AppStrings.waitingForOutput(manager.deviceDisplayName))
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    func testOutputStayingAbsentDuringLossStopParksWaiting() async {
+        let (manager, _, launcher, source) = await makeManager()
+        let (loss, oldHelper) = await beginOutputLossStop(manager: manager, launcher: launcher, source: source)
+
+        if let oldHelper {
+            await launcher.fireTermination(for: oldHelper)
+        }
+        await loss.value
+
+        XCTAssertEqual(manager.state, .reconnecting)
+        XCTAssertEqual(manager.bannerMessage, AppStrings.waitingForOutput(manager.deviceDisplayName))
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testUserStopDuringLossStopDoesNotRelaunchWhenOutputReturned() async {
+        let (manager, _, launcher, source) = await makeManager()
+        let (loss, oldHelper) = await beginOutputLossStop(manager: manager, launcher: launcher, source: source)
+
+        source.devices = [testDevice]
+        await manager.handleHotplug()
+        manager.stop()
+        if let oldHelper {
+            await launcher.fireTermination(for: oldHelper)
+        }
+        await loss.value
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testUserStopDuringLossStopIsNotOverwrittenByWaitingPark() async {
+        let (manager, _, launcher, source) = await makeManager()
+        let (loss, oldHelper) = await beginOutputLossStop(manager: manager, launcher: launcher, source: source)
+
+        manager.stop()
+        if let oldHelper {
+            await launcher.fireTermination(for: oldHelper)
+        }
+        await loss.value
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertNotEqual(manager.bannerMessage, AppStrings.waitingForOutput(manager.deviceDisplayName))
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testUserStopDuringNoSelectionDisconnectStopEndsIdleNotError() async {
+        let (manager, settings, launcher, source) = await makeManager()
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let oldHelper = launcher.lastProcess
+        settings.outputDeviceUid = nil
+        source.devices = []
+        let disconnect = Task { await manager.handleHotplug() }
+        await waitUntil { manager.state == .stopping }
+        XCTAssertEqual(manager.state, .stopping)
+
+        manager.stop()
+        if let oldHelper {
+            await launcher.fireTermination(for: oldHelper)
+        }
+        await disconnect.value
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.makeCount, 1)
+    }
+
+    func testSelectionChangedDuringLossStopLaunchesOnlyNewSelection() async {
+        let (manager, settings, launcher, source) = await makeManager()
+        let otherOutput = AudioDeviceRow(
+            uid: "other-output-uid",
+            name: "Other Output",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+        let (loss, oldHelper) = await beginOutputLossStop(manager: manager, launcher: launcher, source: source)
+
+        source.devices = [otherOutput]
+        settings.outputDeviceUid = otherOutput.uid
+        await manager.handleHotplug()
+        if let oldHelper {
+            await launcher.fireTermination(for: oldHelper)
+        }
+        await loss.value
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        let arguments = launcher.lastProcess?.arguments ?? []
+        XCTAssertTrue(arguments.contains(otherOutput.uid))
+        XCTAssertFalse(arguments.contains(testDevice.uid))
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
     func testDisconnectWhileIdleStaysIdle() async {
         let (manager, settings, launcher, source) = await makeManager()
         settings.outputDeviceUid = testDevice.uid
