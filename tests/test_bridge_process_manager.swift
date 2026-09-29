@@ -339,6 +339,81 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
     }
 
+    /// One Task a test started on the main actor, observable without
+    /// awaiting it, so a step that never finishes fails on a deadline
+    /// instead of hanging the suite.
+    @MainActor
+    private final class TrackedWork {
+        private(set) var isDone = false
+
+        static func run(_ work: @escaping @MainActor () async -> Void) -> TrackedWork {
+            let tracked = TrackedWork()
+            Task { @MainActor in
+                await work()
+                tracked.isDone = true
+            }
+            return tracked
+        }
+    }
+
+    /// Releases each held helper termination as the manager reaches
+    /// `.stopping`, until every tracked step has returned or a deadline
+    /// passes. The polling only paces the releases; the pass/fail signal is
+    /// the steps' completion.
+    private func releaseHeldTerminations(
+        manager: BridgeProcessManager,
+        launcher: MockProcessLauncher,
+        until work: [TrackedWork]
+    ) async {
+        let deadline = Date().addingTimeInterval(5)
+        while !work.allSatisfy(\.isDone) {
+            if Date() >= deadline {
+                XCTFail("Timed out draining held terminations; state \(manager.state)")
+                return
+            }
+            if case .stopping = manager.state,
+               let proc = launcher.lastProcess,
+               launcher.isProcessRunning(proc) {
+                await launcher.fireTermination(for: proc)
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    /// The bridge after overlapping restarts: one live helper that carries the
+    /// latest output and quality, and no queued work that launches another.
+    private func assertSettledOnLatest(
+        manager: BridgeProcessManager,
+        launcher: MockProcessLauncher,
+        outputUid: String,
+        quality: SrcQuality,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        XCTAssertEqual(manager.state, .running, file: file, line: line)
+        XCTAssertFalse(manager.isApplyingSettings, file: file, line: line)
+        XCTAssertEqual(launcher.maxLiveCount, 1, "two helpers were live at once", file: file, line: line)
+        XCTAssertEqual(launcher.liveCount, 1, file: file, line: line)
+        let args = launcher.launchedArguments.last ?? []
+        if let index = args.firstIndex(of: "--output-device") {
+            XCTAssertEqual(args[index + 1], outputUid, file: file, line: line)
+        } else {
+            XCTFail("Last launch must carry --output-device, got \(args)", file: file, line: line)
+        }
+        if let index = args.firstIndex(of: "--src-quality") {
+            XCTAssertEqual(args[index + 1], quality.cliArgument, file: file, line: line)
+        } else {
+            XCTFail("Last launch must carry --src-quality, got \(args)", file: file, line: line)
+        }
+
+        // Once the requests have drained, nothing queued may launch again.
+        let launches = launcher.makeCount
+        for _ in 0..<30 { await Task.yield() }
+        XCTAssertEqual(launcher.makeCount, launches, "a late queued restart launched another helper", file: file, line: line)
+        XCTAssertEqual(manager.state, .running, file: file, line: line)
+        XCTAssertEqual(launcher.liveCount, 1, file: file, line: line)
+    }
+
     func testProductionLaunchUsesParentDeathPipe() async throws {
         let launcher = MockProcessLauncher()
         let settings = makeSettings()
@@ -2109,6 +2184,116 @@ final class BridgeProcessManagerTests: XCTestCase {
             XCTAssertEqual(args[index + 1], "best")
         } else {
             XCTFail("Last launch must carry --src-quality, got \(args)")
+        }
+
+        // Quiescence: with every restart returned, queued work must not
+        // stop or launch another helper.
+        for _ in 0..<30 { await Task.yield() }
+        XCTAssertEqual(launcher.makeCount, 3, "a late queued restart launched another helper")
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.liveCount, 1)
+        XCTAssertEqual(launcher.maxLiveCount, 1, "two helpers were live at once")
+    }
+
+    // T15 (ADR 0001 open gap): a device-change restart is stopping the helper
+    // when a settings change asks for another restart. The requests coalesce
+    // through the restart wrapper (which may relaunch once more in between),
+    // never running two helpers, and the final helper carries the newest
+    // output and quality.
+    func testSettingsRestartDuringHotplugRestartLaunchesLatestOutputAndQuality() async {
+        let (manager, settings, launcher, source) = await makeManager()
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let secondOutput = AudioDeviceRow(
+            uid: "second-output-uid",
+            name: "Second Output",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+        source.devices = [testDevice, secondOutput]
+        settings.outputDeviceUid = secondOutput.uid
+        settings.srcQualityOverride = .high
+
+        // The hotplug sees the changed selection and restarts, holding the
+        // old helper in stopping.
+        let hotplug = TrackedWork.run { await manager.handleHotplug() }
+        await waitUntil { manager.state == .stopping }
+        XCTAssertEqual(manager.state, .stopping)
+
+        // A settings change lands on top of the restart in flight.
+        settings.srcQualityOverride = .best
+        let settingsRestart = TrackedWork.run { await manager.restartForSettingsChange() }
+
+        await releaseHeldTerminations(manager: manager, launcher: launcher, until: [hotplug, settingsRestart])
+
+        XCTAssertTrue(hotplug.isDone && settingsRestart.isDone)
+        await assertSettledOnLatest(
+            manager: manager,
+            launcher: launcher,
+            outputUid: secondOutput.uid,
+            quality: .best
+        )
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
+    // T15, other order: a settings restart is stopping the helper while a
+    // hotplug that began earlier delivers the newly selected output. The
+    // hotplug arrives mid-stop and must not launch a second helper; the
+    // relaunch uses the device list it delivered and the newest quality.
+    func testHotplugDuringSettingsRestartLaunchesLatestOutputAndQuality() async {
+        let (manager, settings, launcher, source) = await makeManager()
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        let secondOutput = AudioDeviceRow(
+            uid: "second-output-uid",
+            name: "Second Output",
+            nominalRate: 48_000,
+            hasInput: false,
+            hasOutput: true
+        )
+        source.devices = [testDevice, secondOutput]
+        settings.outputDeviceUid = secondOutput.uid
+        settings.srcQualityOverride = .high
+
+        let listing = source.gateNextListing()
+        addTeardownBlock { listing.release() }
+        let hotplug = TrackedWork.run { await manager.handleHotplug() }
+        await waitUntil { listing.isHolding }
+        XCTAssertTrue(listing.isHolding)
+
+        let firstRestart = TrackedWork.run { await manager.restartForSettingsChange() }
+        await waitUntil { manager.state == .stopping }
+        XCTAssertEqual(manager.state, .stopping)
+        XCTAssertTrue(manager.isApplyingSettings)
+
+        settings.srcQualityOverride = .best
+        let secondRestart = TrackedWork.run { await manager.restartForSettingsChange() }
+
+        // The hotplug delivers the second output while the old helper is
+        // still held; only then may the old helper finish.
+        listing.release()
+        await waitUntil { hotplug.isDone }
+        XCTAssertTrue(hotplug.isDone)
+        XCTAssertEqual(manager.state, .stopping, "the hotplug must not act on a stopping bridge")
+        XCTAssertEqual(launcher.makeCount, 1)
+        XCTAssertTrue(manager.devices.contains { $0.uid == secondOutput.uid })
+
+        await releaseHeldTerminations(manager: manager, launcher: launcher, until: [firstRestart, secondRestart])
+
+        XCTAssertTrue(firstRestart.isDone && secondRestart.isDone)
+        await assertSettledOnLatest(
+            manager: manager,
+            launcher: launcher,
+            outputUid: secondOutput.uid,
+            quality: .best
+        )
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
         }
     }
 
