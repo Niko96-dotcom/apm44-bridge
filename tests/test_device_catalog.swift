@@ -142,14 +142,74 @@ final class DeviceCatalogTests: XCTestCase {
         return url
     }
 
-    func testRefreshTimesOutWhenTheHelperHoldsStdoutOpen() throws {
-        let wedged = try makeListingHelper("exec /bin/sleep 30")
+    /// Runs `refresh` off the test thread so a broken drain or missing
+    /// termination fails at a bounded watchdog instead of hanging the suite.
+    /// On watchdog expiry it signals only the fixture process it created.
+    private func runRefresh(
+        helper: URL,
+        pidFile: URL,
+        timeout: TimeInterval,
+        watchdog: TimeInterval = 10
+    ) -> (result: Result<[AudioDeviceRow], Error>, elapsed: TimeInterval)? {
+        let box = RefreshOutcome()
+        let done = DispatchSemaphore(value: 0)
         let started = Date()
-
-        XCTAssertThrowsError(try DeviceCatalog.refresh(binaryURL: wedged, timeout: 0.5)) { error in
-            XCTAssertEqual((error as NSError).code, Int(ETIMEDOUT))
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                box.set(.success(try DeviceCatalog.refresh(binaryURL: helper, timeout: timeout)))
+            } catch {
+                box.set(.failure(error))
+            }
+            done.signal()
         }
-        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+        guard done.wait(timeout: .now() + watchdog) == .success else {
+            if let pid = fixturePID(pidFile) { kill(pid, SIGKILL) }
+            XCTFail("DeviceCatalog.refresh did not return within \(watchdog) s")
+            _ = done.wait(timeout: .now() + 5)
+            return nil
+        }
+        guard let result = box.value else { return nil }
+        return (result, Date().timeIntervalSince(started))
+    }
+
+    private func fixturePID(_ pidFile: URL) -> pid_t? {
+        guard let text = try? String(contentsOf: pidFile, encoding: .utf8) else { return nil }
+        return pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// A helper script that records its own PID in a file the test owns,
+    /// then runs `body`. `exec` in the body keeps the recorded PID.
+    private func makePIDRecordingHelper(_ body: String) throws -> (helper: URL, pidFile: URL) {
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("apm44-listing-pid-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: pidFile) }
+        let helper = try makeListingHelper("echo $$ > '\(pidFile.path)'\n\(body)")
+        return (helper, pidFile)
+    }
+
+    private func awaitProcessGone(_ pid: pid_t, within seconds: TimeInterval = 2) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if kill(pid, 0) == -1 && errno == ESRCH { return true }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        return kill(pid, 0) == -1 && errno == ESRCH
+    }
+
+    func testRefreshTimesOutWhenTheHelperHoldsStdoutOpen() throws {
+        let (wedged, pidFile) = try makePIDRecordingHelper("exec /bin/sleep 30")
+
+        let outcome = try XCTUnwrap(runRefresh(helper: wedged, pidFile: pidFile, timeout: 0.5, watchdog: 8))
+
+        guard case .failure(let error) = outcome.result else {
+            return XCTFail("a wedged helper must fail the refresh")
+        }
+        XCTAssertEqual((error as NSError).code, Int(ETIMEDOUT))
+        XCTAssertLessThan(outcome.elapsed, 5)
+
+        // The timed-out child was terminated and reaped, not left running or zombie.
+        let pid = try XCTUnwrap(fixturePID(pidFile))
+        XCTAssertTrue(awaitProcessGone(pid), "timed-out helper \(pid) still exists")
 
         // A later refresh still works once the helper answers.
         let healthy = try makeListingHelper(
@@ -159,16 +219,83 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertEqual(rows.map(\.uid), ["AP-UID"])
     }
 
-    func testRefreshDoesNotUseUnreadStderrPipe() throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repoRoot.appendingPathComponent("App/APM44Bridge/DeviceCatalog.swift"),
-            encoding: .utf8
+    private static let manyRowsScript = """
+    awk 'BEGIN { print "UID\\tNAME\\tRATE\\tI/O"; \
+      for (i = 0; i < 8000; i++) printf "UID-%d\\tDevice %d\\t48000\\tO\\n", i, i }'
+    """
+
+    func testRefreshReturnsEveryRowWhenStdoutExceedsThePipeBuffer() throws {
+        let (helper, pidFile) = try makePIDRecordingHelper(Self.manyRowsScript)
+
+        let outcome = try XCTUnwrap(runRefresh(helper: helper, pidFile: pidFile, timeout: 4))
+
+        guard case .success(let rows) = outcome.result else {
+            return XCTFail("large stdout must not fail the refresh: \(outcome.result)")
+        }
+        // Output is ~250 KB, several times the ~64 KiB pipe capacity.
+        XCTAssertEqual(rows.count, 8000)
+        XCTAssertEqual(Set(rows.map(\.uid)).count, 8000)
+        XCTAssertLessThan(outcome.elapsed, 3)
+    }
+
+    func testRefreshCompletesWhenTheHelperWritesLargeStderr() throws {
+        // 1 MiB on stderr before and after the rows: a stderr pipe nobody
+        // reads would block the child long before it printed its listing.
+        let (helper, pidFile) = try makePIDRecordingHelper(
+            "head -c 1048576 /dev/zero >&2\n\(Self.manyRowsScript)\nhead -c 1048576 /dev/zero >&2"
         )
 
-        XCTAssertTrue(source.contains("process.standardError = FileHandle.nullDevice"))
-        XCTAssertFalse(source.contains("process.standardError = Pipe()"))
+        let outcome = try XCTUnwrap(runRefresh(helper: helper, pidFile: pidFile, timeout: 4))
+
+        guard case .success(let rows) = outcome.result else {
+            return XCTFail("large stderr must not fail the refresh: \(outcome.result)")
+        }
+        XCTAssertEqual(rows.count, 8000)
+        XCTAssertLessThan(outcome.elapsed, 3)
+    }
+
+    func testRefreshReportsTheHelperExitStatusEvenWithLargeOutput() throws {
+        let (helper, pidFile) = try makePIDRecordingHelper(
+            "head -c 1048576 /dev/zero >&2\n\(Self.manyRowsScript)\nexit 7"
+        )
+
+        let outcome = try XCTUnwrap(runRefresh(helper: helper, pidFile: pidFile, timeout: 4))
+
+        guard case .failure(let error) = outcome.result else {
+            return XCTFail("a nonzero exit must fail the refresh")
+        }
+        let nsError = error as NSError
+        XCTAssertEqual(nsError.domain, "DeviceCatalog")
+        XCTAssertEqual(nsError.code, 7)
+        XCTAssertLessThan(outcome.elapsed, 3)
+    }
+
+    func testRefreshMapsANonzeroExitWithoutOutputToItsStatus() throws {
+        let (helper, pidFile) = try makePIDRecordingHelper("echo 'device query failed' >&2\nexit 3")
+
+        let outcome = try XCTUnwrap(runRefresh(helper: helper, pidFile: pidFile, timeout: 4))
+
+        guard case .failure(let error) = outcome.result else {
+            return XCTFail("a nonzero exit must fail the refresh")
+        }
+        XCTAssertEqual((error as NSError).domain, "DeviceCatalog")
+        XCTAssertEqual((error as NSError).code, 3)
+    }
+}
+
+private final class RefreshOutcome: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Result<[AudioDeviceRow], Error>?
+
+    func set(_ result: Result<[AudioDeviceRow], Error>) {
+        lock.lock()
+        stored = result
+        lock.unlock()
+    }
+
+    var value: Result<[AudioDeviceRow], Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
     }
 }
