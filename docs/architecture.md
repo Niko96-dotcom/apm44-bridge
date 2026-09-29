@@ -152,10 +152,15 @@ in either mode it prints a metrics JSON line per tick only when
 
 `prepare` (`BridgeEngine.cpp` / `BridgeEngine::prepare`): in virtual
 mode it polls for the shm ring every 100 ms for up to 15 s, floors the
-target fill at 20 ms, sizes the smoothing ring, resets `DriftController`
+target fill at `kHalTargetFillFloorMs` (20 ms), sizes the smoothing ring,
+resets `DriftController`
 (target fill, 3000 ppm virtual max via `kVirtualDeviceMaxPpm`,
 else `DriftController::kMaxPpm` 500), prepares `LibSamplerateSrc`,
-then `markReady`.
+then `markReady`. `BridgeEngine::effectiveTargetFillMs()` returns the
+value `prepare` planned with, set at its start even if `prepare` later
+fails. The metrics line's `target_fill_ms` (`main.cpp`) and the startup
+log report that value, not the requested `--target-fill-ms`. The app
+keeps its own copy of the floor (`LatencyPreset.swift`).
 
 `start` (`BridgeEngine.cpp` / `BridgeEngine::start`): requests 512-frame
 device buffers (`kRequestedBufferFrameSize`, restored on stop via
@@ -176,7 +181,11 @@ from the output thread each call (`engine/MetricsPublisher.h` /
 
 Stop: `SIGINT`/`SIGTERM` (and parent stdin EOF) set the flag via
 `BridgeEngine::requestStop`; `runUntilSignal` exits the loop, calls
-`stop()`, and prints a final summary to stderr.
+`stop()`, and prints a final summary to stderr. The flag
+(`BridgeEngine.cpp` / `gStopRequested`) is a lock-free `std::atomic<bool>`
+(`static_assert`ed always lock-free), so the signal handler, the
+parent-death watcher thread and the main thread's reads in `prepare` and
+`runUntilSignal` do not race.
 
 ## 4. Daemon exit codes
 
@@ -191,7 +200,7 @@ signal-specific branch.
 | Code | When the daemon returns it | App outcome (`BridgeTerminationOutcome`) and banner |
 |---|---|---|
 | 0 | `--help`/`--version`/list/preflight/print-config/shm-status success, clean run to stop | running + 0: `cleanExitWhileRunning`, back to idle silently. starting + 0: `failWhileStarting`, error with stderr tail |
-| 1 (`kExitFailure`) | Device resolve/negotiate failure, `prepare` failure (except virtual build mismatch), `start` failure, unusable lock file, preflight/print-config failure | running (stop not by user): `autoRetry`, "Reconnecting… (attempt n of 4)". user stop race: `failWhileRunning`. starting: `failWhileStarting`. Banner is the stderr tail (`DaemonStderrTail` / `failureMessage`): IPC text when it mentions "shm", else last line, else a generic start failure |
+| 1 (`kExitFailure`) | Device resolve/negotiate failure, `prepare` failure (except virtual build mismatch), `start` failure, unusable lock file, preflight/print-config failure | running (stop not by user): `autoRetry`, "Reconnecting… (attempt n of 4)". user stop race: `failWhileRunning`. starting: `failWhileStarting`. Error kind comes from `DaemonStderrTail` / `failure(exitStatus:)`: `driverIPCFailed` when the exit is 42, or, as a fallback, stderr mentions "shm"; else `helperFailed` with the last stderr line verbatim (none: generic start failure) |
 | 2 | CLI usage errors (`CliOptions.cpp` exits 2 on bad `--target-fill-ms`/`--src-quality`); `--shm-status` when the ring object is missing | Same generic nonzero path as 1 (no `DaemonExitCode` match) |
 | 3 | `--shm-status` when the ring fails for any other reason | Same generic nonzero path as 1 |
 | 42 (`kExitStaleShmRing`) | Any `StopForExit` from the stale-ring poll: the ring could not be remapped, the SRC epoch reset failed, or stopping/restarting output IO failed | running, not a user stop: `autoRetry` (retried like 1). User stop: `failWhileRunning`. starting: `failWhileStarting` |
@@ -200,13 +209,17 @@ signal-specific branch.
 
 Exhaustion replaces the reconnecting banner with the
 "stopped after 4 unstable launches" message (section 6).
-`BridgeErrorPresentation.swift` / `presentation` then maps each error
-string to a short headline plus recovery text for the menu.
+The app carries errors as a typed `BridgeError`
+(`BridgeErrorPresentation.swift`), never as rendered text.
+`BridgeError.message`, `headline`, `recovery` and `diagnostic`, and
+`BridgeErrorPresentation.presentation(for:)` on top of them, derive the
+localized sentence, short headline, recovery guidance and Details text
+from the kind and its raw payload (build IDs, exit status, stderr).
 
 ## 5. The app's run-state machine
 
 States (`BridgeProcessManager.swift` / `BridgeRunState`):
-`idle`, `starting`, `running`, `stopping`, `reconnecting`, `error(String)`.
+`idle`, `starting`, `running`, `stopping`, `reconnecting`, `error(BridgeError)`.
 `isRunning` is true only for `running`; `isTransitioning` covers
 `starting`/`stopping`. Stop reasons (`StopReason`): `user`,
 `settingsChange`, `hotplug`, `internal`.
@@ -218,7 +231,7 @@ States (`BridgeProcessManager.swift` / `BridgeRunState`):
 | `running` | Set as soon as the launch returns; metrics may be absent, flowing, or stale |
 | `stopping` | SIGTERM sent, waiting for the child (escalates to SIGKILL) |
 | `reconnecting` | Retry wait or parked for a missing device; startable again |
-| `error(String)` | Terminal message; Start retries from here |
+| `error(BridgeError)` | Terminal error kind; Start retries from here |
 
 Transitions:
 
@@ -242,13 +255,23 @@ Transitions:
   retry (`reconnecting`); 43/44 fail at once; starting + anything fails.
 - Hotplug (`HotplugMonitor.swift` / `HotplugMonitor`, 1 s debounce,
   wired in `APM44BridgeApp.swift` to `handleHotplug`): a changed output
-  restarts (`.hotplug`); a gone output parks `reconnecting`
-  ("waiting for output"); a returning output restarts; `idle` refreshes.
+  restarts (`.hotplug`); a gone output records resume intent, stops the
+  helper, then settles in `reconcileAfterOutputLossStop` from the current
+  state and device list, not the list that triggered the stop: it
+  relaunches once if the selected output is back, else parks
+  `reconnecting` ("waiting for output"), and leaves the state alone after
+  a newer user stop, sleep or other owner; a returning output restarts;
+  `idle` refreshes.
 - Sleep/wake (`SystemLifecycleMonitor.swift` / `SystemLifecycleMonitor`
   to `handleSystemWillSleep`/`handleSystemDidWake`): sleep records a
   resume intent when active and stops the child; wake waits out an
   in-flight stop (11 s), refreshes devices, restarts when the output is
-  alive and compatible, else parks `reconnecting`.
+  alive and compatible, else parks `reconnecting`. `performRestart` and
+  the hotplug output-loss paths compare `systemSleepGeneration` and
+  `userStopGeneration` after their stop wait, so a user stop cancels the
+  relaunch and a sleep leaves it to the wake; the wake checks
+  `systemSleepGeneration` after its refresh and re-reads
+  `resumeAfterSystemWake`, which a user stop clears.
   See `docs/adr/0001-wake-resume-intent.md`: the resume intent
   (`resumeAfterSystemWake` plus `wasRunningBeforeDisconnect`) must
   survive every `await` in the wake path; a superseded device refresh
@@ -285,19 +308,53 @@ Transitions:
   (codes 1, 2, 42 and friends). Never retried (`failWithoutRetry`,
   counter cleared): 43 and 44. Starting-state exits fail at once.
 
+### Resolved gaps
+
+Earlier revisions of this section listed two gaps. Both are fixed; the
+history is kept so a change does not reintroduce them.
+
+- The stop wait could not time out. `waitForTermination` raced the
+  termination against a timer in a task group whose continuation child
+  ignored cancellation, so a helper that never exited after SIGTERM left
+  the app in `stopping` and SIGKILL was never reached. Now each waiter
+  registers under its own id (`terminationWaiters`) with its own timer
+  (`terminationWaiterTimers`) that removes it and resumes it with failure,
+  so the wait throws `timedOut` even if the process never exits, and
+  `finishStopWithEscalation` reaches SIGKILL. The 11 s wake wait uses the
+  same path. Tests in `tests/test_bridge_process_manager.swift`:
+  `testStopEscalatesToSigkillWhenHelperIgnoresSigterm`,
+  `testStopReturnsWhenHelperSurvivesSigkill`,
+  `testWakeParksWhenSleepStopNeverFinishes`,
+  `testConcurrentTerminationWaitersAllComplete`.
+- A second sleep during a wake's refresh dropped the resume intent.
+  `handleSystemDidWake` now consumes `resumeAfterSystemWake` only at the
+  end and first checks `systemSleepGeneration`; a sleep that landed
+  meanwhile keeps the flag for the next wake. Tests:
+  `testSecondSleepDuringWakeRefreshKeepsResumeIntent`,
+  `testSleepDuringIdleWakeRefreshDefersResumeToNextWake`.
+
+Also fixed by the 2026-09-29 architecture audit findings A001, A002 and
+A003: a hotplug that saw the output return during the loss stop was
+dropped (`reconcileAfterOutputLossStop`;
+`testOutputReturningDuringLossStopRelaunchesOnce`,
+`testOutputStayingAbsentDuringLossStopParksWaiting`,
+`testUserStopDuringLossStopDoesNotRelaunchWhenOutputReturned`,
+`testUserStopDuringLossStopIsNotOverwrittenByWaitingPark`,
+`testSelectionChangedDuringLossStopLaunchesOnlyNewSelection`); the helper
+stop flag was a non-atomic `volatile sig_atomic_t` (`gStopRequested`;
+`tests/test_engine_prepare_stop.cpp`, "the parent-death watcher stops the
+running control loop promptly"); and metrics reported the requested rather
+than the effective target fill (`effectiveTargetFillMs`; "metrics report
+the HAL floor a virtual-device engine prepared with").
+
 ### Known gaps
 
-- `waitForTermination` races the termination continuation against a
-  timer inside a task group, but the continuation child ignores
-  cancellation, so the timeout only surfaces once the child has exited.
-  A helper that never exits after SIGTERM therefore leaves the app in
-  `stopping` and the SIGKILL step in `finishStopWithEscalation` is not
-  reached. The 11 s wake wait has the same limit.
-- `handleSystemDidWake` consumes `resumeAfterSystemWake` after its device
-  refresh. If the user starts the bridge during that refresh and the Mac
-  sleeps again before it returns, the wake sees `stopping`, treats it as
-  a restart in flight and drops the intent, so the next wake does not
-  resume.
+No defect is recorded against the run-state machine at this revision.
+Open test gaps, not known defects: a settings change during a user stop,
+and a device-change restart together with a settings restart (T14 and
+T15, listed in `docs/adr/0001-wake-resume-intent.md`), have no test named
+for them. The unit tests use fake launchers and device sources, so real
+sleep/wake and USB hotplug timing is not covered.
 
 ## 7. Updates and install
 

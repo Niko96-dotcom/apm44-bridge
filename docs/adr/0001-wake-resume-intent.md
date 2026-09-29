@@ -1,10 +1,10 @@
 # ADR-0001: Keep the resume intent across sleep, wake and hotplug interleavings
 
-- **Status:** Proposed
+- **Status:** Accepted, implemented (updated 2026-09-29; originally Proposed 2026-09-27). Decision items 1-4 shipped in #46 (`10af56f`); action item 5 stays open. See "Implementation status".
 - **Date:** 2026-09-27
 - **Deciders:** Niko (owner)
 - **Source:** tech-debt item #3 and test gap T16 in the 2026-09-27 audit (`.audit/tech-debt.md`, `.audit/test-plan.md`), both at `30707e6`.
-- **Evidence rule:** every `file:line` below is at `30707e6`.
+- **Evidence rule:** every `file:line` below is at `30707e6`, the revision the decision was written against. Line numbers in the Context, Decision and Consequences sections are therefore historical; the "Implementation status" section names symbols and tests at the current revision.
 
 ## Context
 
@@ -125,11 +125,35 @@ The four fixes listed under Decision.
 
 ## Action items
 
-1. [ ] Make `refreshDevices()` join the newest refresh when superseded, and keep missing-binary and thrown-error as failures.
-2. [ ] Have wake await an in-flight stop before refreshing, and set `wasRunningBeforeDisconnect` on every wake park.
-3. [ ] Clear `resumeAfterSystemWake` on a user stop, and re-read it in wake after its awaits.
-4. [ ] Add a `listDevices` gate to `FakeBridgeDeviceSource`, plus the three tests above, and show each one failing on `30707e6`.
-5. [ ] Later: decide on Option B when path 3, T14/T15 or #13 are picked up.
+Checked against the code and tests at `844be44` on 2026-09-29.
+
+1. [x] Make `refreshDevices()` join the newest refresh when superseded, and keep missing-binary and thrown-error as failures. `BridgeProcessManager.refreshDevices` keeps `newestDeviceRefresh` and loops on it; a missing binary and a thrown listing return `false`.
+2. [x] Have wake await an in-flight stop before refreshing, and set `wasRunningBeforeDisconnect` on every wake park. `handleSystemDidWake` waits with `waitForTermination(timeout: stopTimeout * 2 + 1)` while the sleep stop is in flight; `parkAfterWake` sets the flag for every park it makes.
+3. [x] Clear `resumeAfterSystemWake` on a user stop, and re-read it in wake after its awaits. `initiateUserStop` clears it; wake copies and clears it only after its awaits.
+4. [x] Add a `listDevices` gate to `FakeBridgeDeviceSource`, plus the three tests above, and show each one failing on `30707e6`. `gateNextListing()` / `ListDevicesGate` in `tests/test_bridge_process_manager.swift`. The #46 description records each test failing on `main` at `6df0350` (the base of that PR, not `30707e6`) and failing under a matching mutation.
+5. [ ] Later: decide on Option B when path 3, T14/T15 or #13 are picked up. Still deferred; see "Implementation status" for which of those remain.
+
+## Implementation status (2026-09-29)
+
+The original Context, Decision and Options above are unchanged. Nothing here changes the decision (Option C).
+
+**Decision items, as implemented** (`App/APM44Bridge/BridgeProcessManager.swift`, tests in `tests/test_bridge_process_manager.swift`):
+
+| Decision item | Symbols | Tests |
+|---|---|---|
+| 1. Superseded refreshes join the winner | `refreshDevices`, `newestDeviceRefresh`; `handleHotplug` returns when a newer hotplug joined the same refresh (`hotplugEventGeneration`) | `testWakeWhoseRefreshIsSupersededByHotplugStillResumes`, `testOverlappingHotplugsRestartRunningBridgeOnce` |
+| 2. Wake waits out an in-flight stop | `handleSystemDidWake`, `waitForTermination` | `testWakeDuringUnfinishedSleepStopResumesBridge` (T16), `testWakeParksWhenSleepStopNeverFinishes` |
+| 3. Every wake park keeps the intent | `parkAfterWake` | the two wake tests above, `testLateExitAfterWakeParkResumesWhenOutputPresent` |
+| 4. A user stop cancels a pending wake resume | `initiateUserStop`, `handleSystemDidWake` | `testUserStopDuringWakeCancelsResume` |
+
+**Follow-ups after the ADR**, all in the same manager:
+
+- #53 (`f721461`): `systemSleepGeneration`. A wake whose refresh a newer sleep overtook keeps the intent for the next wake (`testSecondSleepDuringWakeRefreshKeepsResumeIntent`, `testSleepDuringIdleWakeRefreshDefersResumeToNextWake`).
+- #54 (`f6ab66b`): `waitForTermination` uses per-waiter timers that resume with failure, so the stop wait can time out. The pre-existing timeout bug that #46 recorded as making wake's "stop unfinished" park unreachable is fixed (`testStopEscalatesToSigkillWhenHelperIgnoresSigterm`, `testWakeParksWhenSleepStopNeverFinishes`).
+- `c569760` (audit B-series): `performRestart` captures `systemSleepGeneration` and `userStopGeneration` before its stop wait. A sleep during a restart defers the relaunch to the wake, and `handleSystemWillSleep` keeps the intent while `restartTask` is set. This addresses path 3 for settings and hotplug restarts (`testSleepDuringSettingsRestartDefersRelaunchToWake`, `testUserStopDuringSettingsRestartCancelsRelaunch`). Tech-debt #13, the resume-after-update flag outliving a cancel, is covered by `testUserStopRevokesPendingUpdateResume` and `testAbandonedUpdateInstallRevokesResume`.
+- `fade2f0` (architecture audit A001): the hotplug output-loss stop settles through `reconcileAfterOutputLossStop`, with the same generation guards, instead of parking from the pre-wait decision.
+
+**Still open:** T14 (a settings change during a user stop) and T15 (a device-change restart together with a settings restart) have no test named for them. Path 3 was verified only for the restart flows above, not for every trigger; no test was found for a sleep that lands between a hotplug restart's synchronous `.stopping` and its relaunch other than the settings-restart case. Action item 5 (Option B) is deferred until more intent flags appear. Nothing here was checked against real sleep or USB hardware.
 
 ## Review record
 
