@@ -81,17 +81,23 @@ final class DaemonStderrTailTests: XCTestCase {
         XCTAssertEqual(tail.joined, "a\nb")
     }
 
-    func testFailureMessageShmWins() {
+    func testFailureIsIPCWhenStderrMentionsShm() {
         var tail = DaemonStderrTail()
         tail.append("boom\nshm attach failed")
-        XCTAssertEqual(tail.failureMessage(default: "dflt"), AppStrings.ipcFailed())
+        XCTAssertEqual(tail.failure(exitStatus: 1), .driverIPCFailed)
     }
 
-    func testFailureMessageLastLineThenDefault() {
+    func testFailureIsIPCForStaleRingExitCodeWithoutShmStderr() {
         var tail = DaemonStderrTail()
-        XCTAssertEqual(tail.failureMessage(default: "dflt"), "dflt")
-        tail.append("first\nlast")
-        XCTAssertEqual(tail.failureMessage(default: "dflt"), "last")
+        tail.append("something unrelated")
+        XCTAssertEqual(tail.failure(exitStatus: DaemonExitCode.staleShmRing.rawValue), .driverIPCFailed)
+    }
+
+    func testFailureKeepsLastLineVerbatimThenNothing() {
+        var tail = DaemonStderrTail()
+        XCTAssertEqual(tail.failure(exitStatus: 1), .helperFailed(stderr: nil))
+        tail.append("first\nlast\twith \u{01}control")
+        XCTAssertEqual(tail.failure(exitStatus: 1), .helperFailed(stderr: "last\twith \u{01}control"))
     }
 
     func testRemoveAll() {
@@ -146,7 +152,7 @@ final class BridgeLaunchArgumentsTests: XCTestCase {
 
 final class BridgeConnectionPhaseDeriveTests: XCTestCase {
     func testStoppedStates() {
-        for state in [BridgeRunState.idle, .stopping, .reconnecting, .error("x")] {
+        for state in [BridgeRunState.idle, .stopping, .reconnecting, .error(.helperFailed(stderr: "x"))] {
             XCTAssertEqual(BridgeConnectionPhase.derive(state: state, halMode: true, metrics: makeMetrics()), .stopped, "\(state)")
             XCTAssertEqual(BridgeConnectionPhase.derive(state: state, halMode: false, metrics: nil), .stopped, "\(state)")
         }
@@ -177,7 +183,7 @@ final class BridgeTerminationPolicyTests: XCTestCase {
         let rows: [(BridgeRunState, Int32, StopReason?, BridgeTerminationOutcome)] = [
             (.running, 44, nil, .loadedDriverMismatch),
             (.starting, 44, .user, .loadedDriverMismatch),
-            (.error("x"), 44, nil, .ignore),
+            (.error(.helperFailed(stderr: "x")), 44, nil, .ignore),
             (.running, 43, nil, .helperAlreadyRunning),
             (.running, 43, .internal, .helperAlreadyRunning),
             (.running, 43, .user, .helperAlreadyRunning),
@@ -196,7 +202,7 @@ final class BridgeTerminationPolicyTests: XCTestCase {
             (.reconnecting, 1, nil, .ignore),
             (.reconnecting, 0, nil, .ignore),
             (.idle, 1, nil, .ignore),
-            (.error("x"), 1, nil, .ignore),
+            (.error(.helperFailed(stderr: "x")), 1, nil, .ignore),
         ]
         for (state, status, reason, expected) in rows {
             XCTAssertEqual(

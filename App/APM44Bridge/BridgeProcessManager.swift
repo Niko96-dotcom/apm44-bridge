@@ -14,7 +14,7 @@ enum BridgeRunState: Equatable {
     case running
     case stopping
     case reconnecting
-    case error(String)
+    case error(BridgeError)
 
     var isRunning: Bool {
         if case .running = self { return true }
@@ -25,6 +25,22 @@ enum BridgeRunState: Equatable {
         switch self {
         case .starting, .stopping: return true
         default: return false
+        }
+    }
+}
+
+/// A transient banner the manager posts. The two cases the manager reads back
+/// are typed; everything else is plain text.
+enum BridgeNotice: Equatable {
+    case previousOutputUnavailable
+    case waitingForOutput(deviceName: String)
+    case text(String)
+
+    var message: String {
+        switch self {
+        case .previousOutputUnavailable: return AppStrings.previousOutputSelect
+        case .waitingForOutput(let name): return AppStrings.waitingForOutput(name)
+        case .text(let text): return text
         }
     }
 }
@@ -53,7 +69,7 @@ final class BridgeProcessManager: ObservableObject {
     @Published private(set) var routingMode: RoutingMode = .blackHoleFallback
     @Published private(set) var connectionPhase: BridgeConnectionPhase = .stopped
     @Published private(set) var lastStopReason: StopReason?
-    @Published private var noticeMessage: String?
+    @Published private var notice: BridgeNotice?
     @Published private(set) var isApplyingSettings = false
     @Published private(set) var cachedAppBuildID: String?
     @Published private(set) var cachedDriverBuildID: String?
@@ -61,10 +77,10 @@ final class BridgeProcessManager: ObservableObject {
 
     var bannerMessage: String? {
         get {
-            if let noticeMessage { return noticeMessage }
+            if let notice { return notice.message }
             return retryBudget.bannerMessage(for: state)
         }
-        set { noticeMessage = newValue }
+        set { notice = newValue.map(BridgeNotice.text) }
     }
 
     private var process: Process?
@@ -91,8 +107,8 @@ final class BridgeProcessManager: ObservableObject {
     private var stabilityTask: Task<Void, Never>?
     private var processHealth: BridgeProcessHealth = .stopped
     private var resumeAfterSystemWake = false
-    /// Tracks a stuck-helper .error without comparing localized strings in
-    /// handleTermination. Set only via markStuckHelper(), cleared in
+    /// Tracks a stuck-helper .error so handleTermination does not have to
+    /// inspect the error. Set only via markStuckHelper(), cleared in
     /// transitionToIdle() and when start() launches.
     private var awaitingStuckHelperExit = false
     // Every sleep bumps this so a wake can tell a newer sleep superseded it.
@@ -309,7 +325,7 @@ final class BridgeProcessManager: ObservableObject {
            !list.contains(where: { $0.uid == uid }),
            DeviceCatalog.isDeniedMonitoringDevice(uid: uid, name: lastKnownDeviceName ?? uid) {
             settings.outputDeviceUid = nil
-            bannerMessage = AppStrings.previousOutputSelect
+            notice = .previousOutputUnavailable
         } else if settings.outputDeviceUid == nil,
                   let preferred = DeviceCatalog.preferredDefault(from: list) {
             settings.outputDeviceUid = preferred.uid
@@ -318,18 +334,18 @@ final class BridgeProcessManager: ObservableObject {
                 lastKnownDeviceUid = row.uid
                 settings.outputDeviceName = row.name
             }
-            if bannerMessage == AppStrings.previousOutputSelect {
+            if notice == .previousOutputUnavailable {
                 // keep stale-selection banner until user picks a device
             } else {
-                bannerMessage = nil
+                notice = nil
             }
         } else if let uid = settings.outputDeviceUid,
                   let row = list.first(where: { $0.uid == uid }) {
             lastKnownDeviceName = row.name
             lastKnownDeviceUid = uid
             settings.outputDeviceName = row.name
-            if bannerMessage != AppStrings.waitingForOutput(row.name) {
-                bannerMessage = nil
+            if notice != .waitingForOutput(deviceName: row.name) {
+                notice = nil
             }
         }
     }
@@ -423,12 +439,12 @@ final class BridgeProcessManager: ObservableObject {
         resolveCachedBinaryURL()
         guard let url = binaryURL else {
             logger.error("Bridge start blocked: missing binary")
-            state = .error(AppStrings.bridgeNotFound)
+            state = .error(.bridgeNotFound)
             return
         }
         guard let uid = settings.outputDeviceUid, !uid.isEmpty else {
             logger.error("Bridge start blocked: no output selected")
-            state = .error(AppStrings.selectOutputDevice)
+            state = .error(.selectOutputDevice)
             return
         }
         // APM44 build-mismatch gate: in HAL mode the installed driver build
@@ -448,23 +464,22 @@ final class BridgeProcessManager: ObservableObject {
         updateReadinessCaches(halPresent: halPresent, appID: appID, driverID: driverID)
         if halPresent,
            !HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: driverID) {
-            let displayApp = HalDriverDetector.normalizedBuildID(appID)
-                ?? AppStrings.buildIDMissingPlaceholder
-            let displayDriver = HalDriverDetector.normalizedBuildID(driverID)
-                ?? AppStrings.buildIDMissingPlaceholder
-            state = .error(AppStrings.driverBuildMismatchDetail(app: displayApp, driver: displayDriver))
+            state = .error(.driverBuildMismatch(
+                appBuildID: HalDriverDetector.normalizedBuildID(appID),
+                driverBuildID: HalDriverDetector.normalizedBuildID(driverID)
+            ))
             return
         }
         guard let selectedOutput = devices.first(where: { $0.uid == uid }) else {
             logger.error("Bridge start blocked: selected output gone")
-            state = .error(AppStrings.selectedOutputGone)
+            state = .error(.selectedOutputGone)
             return
         }
         guard selectedOutput.isMonitoringCompatible else {
             logger.error("Bridge start blocked: incompatible output")
-            let issue = selectedOutput.compatibilityIssue ?? AppStrings.unsupportedPrefix
-            state = .error(AppStrings.selectedOutputIncompatible(issue: AppStrings.compatibility(issue)))
-            bannerMessage = AppStrings.namedIssue(selectedOutput.name, issue: AppStrings.compatibility(issue))
+            let issue = selectedOutput.compatibilityIssue
+            state = .error(.selectedOutputIncompatible(issue: issue))
+            bannerMessage = AppStrings.namedIssue(selectedOutput.name, issue: BridgeError.compatibilityText(issue))
             return
         }
 
@@ -553,7 +568,7 @@ final class BridgeProcessManager: ObservableObject {
                 retryBudget.recordRetryLaunchFailure(detail: detail)
                 scheduleAutoRetry()
             } else {
-                state = .error(AppStrings.bridgeCouldNotStart(detail: detail))
+                state = .error(.launchFailed(detail: detail))
             }
         }
     }
@@ -582,7 +597,7 @@ final class BridgeProcessManager: ObservableObject {
 
     /// Records a helper that survived SIGKILL; its late exit frees the slot.
     private func markStuckHelper() {
-        state = .error(AppStrings.bridgeDidNotStop)
+        state = .error(.bridgeDidNotStop)
         connectionPhase = .stopped
         awaitingStuckHelperExit = true
     }
@@ -824,7 +839,7 @@ final class BridgeProcessManager: ObservableObject {
                 guard stopGeneration == userStopGeneration,
                       sleepGeneration == systemSleepGeneration else { return }
                 switch state {
-                case .idle, .stopping: state = .error(AppStrings.outputDeviceDisconnected)
+                case .idle, .stopping: state = .error(.outputDeviceDisconnected)
                 default: break
                 }
             }
@@ -907,7 +922,7 @@ final class BridgeProcessManager: ObservableObject {
             return
         }
         state = .reconnecting
-        bannerMessage = AppStrings.waitingForOutput(deviceDisplayName)
+        notice = .waitingForOutput(deviceName: deviceDisplayName)
     }
 
     private func waitForTermination(timeout: Duration = .seconds(5)) async throws {
@@ -1145,9 +1160,9 @@ final class BridgeProcessManager: ObservableObject {
         retryGeneration += 1
         let decision = retryBudget.consumeAttempt(delays: timing.retryDelays)
         switch decision {
-        case .exhausted(let message):
+        case .exhausted(let error):
             logger.error("Bridge retries exhausted")
-            state = .error(message)
+            state = .error(error)
             return
         case .retry(let delay):
             state = .reconnecting
@@ -1178,12 +1193,12 @@ final class BridgeProcessManager: ObservableObject {
         }
     }
 
-    private func failWithoutRetry(_ message: String) {
+    private func failWithoutRetry(_ error: BridgeError) {
         cancelRetryTask()
         retryBudget.clearAttemptKeepingDiagnostics()
         lastStopReason = nil
-        state = .error(message)
-        bannerMessage = message
+        state = .error(error)
+        bannerMessage = error.message
         connectionPhase = .stopped
         resumeTerminationWaiters()
     }
@@ -1241,10 +1256,10 @@ final class BridgeProcessManager: ObservableObject {
             lastStopReason: lastStopReason
         ) {
         case .loadedDriverMismatch:
-            failWithoutRetry(AppStrings.loadedDriverBuildMismatch)
+            failWithoutRetry(.loadedDriverBuildMismatch)
             return
         case .helperAlreadyRunning:
-            failWithoutRetry(AppStrings.helperAlreadyRunning)
+            failWithoutRetry(.helperAlreadyRunning)
             return
         case .autoRetry:
             scheduleAutoRetry()
@@ -1253,9 +1268,9 @@ final class BridgeProcessManager: ObservableObject {
             return
         case .failWhileRunning:
             lastStopReason = nil
-            let message = stderrTail.failureMessage(default: AppStrings.couldNotStart)
-            state = .error(message)
-            bannerMessage = message
+            let error = stderrTail.failure(exitStatus: exitStatus)
+            state = .error(error)
+            bannerMessage = error.message
             connectionPhase = .stopped
             resumeTerminationWaiters()
             return
@@ -1264,7 +1279,7 @@ final class BridgeProcessManager: ObservableObject {
             return
         case .failWhileStarting:
             lastStopReason = nil
-            state = .error(stderrTail.failureMessage(default: AppStrings.couldNotStart))
+            state = .error(stderrTail.failure(exitStatus: exitStatus))
         case .ignore:
             break
         }

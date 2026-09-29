@@ -54,8 +54,13 @@ final class BridgeRetryBudgetTests: XCTestCase {
         XCTAssertEqual(budget.consumeAttempt(delays: [1, 2, 4]), .retry(delay: 4))
         XCTAssertEqual(budget.attempt, 3)
         budget.recordUnexpectedExit(status: 9, stderr: "boom")
-        if case .exhausted(let message) = budget.consumeAttempt(delays: [1, 2, 4]) {
-            XCTAssertEqual(message, AppStrings.stoppedAfterUnstableLaunches(
+        if case .exhausted(let error) = budget.consumeAttempt(delays: [1, 2, 4]) {
+            XCTAssertEqual(error, .unstableLaunches(
+                maxAttempts: BridgeRetryBudget.maxUnhealthyLaunches,
+                lastExitStatus: 9,
+                lastStderr: "boom"
+            ))
+            XCTAssertEqual(error.message, AppStrings.stoppedAfterUnstableLaunches(
                 BridgeRetryBudget.maxUnhealthyLaunches,
                 detail: AppStrings.lastExit(9) + ": boom"
             ))
@@ -79,7 +84,7 @@ final class BridgeRetryBudgetTests: XCTestCase {
     func testExhaustedMessageNeither() {
         let budget = BridgeRetryBudget()
         XCTAssertEqual(
-            budget.exhaustedMessage,
+            budget.exhaustedError.message,
             AppStrings.stoppedAfterUnstableLaunches(BridgeRetryBudget.maxUnhealthyLaunches, detail: "")
         )
     }
@@ -88,7 +93,7 @@ final class BridgeRetryBudgetTests: XCTestCase {
         var budget = BridgeRetryBudget()
         budget.recordUnexpectedExit(status: 9, stderr: "")
         XCTAssertEqual(
-            budget.exhaustedMessage,
+            budget.exhaustedError.message,
             AppStrings.stoppedAfterUnstableLaunches(
                 BridgeRetryBudget.maxUnhealthyLaunches,
                 detail: AppStrings.lastExit(9)
@@ -100,7 +105,7 @@ final class BridgeRetryBudgetTests: XCTestCase {
         var budget = BridgeRetryBudget()
         budget.recordRetryLaunchFailure(detail: "cable unplugged")
         XCTAssertEqual(
-            budget.exhaustedMessage,
+            budget.exhaustedError.message,
             AppStrings.stoppedAfterUnstableLaunches(
                 BridgeRetryBudget.maxUnhealthyLaunches,
                 detail: ": cable unplugged"
@@ -112,7 +117,7 @@ final class BridgeRetryBudgetTests: XCTestCase {
         var budget = BridgeRetryBudget()
         budget.recordUnexpectedExit(status: 2, stderr: "boom")
         XCTAssertEqual(
-            budget.exhaustedMessage,
+            budget.exhaustedError.message,
             AppStrings.stoppedAfterUnstableLaunches(
                 BridgeRetryBudget.maxUnhealthyLaunches,
                 detail: "\(AppStrings.lastExit(2)): boom"
@@ -122,7 +127,7 @@ final class BridgeRetryBudgetTests: XCTestCase {
 
     func testBannerAttemptZeroIsNil() {
         let budget = BridgeRetryBudget()
-        for state in [BridgeRunState.idle, .starting, .running, .stopping, .reconnecting, .error("x")] {
+        for state in [BridgeRunState.idle, .starting, .running, .stopping, .reconnecting, .error(.helperFailed(stderr: "x"))] {
             XCTAssertNil(budget.bannerMessage(for: state), "\(state)")
         }
     }
@@ -150,7 +155,7 @@ final class BridgeRetryBudgetTests: XCTestCase {
         XCTAssertEqual(budget.consumeAttempt(delays: [1]), .retry(delay: 1))
         XCTAssertEqual(budget.consumeAttempt(delays: [1]), .retry(delay: 1))
         let expected = AppStrings.reconnectingAttempt(current: 2, max: BridgeRetryBudget.maxUnhealthyLaunches)
-        for state in [BridgeRunState.starting, .running, .error("x")] {
+        for state in [BridgeRunState.starting, .running, .error(.helperFailed(stderr: "x"))] {
             XCTAssertEqual(budget.bannerMessage(for: state), expected, "\(state)")
         }
     }
@@ -170,11 +175,11 @@ final class BridgeRetryBudgetTests: XCTestCase {
         XCTAssertEqual(budget.consumeAttempt(delays: [1]), .retry(delay: 1))
         XCTAssertEqual(budget.consumeAttempt(delays: [1]), .retry(delay: 1))
         XCTAssertEqual(budget.consumeAttempt(delays: [1]), .retry(delay: 1))
-        guard case .exhausted(let message) = budget.consumeAttempt(delays: [1]) else {
+        guard case .exhausted(let error) = budget.consumeAttempt(delays: [1]) else {
             XCTFail("expected exhaustion on the 4th attempt")
             return
         }
-        XCTAssertEqual(message, budget.exhaustedMessage)
-        XCTAssertEqual(budget.bannerMessage(for: .error("x")), budget.exhaustedMessage)
+        XCTAssertEqual(error, budget.exhaustedError)
+        XCTAssertEqual(budget.bannerMessage(for: .error(.helperFailed(stderr: "x"))), budget.exhaustedError.message)
     }
 }

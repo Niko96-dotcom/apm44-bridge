@@ -111,10 +111,10 @@ struct MenuPresentation {
                 return banner
             }
             return AppStrings.reconnecting
-        case .error(let message):
+        case .error(let error):
             // Never truncate helper jargon into the headline. Use a short
             // localized headline; the full diagnostic lives under Details.
-            return BridgeErrorPresentation.headline(for: message)
+            return BridgeErrorPresentation.headline(for: error)
         }
     }
 
@@ -122,9 +122,9 @@ struct MenuPresentation {
     /// error section already shows headline + recovery + Details.
     var visibleBanner: String? {
         guard let banner = bannerMessage else { return nil }
-        if case .error(let message) = state,
-           banner == message,
-           BridgeErrorPresentation.presentation(for: message).diagnostic != nil {
+        if case .error(let error) = state,
+           banner == error.message,
+           error.diagnostic != nil {
             return nil
         }
         return banner
@@ -180,13 +180,12 @@ struct MenuPresentation {
     /// (dimmed) so the popover height does not jump.
     var showsStatusDetail: Bool {
         if effectiveDetailMetrics != nil { return true }
-        if case .error(let message) = state { return Self.errorHasContent(message) }
+        if case .error(let error) = state { return Self.errorHasContent(error) }
         return false
     }
 
-    static func errorHasContent(_ message: String) -> Bool {
-        let presentation = BridgeErrorPresentation.presentation(for: message)
-        return presentation.recovery != nil || presentation.diagnostic != nil
+    static func errorHasContent(_ error: BridgeError) -> Bool {
+        error.recovery != nil || error.diagnostic != nil
     }
 
     // MARK: - Update section
