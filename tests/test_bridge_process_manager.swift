@@ -646,6 +646,54 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.makeCount, 1)
     }
 
+    // T14 (ADR 0001 open gap): the reverse order of the test above. A user
+    // Stop is still waiting on the old helper when a settings change queues a
+    // restart. The queued restart must not undo the Stop, and the new setting
+    // must still be saved for the next Start.
+    func testSettingsRestartQueuedDuringUserStopDoesNotRelaunch() async {
+        let (manager, settings, launcher, _) = await makeManager()
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        guard let old = launcher.lastProcess else { return XCTFail("no process") }
+
+        let stop = Task { await manager.stopAsync() }
+        await waitUntil { manager.state == .stopping }
+        XCTAssertEqual(manager.state, .stopping)
+
+        settings.srcQualityOverride = .best
+        let restart = Task { await manager.restartForSettingsChange() }
+        await restart.value
+        XCTAssertEqual(manager.state, .stopping, "the helper is still held")
+        XCTAssertEqual(launcher.makeCount, 1)
+
+        await launcher.fireTermination(for: old)
+        await stop.value
+        // The termination queues the pending restart as a Task; let it and
+        // anything it chains run before asserting nothing launched.
+        for _ in 0..<30 { await Task.yield() }
+
+        XCTAssertEqual(manager.state, .idle, "a queued settings restart must not relaunch after Stop")
+        XCTAssertEqual(launcher.makeCount, 1, "exactly the one launch from the initial Start")
+        XCTAssertEqual(launcher.liveCount, 0)
+        XCTAssertFalse(manager.isApplyingSettings)
+        XCTAssertEqual(settings.srcQualityOverride, .best, "the new setting is still saved")
+
+        // The saved setting applies to the next explicit Start.
+        manager.start()
+        XCTAssertEqual(manager.state, .running)
+        XCTAssertEqual(launcher.makeCount, 2)
+        let args = launcher.launchedArguments.last ?? []
+        if let index = args.firstIndex(of: "--src-quality") {
+            XCTAssertEqual(args[index + 1], "best")
+        } else {
+            XCTFail("Start must carry --src-quality, got \(args)")
+        }
+        manager.stop()
+        if let proc = launcher.lastProcess {
+            await launcher.fireTermination(for: proc)
+        }
+    }
+
     func testQueuedOutputFromReplacedHelperDoesNotReachReplacement() async {
         let (manager, _, launcher, _) = await makeManager()
         manager.start()
