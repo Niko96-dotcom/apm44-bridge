@@ -49,14 +49,19 @@ struct DaemonStderrTail {
         lines.removeAll()
     }
 
-    func failureMessage(default defaultMessage: String) -> String {
-        if joined.localizedCaseInsensitiveContains("shm") {
-            return AppStrings.ipcFailed()
+    /// Classifies an unexpected helper exit. The helper's stale-ring exit code
+    /// is the reliable IPC signal; the "shm" match on stderr is a fallback for
+    /// ring failures that exit with the generic failure code, and is confined
+    /// to this function.
+    func failure(exitStatus: Int32) -> BridgeError {
+        if DaemonExitCode(rawValue: exitStatus) == .staleShmRing
+            || joined.localizedCaseInsensitiveContains("shm") {
+            return .driverIPCFailed
         }
         if let last = lines.last, !last.isEmpty {
-            return last
+            return .helperFailed(stderr: last)
         }
-        return defaultMessage
+        return .helperFailed(stderr: nil)
     }
 }
 
@@ -165,7 +170,7 @@ enum BridgeTerminationPolicy {
 
 struct BridgeRetryBudget: Equatable {
     enum Decision: Equatable {
-        case exhausted(message: String)
+        case exhausted(BridgeError)
         case retry(delay: TimeInterval)
     }
 
@@ -175,15 +180,12 @@ struct BridgeRetryBudget: Equatable {
     private(set) var lastExitStatus: Int32?
     private(set) var lastStderr: String?
 
-    var exhaustedMessage: String {
-        var detail = ""
-        if let status = lastExitStatus {
-            detail = AppStrings.lastExit(Int(status))
-        }
-        if let stderr = lastStderr, !stderr.isEmpty {
-            detail += ": \(stderr)"
-        }
-        return AppStrings.stoppedAfterUnstableLaunches(Self.maxUnhealthyLaunches, detail: detail)
+    var exhaustedError: BridgeError {
+        .unstableLaunches(
+            maxAttempts: Self.maxUnhealthyLaunches,
+            lastExitStatus: lastExitStatus,
+            lastStderr: lastStderr
+        )
     }
 
     func bannerMessage(for state: BridgeRunState) -> String? {
@@ -192,7 +194,7 @@ struct BridgeRetryBudget: Equatable {
         case .idle, .stopping: return nil
         default: break
         }
-        if attempt >= Self.maxUnhealthyLaunches { return exhaustedMessage }
+        if attempt >= Self.maxUnhealthyLaunches { return exhaustedError.message }
         return AppStrings.reconnectingAttempt(current: attempt, max: Self.maxUnhealthyLaunches)
     }
 
@@ -220,7 +222,7 @@ struct BridgeRetryBudget: Equatable {
     mutating func consumeAttempt(delays: [TimeInterval]) -> Decision {
         attempt += 1
         if attempt >= Self.maxUnhealthyLaunches {
-            return .exhausted(message: exhaustedMessage)
+            return .exhausted(exhaustedError)
         }
         return .retry(delay: delays[min(attempt - 1, delays.count - 1)])
     }

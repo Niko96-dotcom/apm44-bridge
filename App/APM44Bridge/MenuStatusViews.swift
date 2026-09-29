@@ -117,9 +117,9 @@ struct MenuStatusDetail: View {
                     }
                 }
                 .opacity(presentation.showsHeldMetrics ? 0.5 : 1)
-            } else if case .error(let message) = manager.state,
-                      MenuPresentation.errorHasContent(message) {
-                errorDetailView(message: message)
+            } else if case .error(let error) = manager.state,
+                      MenuPresentation.errorHasContent(error) {
+                errorDetailView(error: error)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -128,14 +128,14 @@ struct MenuStatusDetail: View {
         }
     }
 
-    private var errorIdentity: String {
-        if case .error(let message) = manager.state { return message }
-        return ""
+    private var errorIdentity: BridgeError? {
+        if case .error(let error) = manager.state { return error }
+        return nil
     }
 
     @ViewBuilder
-    private func errorDetailView(message: String) -> some View {
-        let presentation = BridgeErrorPresentation.presentation(for: message)
+    private func errorDetailView(error: BridgeError) -> some View {
+        let presentation = BridgeErrorPresentation.presentation(for: error)
         VStack(alignment: .leading, spacing: 6) {
             if let recovery = presentation.recovery {
                 HStack(alignment: .top, spacing: 8) {

@@ -355,11 +355,10 @@ final class BridgeProcessManagerBuildMismatchTests: XCTestCase {
         )
         manager.start()
         XCTAssertEqual(launcher.makeCount, 0)
-        if case .error(let message) = manager.state {
-            XCTAssertTrue(message.contains(driverID) || message.contains(appID),
-                          "diagnostic should carry build IDs: \(message)")
+        if case .error(let error) = manager.state {
+            XCTAssertEqual(error, .driverBuildMismatch(appBuildID: appID, driverBuildID: driverID))
             XCTAssertEqual(
-                BridgeErrorPresentation.headline(for: message),
+                BridgeErrorPresentation.headline(for: error),
                 AppStrings.driverBuildMismatch
             )
         } else {

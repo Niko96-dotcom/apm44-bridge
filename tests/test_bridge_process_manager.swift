@@ -274,14 +274,21 @@ final class BridgeProcessManagerTests: XCTestCase {
         return (manager, settings, mockLauncher, source)
     }
 
-    private func assertStoppedAfterUnstableLaunches(_ message: String, launches: Int = 4, lastExit: Int) {
+    private func assertStoppedAfterUnstableLaunches(_ error: BridgeError, launches: Int = 4, lastExit: Int32) {
+        guard case .unstableLaunches(let maxAttempts, let status, _) = error else {
+            XCTFail("expected unstableLaunches, got \(error)")
+            return
+        }
+        XCTAssertEqual(maxAttempts, launches)
+        XCTAssertEqual(status, lastExit)
+        let message = error.message
         let marker = "__DETAIL__"
         let parts = AppStrings.stoppedAfterUnstableLaunches(launches, detail: marker)
             .components(separatedBy: marker)
         XCTAssertEqual(parts.count, 2, message)
         XCTAssertTrue(message.hasPrefix(parts[0]), message)
         XCTAssertTrue(message.hasSuffix(parts[1]), message)
-        XCTAssertTrue(message.contains(AppStrings.lastExit(lastExit)), message)
+        XCTAssertTrue(message.contains(AppStrings.lastExit(Int(lastExit))), message)
     }
 
     /// One helper metrics line in the JSON format the daemon emits; written
@@ -1011,7 +1018,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         manager.start()
 
-        XCTAssertEqual(manager.state, .error(AppStrings.selectedOutputGone))
+        XCTAssertEqual(manager.state, .error(.selectedOutputGone))
         XCTAssertNil(manager.bannerMessage)
         XCTAssertEqual(launcher.makeCount, 0)
     }
@@ -1031,8 +1038,9 @@ final class BridgeProcessManagerTests: XCTestCase {
         manager.start()
 
         XCTAssertEqual(launcher.makeCount, 0)
-        if case .error(let message) = manager.state {
-            XCTAssertTrue(message.localizedCaseInsensitiveContains("stereo"))
+        if case .error(let error) = manager.state {
+            XCTAssertEqual(error, .selectedOutputIncompatible(issue: incompatible.compatibilityIssue))
+            XCTAssertTrue(error.message.localizedCaseInsensitiveContains("stereo"))
         } else {
             XCTFail("Expected compatibility error, got \(manager.state)")
         }
@@ -1286,9 +1294,9 @@ final class BridgeProcessManagerTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
 
-        if case .error(let message) = manager.state {
-            assertStoppedAfterUnstableLaunches(message, lastExit: 1)
-            XCTAssertEqual(manager.bannerMessage, message, "exhausted retry counter must surface as the banner")
+        if case .error(let error) = manager.state {
+            assertStoppedAfterUnstableLaunches(error, lastExit: 1)
+            XCTAssertEqual(manager.bannerMessage, error.message, "exhausted retry counter must surface as the banner")
         } else {
             XCTFail("Expected final error after retries from zero, got \(manager.state)")
         }
@@ -1318,9 +1326,9 @@ final class BridgeProcessManagerTests: XCTestCase {
             }
         }
 
-        if case .error(let message) = manager.state {
-            assertStoppedAfterUnstableLaunches(message, lastExit: 17)
-            XCTAssertEqual(manager.bannerMessage, message, "exhausted retry counter must surface as the banner")
+        if case .error(let error) = manager.state {
+            assertStoppedAfterUnstableLaunches(error, lastExit: 17)
+            XCTAssertEqual(manager.bannerMessage, error.message, "exhausted retry counter must surface as the banner")
         } else {
             XCTFail("Expected bounded crash-loop error, got \(manager.state)")
         }
@@ -1465,7 +1473,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             await launcher.fireTermination(for: proc)
         }
 
-        XCTAssertEqual(manager.state, .error(AppStrings.helperAlreadyRunning))
+        XCTAssertEqual(manager.state, .error(.helperAlreadyRunning))
         XCTAssertEqual(manager.bannerMessage, AppStrings.helperAlreadyRunning)
         XCTAssertEqual(manager.retryGeneration, generationBefore)
         XCTAssertEqual(launcher.makeCount, 1)
@@ -1489,7 +1497,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             await launcher.fireTermination(for: proc)
         }
 
-        XCTAssertEqual(manager.state, .error(AppStrings.ipcFailed()))
+        XCTAssertEqual(manager.state, .error(.driverIPCFailed))
     }
 
     func testSettingsRestartWaitsForTermination() async {
@@ -1592,7 +1600,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(launcher.forceKilled.count, 1)
         // FIX 1: a failed SIGKILL surfaces .error(bridgeDidNotStop) instead
         // of parking in .stopping with Quit/Stop/Restart disabled.
-        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(manager.state, .error(.bridgeDidNotStop))
 
         // FIX 2a: the mock Process never launched, so stub the exit status
         // that handleTermination reads outside .stopping.
@@ -1656,7 +1664,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         await manager.stopAsync()
 
-        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(manager.state, .error(.bridgeDidNotStop))
         XCTAssertEqual(manager.connectionPhase, .stopped)
         let presentation = MenuPresentation(
             state: manager.state,
@@ -1690,7 +1698,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .running)
 
         await manager.stopAsync()
-        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(manager.state, .error(.bridgeDidNotStop))
 
         // The mock Process never launched, so stub the exit status that
         // handleTermination reads outside .stopping.
@@ -1889,7 +1897,7 @@ final class BridgeProcessManagerTests: XCTestCase {
                 await launcher.fireTermination(for: proc)
             }
 
-            XCTAssertEqual(manager.state, .error(AppStrings.loadedDriverBuildMismatch), "pre-state \(preState)")
+            XCTAssertEqual(manager.state, .error(.loadedDriverBuildMismatch), "pre-state \(preState)")
             if case .reconnecting = manager.state {
                 XCTFail("Exit 44 must not auto-retry (pre-state \(preState)), got reconnecting")
             }
@@ -1931,7 +1939,7 @@ final class BridgeProcessManagerTests: XCTestCase {
             await launcher.fireTermination(for: proc)
         }
 
-        XCTAssertEqual(manager.state, .error(AppStrings.loadedDriverBuildMismatch))
+        XCTAssertEqual(manager.state, .error(.loadedDriverBuildMismatch))
         XCTAssertEqual(manager.bannerMessage, AppStrings.loadedDriverBuildMismatch)
         XCTAssertEqual(launcher.makeCount, 3)
         // Clearing the notice must not reveal a reconnecting banner: exit 44 reset the budget.
@@ -2332,7 +2340,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .starting, blockedReason: nil))
         XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .stopping, blockedReason: nil))
         XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .reconnecting, blockedReason: nil))
-        XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .error("x"), blockedReason: nil))
+        XCTAssertFalse(BridgeProcessManager.shouldAutomationStart(state: .error(.helperFailed(stderr: "x")), blockedReason: nil))
     }
 
     // PROC-01: concurrent escalations must both observe failure when the
@@ -2366,7 +2374,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         let elapsed = clock.now - start
 
         XCTAssertTrue(elapsed < .seconds(2), "concurrent stops hung: elapsed \(elapsed)")
-        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(manager.state, .error(.bridgeDidNotStop))
         XCTAssertEqual(launcher.makeCount, 1)
         XCTAssertEqual(launcher.forceKilled.count, 2)
     }
@@ -2380,12 +2388,12 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .running)
 
         await manager.restart(reason: .settingsChange)
-        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(manager.state, .error(.bridgeDidNotStop))
         XCTAssertEqual(launcher.makeCount, 1)
 
         manager.start()
         XCTAssertEqual(launcher.makeCount, 1)
-        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        XCTAssertEqual(manager.state, .error(.bridgeDidNotStop))
 
         // The mock Process never launched, so stub the exit status that
         // handleTermination reads outside .stopping.
@@ -2413,8 +2421,8 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         // Menu Stop path: fire-and-forget stop(), not stopAsync().
         manager.stop()
-        await waitUntil { manager.state == .error(AppStrings.bridgeDidNotStop) }
-        XCTAssertEqual(manager.state, .error(AppStrings.bridgeDidNotStop))
+        await waitUntil { manager.state == .error(.bridgeDidNotStop) }
+        XCTAssertEqual(manager.state, .error(.bridgeDidNotStop))
 
         launcher.nextTerminationStatus = 9
         if let proc = launcher.lastProcess {

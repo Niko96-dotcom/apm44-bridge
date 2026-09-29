@@ -50,13 +50,13 @@ final class MenuPresentationButtonTests: XCTestCase {
             (.running, false, false, true, true),
             (.stopping, false, false, false, false),
             (.reconnecting, false, false, true, false),
-            (.error("boom"), false, true, false, true),
+            (.error(.helperFailed(stderr: "boom")), false, true, false, true),
             (.idle, true, false, true, true),
             (.starting, true, false, true, true),
             (.running, true, false, true, true),
             (.stopping, true, false, true, true),
             (.reconnecting, true, false, true, true),
-            (.error("boom"), true, false, true, true),
+            (.error(.helperFailed(stderr: "boom")), true, false, true, true),
         ]
         for (state, applying, start, stop, restart) in rows {
             let presentation = makePresentation(state: state, isApplyingSettings: applying)
@@ -102,7 +102,7 @@ final class MenuPresentationButtonTests: XCTestCase {
             "pick one"
         )
         XCTAssertEqual(
-            makePresentation(state: .error("x"), startBlockedReason: "pick one")
+            makePresentation(state: .error(.helperFailed(stderr: "x")), startBlockedReason: "pick one")
                 .visibleStartBlockedReason,
             "pick one"
         )
@@ -169,13 +169,15 @@ final class MenuPresentationStatusTests: XCTestCase {
     }
 
     func testStatusTextErrorUsesHeadline() {
-        let message = "helper exited with status 1: could not open output device endpoint unavailable"
-        XCTAssertEqual(
-            makePresentation(state: .error(message)).statusText,
-            BridgeErrorPresentation.headline(for: message)
+        let error = BridgeError.helperFailed(
+            stderr: "helper exited with status 1: could not open output device endpoint unavailable"
         )
         XCTAssertEqual(
-            makePresentation(state: .error(message)).statusText,
+            makePresentation(state: .error(error)).statusText,
+            BridgeErrorPresentation.headline(for: error)
+        )
+        XCTAssertEqual(
+            makePresentation(state: .error(error)).statusText,
             AppStrings.couldNotStart
         )
     }
@@ -198,7 +200,7 @@ final class MenuPresentationStatusTests: XCTestCase {
     }
 
     func testStatusToneOtherStates() {
-        XCTAssertEqual(makePresentation(state: .error("x")).statusTone, .red)
+        XCTAssertEqual(makePresentation(state: .error(.helperFailed(stderr: "x"))).statusTone, .red)
         XCTAssertEqual(
             makePresentation(state: .idle, isApplyingSettings: true).statusTone, .orange
         )
@@ -214,7 +216,7 @@ final class MenuPresentationStatusTests: XCTestCase {
             "arrow.triangle.2.circlepath"
         )
         XCTAssertEqual(
-            makePresentation(state: .error("x")).statusSymbol,
+            makePresentation(state: .error(.helperFailed(stderr: "x"))).statusSymbol,
             "exclamationmark.triangle.fill"
         )
         XCTAssertEqual(
@@ -228,23 +230,23 @@ final class MenuPresentationStatusTests: XCTestCase {
     }
 
     func testVisibleBannerSuppressedOnlyForErrorDiagnosticDuplicate() {
-        let diagnostic = AppStrings.bridgeCouldNotStart(detail: "boom")
+        let error = BridgeError.launchFailed(detail: "boom")
         XCTAssertNotNil(
-            BridgeErrorPresentation.presentation(for: diagnostic).diagnostic,
-            "test message must carry a diagnostic"
+            BridgeErrorPresentation.presentation(for: error).diagnostic,
+            "test error must carry a diagnostic"
         )
         XCTAssertNil(
-            makePresentation(state: .error(diagnostic), bannerMessage: diagnostic).visibleBanner
+            makePresentation(state: .error(error), bannerMessage: error.message).visibleBanner
         )
         XCTAssertEqual(
             makePresentation(
-                state: .error(diagnostic), bannerMessage: "something else"
+                state: .error(error), bannerMessage: "something else"
             ).visibleBanner,
             "something else"
         )
         XCTAssertEqual(
             makePresentation(
-                state: .error(AppStrings.bridgeNotFound),
+                state: .error(.bridgeNotFound),
                 bannerMessage: AppStrings.bridgeNotFound
             ).visibleBanner,
             AppStrings.bridgeNotFound
@@ -261,10 +263,11 @@ final class MenuPresentationStatusTests: XCTestCase {
         XCTAssertTrue(
             makePresentation(state: .running, latestMetrics: makeMetrics()).showsStatusDetail
         )
-        let diagnostic = AppStrings.bridgeCouldNotStart(detail: "boom")
-        XCTAssertTrue(makePresentation(state: .error(diagnostic)).showsStatusDetail)
+        XCTAssertTrue(
+            makePresentation(state: .error(.launchFailed(detail: "boom"))).showsStatusDetail
+        )
         XCTAssertFalse(
-            makePresentation(state: .error(AppStrings.bridgeNotFound)).showsStatusDetail
+            makePresentation(state: .error(.bridgeNotFound)).showsStatusDetail
         )
     }
 }
@@ -310,14 +313,14 @@ final class MenuPresentationMetricsTests: XCTestCase {
 
     func testShouldClearHeldMetrics() {
         XCTAssertTrue(makePresentation(state: .idle).shouldClearHeldMetrics)
-        XCTAssertTrue(makePresentation(state: .error("x")).shouldClearHeldMetrics)
+        XCTAssertTrue(makePresentation(state: .error(.helperFailed(stderr: "x"))).shouldClearHeldMetrics)
         XCTAssertFalse(makePresentation(state: .running).shouldClearHeldMetrics)
         XCTAssertFalse(makePresentation(state: .reconnecting).shouldClearHeldMetrics)
         XCTAssertFalse(
             makePresentation(state: .idle, isApplyingSettings: true).shouldClearHeldMetrics
         )
         XCTAssertFalse(
-            makePresentation(state: .error("x"), isApplyingSettings: true)
+            makePresentation(state: .error(.helperFailed(stderr: "x")), isApplyingSettings: true)
                 .shouldClearHeldMetrics
         )
     }
