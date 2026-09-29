@@ -31,6 +31,17 @@ enum class ShmRingErrorCode {
   ProducerBuildMismatch,
 };
 
+// How open() reads an existing object's byte size, decided before the header
+// is mapped or read (SHM-01).
+enum class ShmObjectSizeClass {
+  Empty,            // zero (or negative) bytes
+  HeaderTruncated,  // smaller than a ShmRingHeader
+  HeaderSized,      // large enough to hold a ShmRingHeader
+};
+
+// Pure size classification used by MmapShmRing::open before any header access.
+ShmObjectSizeClass ClassifyShmObjectSize(std::int64_t bytes);
+
 // Cross-process SPSC ring: interleaved float stereo in the mmap segment.
 // No heap allocation after map(); RT-safe push/pop when used single-threaded per role.
 class MmapShmRing {

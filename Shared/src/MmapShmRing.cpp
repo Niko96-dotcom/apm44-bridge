@@ -144,6 +144,16 @@ bool MmapShmRing::create(uint32_t capacityFrames) {
   return true;
 }
 
+ShmObjectSizeClass ClassifyShmObjectSize(std::int64_t bytes) {
+  if (bytes <= 0) {
+    return ShmObjectSizeClass::Empty;
+  }
+  if (static_cast<std::uint64_t>(bytes) < sizeof(ShmRingHeader)) {
+    return ShmObjectSizeClass::HeaderTruncated;
+  }
+  return ShmObjectSizeClass::HeaderSized;
+}
+
 bool MmapShmRing::open(ShmRingRole role) {
   close();
   clearError();
@@ -159,27 +169,30 @@ bool MmapShmRing::open(ShmRingRole role) {
   }
 
   struct stat st {};
-  if (::fstat(fd_, &st) != 0 || st.st_size <= 0) {
+  if (::fstat(fd_, &st) != 0) {
     const int err = errno;
-    const bool empty = st.st_size <= 0;
     close();
-    if (empty) {
-      recordError(ShmRingErrorCode::EmptyObject, "shm object exists but has zero size");
-    } else {
-      recordErrno(ShmRingErrorCode::StatFailed, "fstat", err);
-    }
+    recordErrno(ShmRingErrorCode::StatFailed, "fstat", err);
     return false;
   }
-  // SHM-01: reject objects too small to contain a ShmRingHeader
-  // BEFORE we map or read the header. The previous implementation
-  // mapped the object and then dereferenced `header_`, which would
-  // read past the end of a truncated object.
-  if (static_cast<std::size_t>(st.st_size) < sizeof(ShmRingHeader)) {
-    const std::string message = "shm object is smaller than ShmRingHeader: " +
-                                std::to_string(st.st_size) + " bytes";
-    close();
-    recordError(ShmRingErrorCode::HeaderTruncated, message);
-    return false;
+  // SHM-01: reject empty or too-small objects BEFORE we map or read the
+  // header. The previous implementation mapped the object and then
+  // dereferenced `header_`, which would read past the end of a truncated
+  // object.
+  switch (ClassifyShmObjectSize(static_cast<std::int64_t>(st.st_size))) {
+    case ShmObjectSizeClass::Empty:
+      close();
+      recordError(ShmRingErrorCode::EmptyObject, "shm object exists but has zero size");
+      return false;
+    case ShmObjectSizeClass::HeaderTruncated: {
+      const std::string message = "shm object is smaller than ShmRingHeader: " +
+                                  std::to_string(st.st_size) + " bytes";
+      close();
+      recordError(ShmRingErrorCode::HeaderTruncated, message);
+      return false;
+    }
+    case ShmObjectSizeClass::HeaderSized:
+      break;
   }
   mappedSize_ = static_cast<std::size_t>(st.st_size);
   base_ = ::mmap(nullptr, mappedSize_, kMapProt, MAP_SHARED, fd_, 0);
