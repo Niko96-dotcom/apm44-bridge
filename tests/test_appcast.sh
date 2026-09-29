@@ -253,4 +253,105 @@ OTHER="$TMP/APM44Bridge-9.9.8.pkg"
 cp "$PKG" "$OTHER"
 expect_pkg_failure "$OTHER" "0 enclosures for APM44Bridge-9.9.8.pkg"
 
+# The candidate must advertise the intended version in BOTH version fields. The
+# intended version comes from VERSION, never from the feed under test.
+INTENDED="$(/bin/bash "$ROOT/scripts/read-version.sh")"
+grep -Fq "<sparkle:version>${INTENDED}</sparkle:version>" "$GENERATED"
+grep -Fq "<sparkle:shortVersionString>${INTENDED}</sparkle:shortVersionString>" "$GENERATED"
+
+# Validates FEED with --expect-version; prints stderr, returns the exit status.
+validate_expect() {
+  local feed="$1"
+  shift
+  env -u SPARKLE_PRIVATE_KEY \
+    APM44_APPCAST_PATH="$feed" \
+    SPARKLE_SIGN_UPDATE="$PKG_SIGNER" \
+    /bin/bash "$ROOT/scripts/validate-appcast.sh" "$@" 2>&1 >/dev/null
+}
+
+expect_version_failure() {
+  local feed="$1" expected="$2" output
+  shift 2
+  if output="$(validate_expect "$feed" "$@")"; then
+    echo "expected --expect-version validation to fail for $feed" >&2
+    exit 1
+  fi
+  [[ "$output" == *"$expected"* ]] || {
+    echo "expected '$expected' from --expect-version validation, got: $output" >&2
+    exit 1
+  }
+}
+
+# e) The generated candidate passes, alone and together with --pkg.
+if ! output="$(validate_expect "$GENERATED" --expect-version "$INTENDED")"; then
+  echo "expected generated feed to pass --expect-version, got: $output" >&2
+  exit 1
+fi
+if ! output="$(validate_expect "$GENERATED" --pkg "$PKG" --expect-version "$INTENDED")"; then
+  echo "expected generated feed to pass --pkg with --expect-version, got: $output" >&2
+  exit 1
+fi
+
+# f) Each field fails independently when it diverges from the intended version.
+WRONG_VERSION="$TMP/wrong-version.xml"
+sed 's#<sparkle:version>[^<]*</sparkle:version>#<sparkle:version>0.0.1</sparkle:version>#' "$GENERATED" >"$WRONG_VERSION"
+expect_version_failure "$WRONG_VERSION" "candidate sparkle:version is '0.0.1'" --expect-version "$INTENDED"
+WRONG_SHORT="$TMP/wrong-short.xml"
+sed 's#<sparkle:shortVersionString>[^<]*</sparkle:shortVersionString>#<sparkle:shortVersionString>0.0.1</sparkle:shortVersionString>#' "$GENERATED" >"$WRONG_SHORT"
+expect_version_failure "$WRONG_SHORT" "candidate sparkle:shortVersionString is '0.0.1'" --expect-version "$INTENDED"
+
+# g) A missing field fails; shortVersionString is not required by the default mode.
+NO_VERSION="$TMP/no-version.xml"
+NO_SHORT="$TMP/no-short.xml"
+sed '/<sparkle:shortVersionString>/d' "$GENERATED" >"$NO_SHORT"
+expect_version_failure "$NO_SHORT" "missing sparkle:shortVersionString" --expect-version "$INTENDED"
+python3 - "$GENERATED" "$NO_VERSION" <<'PY'
+import re, sys
+text = open(sys.argv[1]).read()
+open(sys.argv[2], "w").write(re.sub(r"\s*<sparkle:version>[^<]*</sparkle:version>", "", text, count=1))
+PY
+# Without sparkle:version the structural check rejects it before the comparison.
+if validate_expect "$NO_VERSION" --expect-version "$INTENDED" >/dev/null; then
+  echo "expected a feed without sparkle:version to fail" >&2
+  exit 1
+fi
+env -u SPARKLE_PRIVATE_KEY APM44_APPCAST_PATH="$NO_SHORT" SPARKLE_SIGN_UPDATE="$PKG_SIGNER" \
+  /bin/bash "$ROOT/scripts/validate-appcast.sh" >/dev/null
+
+# h) Historical multi-item feeds still validate without an expected version, and
+# older items after the candidate are not held to the intended version.
+HISTORICAL="$TMP/historical.xml"
+python3 - "$GENERATED" "$HISTORICAL" <<'PY'
+import re, sys
+text = open(sys.argv[1]).read()
+item = re.search(r"    <item>.*?</item>\n", text, re.S).group(0)
+older = item.replace("APM44 Bridge", "APM44 Bridge (old)")
+older = re.sub(r"(<sparkle:(?:version|shortVersionString)>)[^<]*", r"\g<1>0.0.1", older)
+open(sys.argv[2], "w").write(text.replace(item, item + older))
+PY
+grep -Fc '<sparkle:version>0.0.1</sparkle:version>' "$HISTORICAL" | grep -qx 1
+if ! output="$(validate_expect "$HISTORICAL")"; then
+  echo "expected historical multi-item feed to pass without --expect-version, got: $output" >&2
+  exit 1
+fi
+if ! output="$(validate_expect "$HISTORICAL" --expect-version "$INTENDED")"; then
+  echo "expected older items after the candidate to be accepted, got: $output" >&2
+  exit 1
+fi
+# An old item in the candidate position is not mistaken for the candidate.
+OLD_FIRST="$TMP/old-first.xml"
+python3 - "$HISTORICAL" "$OLD_FIRST" <<'PY'
+import re, sys
+text = open(sys.argv[1]).read()
+first, second = re.findall(r"    <item>.*?</item>\n", text, re.S)
+open(sys.argv[2], "w").write(text.replace(first + second, second + first))
+PY
+expect_version_failure "$OLD_FIRST" "candidate sparkle:version is '0.0.1'" --expect-version "$INTENDED"
+
+# i) Byte and signature failures are still enforced alongside --expect-version.
+expect_version_failure "$GENERATED" "enclosure length 6 does not match" \
+  --pkg "$LONGER" --expect-version "$INTENDED"
+expect_version_failure "$GENERATED" "edSignature does not verify" \
+  --pkg "$FLIPPED" --expect-version "$INTENDED"
+
 echo "appcast tests: OK"
