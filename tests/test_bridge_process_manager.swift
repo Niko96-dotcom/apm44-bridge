@@ -12,6 +12,12 @@ final class MockProcessLauncher: ProcessLaunching {
     var nextTerminationStatus: Int32?
     private var successfulLaunches = 0
     private var running = Set<ObjectIdentifier>()
+    /// Helpers launched and not yet terminated right now, and the most that
+    /// were ever live at once (the bridge must never run two helpers).
+    var liveCount: Int { running.count }
+    private(set) var maxLiveCount = 0
+    /// Arguments each successful launch carried, in launch order.
+    private(set) var launchedArguments: [[String]] = []
     private(set) var forceKilled: [Process] = []
     var terminateOnForceKill = false
 
@@ -31,6 +37,8 @@ final class MockProcessLauncher: ProcessLaunching {
         }
         successfulLaunches += 1
         running.insert(ObjectIdentifier(process))
+        maxLiveCount = max(maxLiveCount, running.count)
+        launchedArguments.append(process.arguments ?? [])
     }
 
     func isProcessRunning(_ process: Process) -> Bool {
@@ -1525,40 +1533,50 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(manager.lastStopReason, nil)
     }
 
-    // PROC-03: two concurrent termination waiters must both unblock when
-    // the daemon terminates. The old single-slot continuation would
-    // overwrite the first waiter; the new id-keyed map registers each
-    // caller and drains the full map on termination.
+    // PROC-03: two concurrent stopAsync() callers must both return once the
+    // helper terminates. The stop timeout is far longer than the assertion
+    // budget, so a waiter the manager lost (a single overwritten slot) cannot
+    // pass by timing out and escalating: it stays suspended and the test fails
+    // at its own deadline. Completion is observed through expectations, never
+    // by awaiting the Tasks, so a lost waiter fails instead of hanging.
     func testConcurrentTerminationWaitersAllComplete() async {
-        let (manager, _, launcher, _) = await makeManager()
+        var t = BridgeTiming.live
+        t.stopTimeout = 30
+        let (manager, _, launcher, _) = await makeManager(timing: t)
 
         manager.start()
         XCTAssertEqual(manager.state, .running)
+        guard let proc = launcher.lastProcess else { return XCTFail("no process") }
 
-        // Kick off two concurrent stop calls. Each invokes
-        // `finishStopWithEscalation` → `waitForTermination` →
-        // `terminationWaiters[id] =`. Both must unblock when
-        // the daemon fires its termination handler.
-        let stop1 = Task { @MainActor in
-            manager.stop()
+        let firstReturned = expectation(description: "first stopAsync returned")
+        let secondReturned = expectation(description: "second stopAsync returned")
+        Task { @MainActor in
+            await manager.stopAsync()
+            firstReturned.fulfill()
         }
-        let stop2 = Task { @MainActor in
-            manager.stop()
+        Task { @MainActor in
+            await manager.stopAsync()
+            secondReturned.fulfill()
         }
+        // Both Tasks run on the main actor as soon as this test yields, and
+        // each registers its termination waiter before it suspends.
+        await waitUntil { manager.state == .stopping }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(manager.state, .stopping)
+        XCTAssertEqual(launcher.liveCount, 1, "the helper is held until released")
 
-        // Give both tasks a moment to enter waitForTermination and register
-        // in the waiter map.
-        try? await Task.sleep(nanoseconds: 20_000_000)
+        let clock = ContinuousClock()
+        let released = clock.now
+        await launcher.fireTermination(for: proc)
+        let result = await XCTWaiter().fulfillment(of: [firstReturned, secondReturned], timeout: 3)
+        let elapsed = clock.now - released
 
-        if let proc = launcher.lastProcess {
-            await launcher.fireTermination(for: proc)
-        }
-
-        // Both awaiters must complete without hanging.
-        await stop1.value
-        await stop2.value
-
+        XCTAssertEqual(result, .completed, "both stopAsync callers must return after one termination")
+        XCTAssertLessThan(elapsed, .seconds(3))
         XCTAssertEqual(manager.state, .idle)
+        XCTAssertEqual(launcher.forceKilled.count, 0, "a successful stop must not escalate to SIGKILL")
+        XCTAssertEqual(launcher.makeCount, 1, "stopping must not relaunch")
+        XCTAssertEqual(launcher.liveCount, 0)
     }
 
     func testStopEscalatesToSigkillWhenHelperIgnoresSigterm() async {
