@@ -86,6 +86,8 @@ target_link_libraries(test_io_proc_callbacks PRIVATE
 )
 
 target_sources(test_engine_prepare_stop PRIVATE
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/ParentDeathWatch.cpp
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/BridgeMetrics.cpp
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/IoProcHandlers.cpp
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/BridgeEngine.cpp
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/engine/LibSamplerateSrc.cpp

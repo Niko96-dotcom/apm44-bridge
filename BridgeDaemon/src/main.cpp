@@ -334,7 +334,7 @@ int main(int argc, char* argv[]) {
       }
       if (options.metricsJson) {
         const auto metrics = apm44::MakeBridgeMetrics(
-            snapshot.metricsSnapshot(), options.targetFillMs,
+            snapshot.metricsSnapshot(), snapshot.effectiveTargetFillMs(),
             apm44::SrcQualityCliString(options.srcQuality));
         std::cout << apm44::ToJsonLine(metrics) << '\n' << std::flush;
       }
@@ -342,7 +342,7 @@ int main(int argc, char* argv[]) {
   } else if (options.metricsJson) {
     engine.runUntilSignal([&options](const apm44::BridgeEngine& snapshot) {
       const auto metrics = apm44::MakeBridgeMetrics(
-          snapshot.metricsSnapshot(), options.targetFillMs,
+          snapshot.metricsSnapshot(), snapshot.effectiveTargetFillMs(),
           apm44::SrcQualityCliString(options.srcQuality));
       std::cout << apm44::ToJsonLine(metrics) << '\n' << std::flush;
     });

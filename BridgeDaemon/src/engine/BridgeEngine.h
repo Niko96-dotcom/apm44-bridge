@@ -21,6 +21,11 @@
 
 namespace apm44 {
 
+// The APM44 Bridge HAL driver needs at least this much fill; a lower request
+// (the CLI accepts 6-120 ms) is raised to it in virtual-device mode.
+// The Swift app keeps its own copy of this value.
+inline constexpr double kHalTargetFillFloorMs = 20.0;
+
 struct BridgeEngineOptions {
   double targetFillMs = 15.0;
   LibSamplerateSrc::Quality srcQuality = LibSamplerateSrc::Quality::Medium;
@@ -35,6 +40,10 @@ class BridgeEngine {
   void runUntilSignal(const std::function<void(const BridgeEngine&)>& onTick = nullptr);
   static void requestStop();
   bool stopRequestedDuringPrepare() const { return stopRequestedDuringPrepare_; }
+  // The target fill prepare() actually plans with, after the HAL floor is
+  // applied. Set at the start of prepare(), even if prepare later fails, so
+  // metrics and logs report this rather than the requested value.
+  double effectiveTargetFillMs() const { return effectiveTargetFillMs_; }
   // Test-only: resets the global stop flag set by requestStop()/signals.
   static void clearStopRequestForTesting();
 
@@ -120,6 +129,7 @@ class BridgeEngine {
   VirtualDeviceFeed virtualFeed_;
   bool virtualDevice_ = false;
   bool stopRequestedDuringPrepare_ = false;
+  double effectiveTargetFillMs_ = 0.0;
   std::size_t targetFillFrames_ = 0;
 };
 
