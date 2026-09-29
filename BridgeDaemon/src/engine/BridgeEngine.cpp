@@ -5,6 +5,7 @@
 #include "engine/ShmMismatchDebounce.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cmath>
 #include <chrono>
@@ -18,11 +19,16 @@ namespace apm44 {
 
 namespace {
 
-volatile std::sig_atomic_t gStopRequested = 0;
+// Written by the signal handler and by requestStop() (the parent-death watcher
+// thread), read by the main thread. A lock-free atomic is both thread-safe and
+// async-signal-safe; volatile sig_atomic_t is only the latter.
+std::atomic<bool> gStopRequested{false};
+static_assert(std::atomic<bool>::is_always_lock_free,
+              "gStopRequested is stored from a signal handler");
 constexpr double kVirtualDeviceMaxPpm = 3000.0;
 constexpr UInt32 kRequestedBufferFrameSize = 512;
 
-void SignalHandler(int) { gStopRequested = 1; }
+void SignalHandler(int) { gStopRequested.store(true, std::memory_order_relaxed); }
 
 bool TrySetBufferFrameSize(AudioDeviceID deviceId, UInt32 frames) {
   AudioObjectPropertyAddress address{kAudioDevicePropertyBufferFrameSize,
@@ -92,6 +98,9 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
   options_ = options;
   virtualDevice_ = options.virtualDevice;
   stopRequestedDuringPrepare_ = false;
+  effectiveTargetFillMs_ =
+      virtualDevice_ ? std::max(options.targetFillMs, kHalTargetFillFloorMs)
+                     : options.targetFillMs;
 
   if (virtualDevice_) {
     constexpr auto kPollInterval = std::chrono::milliseconds(100);
@@ -100,7 +109,7 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
     bool printedWaitHint = false;
     ShmMismatchDebounce mismatchDebounce;
     while (!virtualFeed_.open()) {
-      if (gStopRequested != 0) {
+      if (gStopRequested.load(std::memory_order_relaxed)) {
         std::cerr << "Stop requested while waiting for APM44 Bridge shm.\n";
         stopRequestedDuringPrepare_ = true;
         return false;
@@ -149,10 +158,8 @@ bool BridgeEngine::prepare(const BridgeDevicePair& devices, const BridgeEngineOp
     }
   }
 
-  const double targetFillMs =
-      virtualDevice_ ? std::max(options_.targetFillMs, 20.0) : options_.targetFillMs;
   targetFillFrames_ =
-      PlanarRingBuffer::framesForMilliseconds(targetFillMs, kInputSampleRate);
+      PlanarRingBuffer::framesForMilliseconds(effectiveTargetFillMs_, kInputSampleRate);
   const std::size_t ringRequest =
       virtualDevice_
           ? std::max(targetFillFrames_ * 2 + 512,
@@ -433,10 +440,8 @@ bool BridgeEngine::start() {
   }
   std::cerr << "apm44-bridge: output='" << devices_.output.name << "' uid=" << devices_.output.uid
             << " rate=" << devices_.output.nominalRate << " buffer_frames=" << outBuf << "\n";
-  const double loggedTargetMs =
-      virtualDevice_ ? std::max(options_.targetFillMs, 20.0) : options_.targetFillMs;
   std::cerr << "apm44-bridge: ring_capacity=" << ring_.capacityFrames()
-            << " target_fill_ms=" << loggedTargetMs
+            << " target_fill_ms=" << effectiveTargetFillMs_
             << " converter_ratio=" << converterRatio() << "\n";
 
   OSStatus status = noErr;
@@ -524,9 +529,11 @@ void BridgeEngine::stop() {
   running_ = false;
 }
 
-void BridgeEngine::requestStop() { gStopRequested = 1; }
+void BridgeEngine::requestStop() { gStopRequested.store(true, std::memory_order_relaxed); }
 
-void BridgeEngine::clearStopRequestForTesting() { gStopRequested = 0; }
+void BridgeEngine::clearStopRequestForTesting() {
+  gStopRequested.store(false, std::memory_order_relaxed);
+}
 
 BridgeEngine::VirtualFeedStaleAction BridgeEngine::pollVirtualFeedStaleRing() {
   if (!virtualDevice_ || !running_ || outputProc_ == nullptr) {
@@ -572,12 +579,12 @@ void BridgeEngine::runUntilSignal(const std::function<void(const BridgeEngine&)>
   std::signal(SIGINT, SignalHandler);
   std::signal(SIGTERM, SignalHandler);
   std::cerr << "apm44-bridge: running (Ctrl+C to stop)\n";
-  while (gStopRequested == 0) {
+  while (!gStopRequested.load(std::memory_order_relaxed)) {
     if (onTick) {
       onTick(*this);
     }
     if (WaitForStopOrTimeout(kControlLoopInterval,
-                             [] { return gStopRequested != 0; })) {
+                             [] { return gStopRequested.load(std::memory_order_relaxed); })) {
       break;
     }
   }
