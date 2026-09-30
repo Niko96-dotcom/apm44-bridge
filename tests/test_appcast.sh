@@ -354,4 +354,40 @@ expect_version_failure "$GENERATED" "enclosure length 6 does not match" \
 expect_version_failure "$GENERATED" "edSignature does not verify" \
   --pkg "$FLIPPED" --expect-version "$INTENDED"
 
+# j) The public-key verifier (used by the publish workflow instead of the
+# private key) accepts the committed feed under the app's SUPublicEDKey and
+# rejects a changed byte or a different key. File signatures come from a
+# throwaway key, so no release key is involved.
+PUBLIC_VERIFY="$ROOT/scripts/sparkle-verify.swift"
+if command -v xcrun >/dev/null 2>&1; then
+  env -u SPARKLE_PUBLIC_ED_KEY "$PUBLIC_VERIFY" --verify "$ROOT/docs/appcast.xml"
+  sed 's#<title>#<title>x#' "$ROOT/docs/appcast.xml" >"$TMP/tampered-feed.xml"
+  if env -u SPARKLE_PUBLIC_ED_KEY "$PUBLIC_VERIFY" --verify "$TMP/tampered-feed.xml" 2>/dev/null; then
+    echo "expected a tampered feed to fail public-key verification" >&2
+    exit 1
+  fi
+  OTHER_KEY="$(printf '%044d' 0 | tr 0 A | sed 's/.$/=/')"
+  if SPARKLE_PUBLIC_ED_KEY="$OTHER_KEY" "$PUBLIC_VERIFY" --verify "$ROOT/docs/appcast.xml" 2>/dev/null; then
+    echo "expected the committed feed to fail under a different public key" >&2
+    exit 1
+  fi
+  # Prints "<public key> <signature>" for the file under a fresh key.
+  read -r THROWAWAY_KEY THROWAWAY_SIG < <(xcrun swift - "$PKG" <<'SWIFT'
+import CryptoKit
+import Foundation
+let key = Curve25519.Signing.PrivateKey()
+let data = FileManager.default.contents(atPath: CommandLine.arguments[1])!
+let signature = try! key.signature(for: data)
+print(key.publicKey.rawRepresentation.base64EncodedString(), signature.base64EncodedString())
+SWIFT
+)
+  SPARKLE_PUBLIC_ED_KEY="$THROWAWAY_KEY" "$PUBLIC_VERIFY" --verify "$PKG" "$THROWAWAY_SIG"
+  if SPARKLE_PUBLIC_ED_KEY="$THROWAWAY_KEY" "$PUBLIC_VERIFY" --verify "$FLIPPED" "$THROWAWAY_SIG" 2>/dev/null; then
+    echo "expected a flipped PKG to fail public-key verification" >&2
+    exit 1
+  fi
+else
+  echo "appcast tests: public-key verifier NOT RUN (no xcrun)" >&2
+fi
+
 echo "appcast tests: OK"
