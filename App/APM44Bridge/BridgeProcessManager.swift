@@ -92,7 +92,7 @@ final class BridgeProcessManager: ObservableObject {
     private var glitchTask: Task<Void, Never>?
     private var staleTask: Task<Void, Never>?
     private var lastMetricsAt: Date?
-    private var stderrTail = DaemonStderrTail()
+    private var stderrCollector = DaemonStderrCollector()
     private var terminationWaiters: [UInt64: CheckedContinuation<Bool, Never>] = [:]
     private var terminationWaiterTimers: [UInt64: Task<Void, Never>] = [:]
     private var nextTerminationWaiterID: UInt64 = 0
@@ -491,7 +491,8 @@ final class BridgeProcessManager: ObservableObject {
         state = .starting
         processHealth = .spawning
         connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
-        stderrTail.removeAll()
+        let collector = DaemonStderrCollector()
+        stderrCollector = collector
         stdoutBuffer.reset()
         resetMetricsState()
         lastKnownFrameLoss = 0
@@ -510,15 +511,19 @@ final class BridgeProcessManager: ObservableObject {
         let errPipe = Pipe()
         stderrPipe = errPipe
         proc.standardError = errPipe
-        // Output already queued when this child is replaced must not reach
-        // the replacement's metrics, phase, glitch flash or stderr tail, so
-        // each Task checks that its child is still the live one.
-        errPipe.fileHandleForReading.readabilityHandler = { [weak self, weak proc] handle in
+        // stderr goes to this child's own collector, so a replacement never
+        // sees it. Output already queued when this child is replaced must not
+        // reach the replacement's metrics, phase or glitch flash, so each
+        // stdout Task checks that its child is still the live one.
+        errPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            Task { @MainActor in
-                guard let self, let proc, self.process === proc else { return }
-                self.appendStderr(text)
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                collector.finish()
+                return
+            }
+            if let text = String(data: data, encoding: .utf8) {
+                collector.append(text)
             }
         }
 
@@ -531,7 +536,12 @@ final class BridgeProcessManager: ObservableObject {
             }
         }
 
+        let stderrDrainTimeout = timing.stderrDrainTimeout
         proc.terminationHandler = { [weak self] finished in
+            // Classification reads the final stderr lines, so give the pipe a
+            // bounded chance to reach end of output. This runs off the main
+            // actor on the termination callback's thread.
+            collector.waitForEnd(timeout: stderrDrainTimeout)
             Task { @MainActor in
                 self?.handleTermination(finished)
             }
@@ -1032,10 +1042,6 @@ final class BridgeProcessManager: ObservableObject {
         }
     }
 
-    private func appendStderr(_ text: String) {
-        stderrTail.append(text)
-    }
-
     private func clearPipeHandlers() {
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
@@ -1243,6 +1249,7 @@ final class BridgeProcessManager: ObservableObject {
             return
         }
         let exitStatus = processLauncher.terminationStatus(of: proc)
+        let stderrTail = stderrCollector.snapshot
         let stderr = stderrTail.joined
 
         if exitStatus != 0 {
