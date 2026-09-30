@@ -203,9 +203,16 @@ signal-specific branch.
 | 1 (`kExitFailure`) | Device resolve/negotiate failure, `prepare` failure (except virtual build mismatch), `start` failure, unusable lock file, preflight/print-config failure | running (stop not by user): `autoRetry`, "Reconnecting… (attempt n of 4)". user stop race: `failWhileRunning`. starting: `failWhileStarting`. Error kind comes from `DaemonStderrTail` / `failure(exitStatus:)`: `driverIPCFailed` when the exit is 42, or, as a fallback, stderr mentions "shm"; else `helperFailed` with the last stderr line verbatim (none: generic start failure) |
 | 2 | CLI usage errors (`CliOptions.cpp` exits 2 on bad `--target-fill-ms`/`--src-quality`); `--shm-status` when the ring object is missing | Same generic nonzero path as 1 (no `DaemonExitCode` match) |
 | 3 | `--shm-status` when the ring fails for any other reason | Same generic nonzero path as 1 |
-| 42 (`kExitStaleShmRing`) | Any `StopForExit` from the stale-ring poll: the ring could not be remapped, the SRC epoch reset failed, or stopping/restarting output IO failed | running, not a user stop: `autoRetry` (retried like 1). User stop: `failWhileRunning`. starting: `failWhileStarting` |
+| 42 (`kExitStaleShmRing`) | Any `StopForExit` from the stale-ring poll: the ring could not be remapped (including a driver build change mid-run, deliberately 42 rather than 44 so an in-progress update is retried, T9), the SRC epoch reset failed, or stopping/restarting output IO failed | running, not a user stop: `autoRetry` (retried like 1). User stop: `failWhileRunning`. starting: `failWhileStarting` |
 | 43 (`kExitSingletonBusy`) | Singleton lock held by another process (`ExitCodeForSingletonFailure`) | `helperAlreadyRunning`, `failWithoutRetry`: error, no retry, banner names the rival helper (`AppStrings.swift` / `helperAlreadyRunning`) |
 | 44 (`kExitLoadedDriverBuildMismatch`) | Virtual-mode prepare saw a real producer build mismatch (`ExitCodeForPrepareFailure`) | `loadedDriverMismatch`, `failWithoutRetry`: error, no retry, banner says Core Audio still runs an older driver (`AppStrings.swift` / `loadedDriverBuildMismatch`) |
+
+Exit codes decide the outcome; stderr only picks the error kind and detail.
+Before classifying, the termination callback waits up to
+`BridgeTiming.stderrDrainTimeout` (250 ms) for the exited helper's stderr to
+reach end of output, off the main actor; later lines are dropped (T13).
+Each helper has its own `DaemonStderrCollector`, so a replacement never sees
+an old helper's lines.
 
 Exhaustion replaces the reconnecting banner with the
 "stopped after 4 unstable launches" message (section 6).
