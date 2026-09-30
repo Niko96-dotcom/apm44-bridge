@@ -202,8 +202,10 @@ TEST_CASE("pollStaleRing exits when the ring is recreated by a different driver 
   REQUIRE(producer.create(512));
   REQUIRE(OverwriteProducerBuildId(ringName, "other-build"));
 
-  // Pins current behavior: the daemon maps this to exit 42, not 44. Whether a
-  // mid-run build mismatch should exit 44 is an open owner decision.
+  // Decided behavior (T9, 2026-09-30): a mid-run build mismatch exits 42, not
+  // 44. It usually means an update is in progress, and the app's retries pick
+  // up the new helper; 44 would wrongly tell the user to reload the driver.
+  // Prepare-time mismatch still exits 44 (ExitCodeForPrepareFailure).
   REQUIRE(feed.pollStaleRing() == apm44::StaleRingPollResult::MustExit);
   REQUIRE_FALSE(feed.isOpen());
   REQUIRE(feed.lastOpenErrorCode() == apm44::ShmRingErrorCode::ProducerBuildMismatch);

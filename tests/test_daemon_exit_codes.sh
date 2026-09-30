@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Proves the real daemon binary exits 43 through main() when the singleton
 # lock is held. No audio hardware required.
+#
+# The proof holds the real per-user lock, so it runs only where no helper of
+# the owner's can be affected: hosted CI (CI set) or an explicit opt-in with
+# APM44_RUN_SINGLETON_PROOF=1. Elsewhere it reports NOT RUN and never opens
+# the lock (T020).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,6 +15,11 @@ fail() {
   printf 'test_daemon_exit_codes: %s\n' "$*" >&2
   exit 1
 }
+
+if [[ -z "${CI:-}" && "${APM44_RUN_SINGLETON_PROOF:-0}" != "1" ]]; then
+  echo "test_daemon_exit_codes: NOT RUN (real singleton lock; runs in hosted CI, or set APM44_RUN_SINGLETON_PROOF=1 with no bridge running)"
+  exit 0
+fi
 
 [[ -x "$DAEMON" ]] || fail "daemon binary not executable at $DAEMON (set APM44_DAEMON_PATH)"
 
@@ -23,9 +33,9 @@ daemon = sys.argv[1]
 
 
 def skip(reason):
-    print(f"skip: {reason}", file=sys.stderr)
-    # CI machines run no helper, so a skip there means the proof never ran.
-    sys.exit(1 if os.environ.get("CI") else 0)
+    # Only CI or an explicit opt-in get here, so a skip means the proof never ran.
+    print(f"test_daemon_exit_codes: NOT RUN: {reason}", file=sys.stderr)
+    sys.exit(1)
 
 
 lock_path = f"/tmp/apm44-bridge.{os.getuid()}.lock"
