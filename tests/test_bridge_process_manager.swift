@@ -20,6 +20,10 @@ final class MockProcessLauncher: ProcessLaunching {
     private(set) var launchedArguments: [[String]] = []
     private(set) var forceKilled: [Process] = []
     var terminateOnForceKill = false
+    /// A real exited child closes its stderr, which ends the manager's
+    /// bounded wait for final output; tests of late or withheld output
+    /// turn this off and close the pipe themselves.
+    var closesStderrOnTermination = true
 
     func makeProcess() -> Process {
         makeCount += 1
@@ -59,6 +63,7 @@ final class MockProcessLauncher: ProcessLaunching {
         // synchronously: drop the running token and invoke the handler.
         if terminateOnForceKill {
             running.remove(ObjectIdentifier(process))
+            closeStderrIfExiting(process)
             process.terminationHandler?(process)
         }
     }
@@ -74,7 +79,13 @@ final class MockProcessLauncher: ProcessLaunching {
             try? await Task.sleep(nanoseconds: terminationDelayNanoseconds)
         }
         running.remove(ObjectIdentifier(proc))
+        closeStderrIfExiting(proc)
         proc.terminationHandler?(proc)
+    }
+
+    private func closeStderrIfExiting(_ proc: Process) {
+        guard closesStderrOnTermination else { return }
+        try? (proc.standardError as? Pipe)?.fileHandleForWriting.close()
     }
 }
 
@@ -949,7 +960,6 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         // A recoverable stale-ring exit must not override the user's stop.
         writeStderr("stale shm ring: invalid header", launcher: launcher)
-        await settlePipeDelivery()
         launcher.nextTerminationStatus = 42
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
@@ -1599,7 +1609,6 @@ final class BridgeProcessManagerTests: XCTestCase {
         let generationBefore = manager.retryGeneration
         launcher.nextTerminationStatus = DaemonExitCode.singletonBusy.rawValue
         writeStderr("error: another apm44-bridge helper already owns the singleton lock", launcher: launcher)
-        await settlePipeDelivery()
         if let proc = launcher.lastProcess {
             await launcher.fireTermination(for: proc)
         }
@@ -1619,7 +1628,6 @@ final class BridgeProcessManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .running)
 
         writeStderr("stale shm ring: invalid shm ring header", launcher: launcher)
-        await settlePipeDelivery()
         // `.starting` is synchronously transient, so force it to cover the
         // termination-during-start failure path.
         manager.setStateForTesting(.starting)
@@ -1629,6 +1637,79 @@ final class BridgeProcessManagerTests: XCTestCase {
         }
 
         XCTAssertEqual(manager.state, .error(.driverIPCFailed))
+    }
+
+    // T13: exit codes stay authoritative, but the final stderr lines are
+    // awaited (bounded) before the exit is classified.
+    func testStderrArrivingAfterTerminationStillClassifiesTheExit() async {
+        let launcher = MockProcessLauncher()
+        launcher.closesStderrOnTermination = false
+        let (manager, _, _, _) = await makeManager(launcher: launcher)
+        manager.start()
+        guard let proc = launcher.lastProcess,
+              let pipe = proc.standardError as? Pipe else { return XCTFail("no stderr pipe") }
+        manager.setStateForTesting(.starting)
+        launcher.nextTerminationStatus = 1
+
+        // The termination callback starts first; the last line and end of
+        // output arrive 100 ms later, well inside the drain bound.
+        let late = Task.detached {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            try? pipe.fileHandleForWriting.write(contentsOf: Data("stale shm ring: invalid shm ring header\n".utf8))
+            try? pipe.fileHandleForWriting.close()
+        }
+        await launcher.fireTermination(for: proc)
+        await late.value
+        await pollUntil("termination classified") { manager.state != .starting }
+
+        XCTAssertEqual(manager.state, .error(.driverIPCFailed))
+    }
+
+    func testWithheldStderrEndDelaysClassificationOnlyUpToTheBound() async {
+        let launcher = MockProcessLauncher()
+        launcher.closesStderrOnTermination = false
+        var timing = BridgeTiming.live
+        timing.stderrDrainTimeout = 0.1
+        let (manager, _, _, _) = await makeManager(launcher: launcher, timing: timing)
+        manager.start()
+        guard let proc = launcher.lastProcess,
+              let pipe = proc.standardError as? Pipe else { return XCTFail("no stderr pipe") }
+        manager.setStateForTesting(.starting)
+        launcher.nextTerminationStatus = 1
+
+        // A descendant keeps the write end open: end of output never comes.
+        let began = Date()
+        await launcher.fireTermination(for: proc)
+        await pollUntil("termination classified") { manager.state != .starting }
+        let elapsed = Date().timeIntervalSince(began)
+
+        XCTAssertEqual(manager.state, .error(.helperFailed(stderr: nil)))
+        XCTAssertGreaterThanOrEqual(elapsed, 0.1)
+        XCTAssertLessThan(elapsed, 1.0)
+        try? pipe.fileHandleForWriting.close()
+    }
+
+    func testReplacedHelperStderrDoesNotReachReplacementFailure() async {
+        let (manager, _, launcher, _) = await makeManager()
+        manager.start()
+        guard let old = launcher.lastProcess,
+              let oldPipe = old.standardError as? Pipe else { return XCTFail("no stderr pipe") }
+        launcher.markExited(old)
+        manager.stop()
+        manager.start()
+        guard let replacement = launcher.lastProcess else { return XCTFail("no replacement") }
+        XCTAssertNotIdentical(replacement, old)
+
+        // The old child's late shm line must not turn the replacement's
+        // generic failure into an IPC failure.
+        try? oldPipe.fileHandleForWriting.write(contentsOf: Data("stale shm ring: old child\n".utf8))
+        try? oldPipe.fileHandleForWriting.close()
+        manager.setStateForTesting(.starting)
+        launcher.nextTerminationStatus = 1
+        await launcher.fireTermination(for: replacement)
+        await pollUntil("termination classified") { manager.state != .starting }
+
+        XCTAssertEqual(manager.state, .error(.helperFailed(stderr: nil)))
     }
 
     func testSettingsRestartWaitsForTermination() async {

@@ -24,6 +24,46 @@ struct DaemonStdoutLineBuffer {
     }
 }
 
+/// One helper's stderr, filled by its pipe reader off the main actor. The
+/// termination path waits a bounded time for end of output so the final
+/// lines are in the tail before the exit is classified (T13). A collector
+/// belongs to one child, so a replacement never sees an old child's lines.
+final class DaemonStderrCollector: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var tail = DaemonStderrTail()
+    private var reachedEnd = false
+
+    func append(_ text: String) {
+        condition.lock()
+        tail.append(text)
+        condition.unlock()
+    }
+
+    func finish() {
+        condition.lock()
+        reachedEnd = true
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    /// Blocks until end of output or `timeout`; returns whether the end arrived.
+    /// A descendant holding the pipe open can withhold it, hence the bound.
+    @discardableResult
+    func waitForEnd(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        condition.lock()
+        defer { condition.unlock() }
+        while !reachedEnd, condition.wait(until: deadline) {}
+        return reachedEnd
+    }
+
+    var snapshot: DaemonStderrTail {
+        condition.lock()
+        defer { condition.unlock() }
+        return tail
+    }
+}
+
 struct DaemonStderrTail {
     private var lines: [String] = []
     private let cap = 20

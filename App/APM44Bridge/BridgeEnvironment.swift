@@ -9,6 +9,9 @@ struct BridgeTiming: Equatable, Sendable {
     var staleAfter: TimeInterval = 2.0
     var glitchFlashDuration: TimeInterval = 2.0
     var stopTimeout: TimeInterval = 5.0
+    /// Longest wait for an exited helper's final stderr before its exit is
+    /// classified; exit codes stay authoritative, late detail is dropped.
+    var stderrDrainTimeout: TimeInterval = 0.25
 
     static let live = BridgeTiming(
         retryDelays: [1.0, 2.0, 4.0, 4.0],
@@ -16,7 +19,8 @@ struct BridgeTiming: Equatable, Sendable {
         staleCheckInterval: 0.5,
         staleAfter: 2.0,
         glitchFlashDuration: 2.0,
-        stopTimeout: 5.0
+        stopTimeout: 5.0,
+        stderrDrainTimeout: 0.25
     )
 }
 
