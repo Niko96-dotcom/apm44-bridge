@@ -25,7 +25,8 @@ namespace apm44 {
 
 // The APM44 Bridge HAL driver needs at least this much fill; a lower request
 // (the CLI accepts 6-120 ms) is raised to it in virtual-device mode.
-// The Swift app keeps its own copy of this value.
+// The Swift app keeps its own copy of this value (LatencyPreset.swift);
+// tests/test_helper_contract.swift compares the two through --print-contract.
 inline constexpr double kHalTargetFillFloorMs = 20.0;
 
 struct BridgeEngineOptions {

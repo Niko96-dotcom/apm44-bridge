@@ -1,5 +1,6 @@
 #include "CliOptions.h"
 #include "DaemonExitCodes.h"
+#include "HelperContract.h"
 #include "ParentDeathWatch.h"
 #include "ProcessSingletonLock.h"
 #include "engine/BridgeEngine.h"
@@ -255,6 +256,10 @@ int main(int argc, char* argv[]) {
   }
   if (options.showHelp) {
     apm44::PrintUsage(argv[0]);
+    return 0;
+  }
+  if (options.printContract) {
+    std::cout << apm44::HelperContractJson() << "\n";
     return 0;
   }
   if (options.listDevices) {

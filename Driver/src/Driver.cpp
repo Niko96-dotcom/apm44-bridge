@@ -1,6 +1,8 @@
 #include "ShmIoHandler.h"
 #include "DriverFormat.h"
 
+#include <apm44/HalDeviceIdentity.h>
+
 #include <aspl/Driver.hpp>
 
 #include <CoreAudio/AudioServerPlugIn.h>
@@ -12,7 +14,7 @@ std::shared_ptr<aspl::Driver> CreateAPM44Driver() {
 
   aspl::DeviceParameters deviceParams;
   deviceParams.Name = "APM44 Bridge";
-  deviceParams.DeviceUID = "com.niko.apm44.bridge.device";
+  deviceParams.DeviceUID = apm44::kApm44DeviceUid;
   deviceParams.ModelUID = "com.niko.apm44.bridge.model";
   deviceParams.SampleRate = apm44::kApm44DriverSampleRate;
   deviceParams.ChannelCount = apm44::kApm44DriverChannelCount;

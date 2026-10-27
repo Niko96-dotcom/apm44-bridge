@@ -163,7 +163,8 @@ extension BridgeConnectionPhase {
 
 /// Exit codes the helper uses to say why it stopped. Mirrors
 /// BridgeDaemon/src/DaemonExitCodes.h; change both together.
-enum DaemonExitCode: Int32 {
+/// tests/test_helper_contract.swift compares them with `--print-contract`.
+enum DaemonExitCode: Int32, CaseIterable {
     case staleShmRing = 42
     case singletonBusy = 43
     case loadedDriverBuildMismatch = 44

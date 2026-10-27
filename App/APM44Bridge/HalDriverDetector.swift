@@ -3,6 +3,8 @@ import Foundation
 
 /// Detects whether the APM44 HAL virtual device is installed and enumerated.
 enum HalDriverDetector {
+    /// Mirrors `kApm44DeviceUid` in Shared/include/apm44/HalDeviceIdentity.h;
+    /// tests/test_helper_contract.swift compares them.
     static let deviceUid = "com.niko.apm44.bridge.device"
     static let deviceName = "APM44 Bridge"
 

@@ -59,3 +59,10 @@ TEST_CASE("Unknown options are usage errors, explicit help is not", "[cli]") {
   CHECK(Parse({"--src-quality", "ultra"}).usageError);
   CHECK(Parse({"--src-quality", "best"}).srcQuality == apm44::LibSamplerateSrc::Quality::Best);
 }
+
+TEST_CASE("Print-contract is an info verb", "[cli]") {
+  const auto contract = Parse({"--print-contract"});
+  CHECK(contract.printContract);
+  CHECK_FALSE(contract.usageError);
+  CHECK_FALSE(Parse({}).printContract);
+}

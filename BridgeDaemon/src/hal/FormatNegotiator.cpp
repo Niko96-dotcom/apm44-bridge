@@ -1,5 +1,7 @@
 #include "hal/FormatNegotiator.h"
 
+#include <apm44/HalDeviceIdentity.h>
+
 #include <CoreAudio/CoreAudio.h>
 
 #include <cmath>
@@ -71,7 +73,7 @@ std::optional<FormatNegotiationError> FormatNegotiator::negotiate(BridgeDevicePa
 std::optional<FormatNegotiationError> FormatNegotiator::negotiateVirtualOutput(
     BridgeDevicePair& pair) {
   pair.input.name = "APM44 Bridge (shm)";
-  pair.input.uid = "com.niko.apm44.bridge.device";
+  pair.input.uid = kApm44DeviceUid;
   pair.input.nominalRate = kInputSampleRate;
   pair.inputAsbd = MakeFloat32StereoNonInterleaved(kInputSampleRate);
 

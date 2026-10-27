@@ -6,7 +6,8 @@ namespace apm44 {
 
 // These are the exit codes the menu-bar app classifies; mirrored by
 // `DaemonExitCode` in App/APM44Bridge/BridgeProcessPolicy.swift; change both
-// together.
+// together. tests/test_helper_contract.swift compares the two through
+// --print-contract (HelperContract.cpp).
 inline constexpr int kExitFailure = 1;
 // Stale shared-memory ring, the app retries.
 inline constexpr int kExitStaleShmRing = 42;
