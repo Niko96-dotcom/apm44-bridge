@@ -63,7 +63,7 @@ responsibility.
 | Group | Files | Responsibility |
 |---|---|---|
 | Composition root | `APM44BridgeApp.swift` | Creates settings, manager, updater and monitors; sends monitor events to the manager; owns the main menu (`AppDelegate`) |
-| Bridge supervisor | `BridgeProcessManager.swift` | Run-state machine, child process and pipes, retry budget, sleep/wake/hotplug/update resume, device-list cache, build-ID gate caches, metrics health |
+| Bridge supervisor | `BridgeProcessManager.swift`, `ResumeIntent.swift` | Run-state machine, child process and pipes, retry budget, sleep/wake/hotplug/update event handling, device-list cache, build-ID gate caches, metrics health. `ResumeIntent` is a pure value type that owns the rules for the three resume intents (wake, output return, post-update) |
 | Supervisor policy (pure) | `BridgeProcessPolicy.swift`, `BridgeStartReadiness.swift`, `BridgeErrorPresentation.swift`, `MetricsParser.swift`, `BridgeMetricsSnapshot.swift` | Launch arguments, exit classification, retry budget, stdout/stderr buffering, the Start gate (one pure function returning a typed error), typed errors and their text, metrics decoding |
 | Supervisor seams | `ProcessLaunching.swift`, `BridgeEnvironment.swift` | `ProcessLaunching`, `BridgeDeviceSource`, `BridgeClock` and `BridgeTiming`, passed to `BridgeProcessManager.init` |
 | Device and driver access | `DeviceCatalog.swift`, `HalDriverDetector.swift`, `HotplugMonitor.swift`, `SystemLifecycleMonitor.swift`, `DriverMaintenance.swift`, `BridgeBinaryLocator.swift` | Device list (runs `apm44-bridge --list-devices`); HAL presence and build IDs (Core Audio and the installed plist); device-list and sleep/wake events; privileged Core Audio reload; helper path |
@@ -133,10 +133,11 @@ Each side keeps its own copy. Change both sides in one commit.
 
 | State | Owner | Storage | Notes |
 |---|---|---|---|
-| Output UID and name, latency preset, SRC override, resume-after-update time | `BridgeSettings` | UserDefaults keys `apm44.*` | Views write; `BridgeProcessManager` reads |
+| Output UID and name, latency preset, SRC override, resume-after-update time | `BridgeSettings` | UserDefaults keys `apm44.*` | Views write; `BridgeProcessManager` reads. Only the manager's `resumeIntent` accessor writes the resume-after-update time |
 | First run done | `FirstRunPreflightView` writes, `MenuContentView` reads | UserDefaults `apm44.firstRunCompleted` | Not in `BridgeSettings` |
 | Automation switches | read in `APM44BridgeApp.swift` | UserDefaults `APM44AutomationStartBridge`, `APM44AutomationCheckForUpdates` | Set by `scripts/e2e-update-roundtrip.sh` |
-| Run state, child process and pipes, retry budget, resume intents and generation counters, device list, routing mode, build-ID caches, latest metrics and staleness | `BridgeProcessManager` (`@MainActor`) | memory | Views read published values only |
+| Resume intents: wake, output return, post-update | one `ResumeIntent` value held by `BridgeProcessManager` | memory; the post-update request is persisted in `BridgeSettings` (`apm44.resumeAfterUpdateAt`) | Only `ResumeIntent` operations change them. The manager's `resumeIntent` accessor is the one place that syncs the update request with `BridgeSettings` |
+| Run state, child process and pipes, retry budget, generation counters, device list, routing mode, build-ID caches, latest metrics and staleness | `BridgeProcessManager` (`@MainActor`) | memory | Views read published values only |
 | Update state | `SparkleUpdateController.shared` | memory; Sparkle keeps its own defaults | Reaches the manager through notifications |
 | Setup sheet request | `SetupCoordinator.shared` | memory | |
 | Login item | `SMAppService`; each `MenuContentView` host has its own `LaunchAtLoginController` that reads it | system | |
@@ -498,15 +499,16 @@ Transitions:
   `userStopGeneration` after their stop wait, so a user stop cancels the
   relaunch and a sleep leaves it to the wake; the wake checks
   `systemSleepGeneration` after its refresh and re-reads
-  `resumeAfterSystemWake`, which a user stop clears.
+  `ResumeIntent.resumesOnWake`, which a user stop clears.
   See `docs/adr/0001-wake-resume-intent.md`: the resume intent
-  (`resumeAfterSystemWake` plus `wasRunningBeforeDisconnect`) must
+  (`ResumeIntent.resumesOnWake` plus `resumesWhenOutputReturns`) must
   survive every `await` in the wake path; a superseded device refresh
   joins the newest refresh instead of failing; a user stop cancels a
   pending wake resume.
 - Post-update resume: Sparkle install posts a notification while
   running; `resumeAfterUpdateIfRequested` restarts within 10 minutes
-  when idle/error/reconnecting with the output enumerated. The
+  when idle/error/reconnecting with the output enumerated
+  (`ResumeIntent.checkUpdateResume`). The
   stale-output watch (`scheduleStaleWatch`) sets `metricsStale` when more
   than 2 s pass after the last metrics sample (checked every 0.5 s; before
   the first sample it stays false;
@@ -554,9 +556,10 @@ history is kept so a change does not reintroduce them.
   `testWakeParksWhenSleepStopNeverFinishes`,
   `testConcurrentTerminationWaitersAllComplete`.
 - A second sleep during a wake's refresh dropped the resume intent.
-  `handleSystemDidWake` now consumes `resumeAfterSystemWake` only at the
-  end and first checks `systemSleepGeneration`; a sleep that landed
-  meanwhile keeps the flag for the next wake. Tests:
+  `handleSystemDidWake` now consumes the wake intent
+  (`ResumeIntent.consumeWakeResume`) only at the end and first checks
+  `systemSleepGeneration`; a sleep that landed meanwhile keeps the
+  intent for the next wake. Tests:
   `testSecondSleepDuringWakeRefreshKeepsResumeIntent`,
   `testSleepDuringIdleWakeRefreshDefersResumeToNextWake`.
 
@@ -577,11 +580,14 @@ the HAL floor a virtual-device engine prepared with").
 ### Known gaps
 
 No defect is recorded against the run-state machine at this revision.
-Open test gaps, not known defects: a settings change during a user stop,
-and a device-change restart together with a settings restart (T14 and
-T15, listed in `docs/adr/0001-wake-resume-intent.md`), have no test named
-for them. The unit tests use fake launchers and device sources, so real
-sleep/wake and USB hotplug timing is not covered.
+A settings change during a user stop (T14) and a device-change restart
+together with a settings restart (T15) have tests:
+`testSettingsRestartQueuedDuringUserStopDoesNotRelaunch`,
+`testSettingsRestartDuringHotplugRestartLaunchesLatestOutputAndQuality`
+and `testHotplugDuringSettingsRestartLaunchesLatestOutputAndQuality` in
+`tests/test_bridge_process_manager.swift`. The unit tests use fake
+launchers and device sources, so real sleep/wake and USB hotplug timing
+is not covered.
 
 ## 7. Updates and install
 

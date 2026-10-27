@@ -107,7 +107,6 @@ final class BridgeProcessManager: ObservableObject {
     private var nextTerminationWaiterID: UInt64 = 0
     private var restartTask: Task<Void, Never>?
     private var pendingRestartReason: StopReason?
-    private var wasRunningBeforeDisconnect = false
     private var lastKnownDeviceName: String?
     private var lastKnownDeviceUid: String?
     private var runningOutputFingerprint: AudioDeviceRow?
@@ -115,7 +114,25 @@ final class BridgeProcessManager: ObservableObject {
     private var retryTask: Task<Void, Never>?
     private var stabilityTask: Task<Void, Never>?
     private var processHealth: BridgeProcessHealth = .stopped
-    private var resumeAfterSystemWake = false
+    /// Read and changed only through `resumeIntent`.
+    private var resumeIntentInMemory = ResumeIntent()
+    /// The resume intents. `ResumeIntent` owns their rules. This accessor is
+    /// the one place that syncs its update request with `BridgeSettings`,
+    /// which persists it across the relaunch: reading loads the persisted
+    /// value, and writing stores it when it changed.
+    private var resumeIntent: ResumeIntent {
+        get {
+            var intent = resumeIntentInMemory
+            intent.loadPersistedUpdateRequest(settings.resumeAfterUpdateRequestedAt)
+            return intent
+        }
+        set {
+            resumeIntentInMemory = newValue
+            if settings.resumeAfterUpdateRequestedAt != newValue.updateRequestedAt {
+                settings.resumeAfterUpdateRequestedAt = newValue.updateRequestedAt
+            }
+        }
+    }
     /// Tracks a stuck-helper .error so handleTermination does not have to
     /// inspect the error. Set only via markStuckHelper(), cleared in
     /// transitionToIdle() and when start() launches.
@@ -205,7 +222,7 @@ final class BridgeProcessManager: ObservableObject {
             queue: nil
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.settings.resumeAfterUpdateRequestedAt = nil
+                self?.resumeIntent.updateInstallAbandoned()
             }
         }
     }
@@ -382,39 +399,22 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     private func handleWillInstallUpdate() {
-        if isRunning {
-            settings.resumeAfterUpdateRequestedAt = Date()
-        }
+        resumeIntent.updateInstallStarted(at: Date(), bridgeRunning: isRunning)
     }
 
     /// Relaunches the bridge after an in-app update when the pre-install
-    /// observer recorded a fresh request. The flag is kept while the only
-    /// blocker is a selected output that Core Audio has not enumerated yet
-    /// (postinstall kickstarts coreaudiod, so the first refresh may miss it
-    /// or return false); it is cleared for stale requests, running/
-    /// transitioning states, and any other launch blocker.
+    /// observer recorded a fresh request. `ResumeIntent.checkUpdateResume`
+    /// decides when the request is kept, cleared or consumed.
     func resumeAfterUpdateIfRequested(now: Date = Date()) {
-        guard let requestedAt = settings.resumeAfterUpdateRequestedAt else { return }
-        let age = now.timeIntervalSince(requestedAt)
-        guard age >= 0, age < 10 * 60 else {
-            settings.resumeAfterUpdateRequestedAt = nil
-            return
-        }
-        switch state {
-        case .idle, .error, .reconnecting: break
-        default:
-            settings.resumeAfterUpdateRequestedAt = nil
-            return
-        }
-        if let uid = settings.outputDeviceUid,
-           !devices.contains(where: { $0.uid == uid }) {
-            return
-        }
-        guard startBlockedReason == nil else {
-            settings.resumeAfterUpdateRequestedAt = nil
-            return
-        }
-        settings.resumeAfterUpdateRequestedAt = nil
+        let selectedOutputListed = settings.outputDeviceUid.map { uid in
+            devices.contains { $0.uid == uid }
+        } ?? true
+        guard resumeIntent.checkUpdateResume(
+            at: now,
+            state: state,
+            selectedOutputListed: selectedOutputListed,
+            startBlocked: startBlockedReason != nil
+        ) else { return }
         logger.info("Bridge resuming after update")
         start()
     }
@@ -556,7 +556,7 @@ final class BridgeProcessManager: ObservableObject {
             awaitingStuckHelperExit = false
             state = .running
             logger.info("Bridge running")
-            wasRunningBeforeDisconnect = false
+            resumeIntent.helperLaunched()
             scheduleStaleWatch()
             drainPendingRestart()
         } catch {
@@ -608,11 +608,7 @@ final class BridgeProcessManager: ObservableObject {
 
     private func initiateUserStop() -> Bool {
         userStopGeneration += 1
-        wasRunningBeforeDisconnect = false
-        resumeAfterSystemWake = false
-        // A stop outranks a pending post-update resume, or a later hotplug or
-        // relaunch within its window would start the bridge again.
-        settings.resumeAfterUpdateRequestedAt = nil
+        resumeIntent.userStop()
         cancelRetryTask()
         cancelStabilityTask()
         retryBudget.clearAttemptKeepingDiagnostics()
@@ -740,19 +736,16 @@ final class BridgeProcessManager: ObservableObject {
             // A restart is replacing the helper, so the bridge is logically
             // running. Its old helper is already stopping, and performRestart
             // sees this sleep and leaves the relaunch to the wake.
-            resumeAfterSystemWake = true
+            resumeIntent.sleepDuringRestart()
             logger.info("Bridge pausing for sleep during restart")
             return
         default:
             shouldResume = false
         }
-        // Keep an intent that a wake has not consumed yet: a sleep that
-        // lands during that wake finds the bridge already stopped.
-        resumeAfterSystemWake = resumeAfterSystemWake || shouldResume
+        resumeIntent.systemWillSleep(bridgeActive: shouldResume)
         guard shouldResume else { return }
 
         logger.info("Bridge pausing for sleep")
-        wasRunningBeforeDisconnect = false
         cancelRetryTask()
         cancelStabilityTask()
         if process != nil {
@@ -763,11 +756,11 @@ final class BridgeProcessManager: ObservableObject {
     }
 
     func handleSystemDidWake() async {
-        // The intent stays in resumeAfterSystemWake across every await below,
-        // so a user stop meanwhile cancels it; it is consumed only at the end.
+        // The intent stays in resumeIntent across every await below, so a
+        // user stop meanwhile cancels it; it is consumed only at the end.
         let wakeGeneration = systemSleepGeneration
         var sleepStopUnfinished = false
-        if resumeAfterSystemWake, case .stopping = state {
+        if resumeIntent.resumesOnWake, case .stopping = state {
             // The sleep stop is still in flight and start() would ignore
             // .stopping, so wait for the termination first.
             // Outlast one full escalation (SIGTERM wait + SIGKILL wait).
@@ -776,14 +769,12 @@ final class BridgeProcessManager: ObservableObject {
         }
         let refreshed = await refreshDevices()
         // A sleep that landed during the refresh owns the intent now; the
-        // next wake handles it, so keep the flag without starting or parking.
+        // next wake handles it, so keep the intent without starting or parking.
         if wakeGeneration != systemSleepGeneration {
             logger.info("Bridge slept again during wake")
             return
         }
-        let shouldResume = resumeAfterSystemWake
-        resumeAfterSystemWake = false
-        guard shouldResume else { return }
+        guard resumeIntent.consumeWakeResume() else { return }
         if sleepStopUnfinished {
             logger.info("Bridge stop unfinished after wake")
             parkAfterWake(banner: AppStrings.waitingForDevicesAfterWake)
@@ -815,7 +806,7 @@ final class BridgeProcessManager: ObservableObject {
     /// Parks a bridge that should resume after wake so the next hotplug with
     /// the output present finishes the resume.
     private func parkAfterWake(banner: String) {
-        wasRunningBeforeDisconnect = true
+        resumeIntent.parkAfterWake()
         state = .reconnecting
         bannerMessage = banner
     }
@@ -832,7 +823,7 @@ final class BridgeProcessManager: ObservableObject {
         guard let uid = settings.outputDeviceUid else {
             if isRunning {
                 logger.info("Bridge output disconnected")
-                wasRunningBeforeDisconnect = false
+                resumeIntent.outputSelectionClearedWhileRunning()
                 bannerMessage = AppStrings.outputDisconnectedSelect
                 let stopGeneration = userStopGeneration
                 let sleepGeneration = systemSleepGeneration
@@ -863,7 +854,7 @@ final class BridgeProcessManager: ObservableObject {
                 await restart(reason: .hotplug)
             } else {
                 logger.info("Bridge waiting for output after hotplug")
-                wasRunningBeforeDisconnect = true
+                resumeIntent.outputLostWhileRunning()
                 let stopGeneration = userStopGeneration
                 let sleepGeneration = systemSleepGeneration
                 _ = await terminateProcessWithEscalation(reason: .hotplug)
@@ -876,11 +867,11 @@ final class BridgeProcessManager: ObservableObject {
         }
 
         if case .reconnecting = state {
-            if devicePresent, wasRunningBeforeDisconnect {
+            if devicePresent, resumeIntent.resumesWhenOutputReturns {
                 bannerMessage = AppStrings.reconnectingTo(deviceDisplayName)
                 await restart(reason: .hotplug)
                 if isRunning {
-                    wasRunningBeforeDisconnect = false
+                    resumeIntent.outputReturned()
                 }
             }
             return
@@ -920,7 +911,7 @@ final class BridgeProcessManager: ObservableObject {
         if process == nil, outputAvailable {
             logger.info("Bridge output returned during stop; relaunching")
             bannerMessage = AppStrings.reconnectingTo(deviceDisplayName)
-            wasRunningBeforeDisconnect = false
+            resumeIntent.outputReturned()
             start()
             return
         }
@@ -1210,12 +1201,10 @@ final class BridgeProcessManager: ObservableObject {
             transitionToIdle()
             return
         }
-        if case .reconnecting = state, wasRunningBeforeDisconnect, lastStopReason == .internal {
-            // Wake parked over an unfinished sleep stop; the stuck helper
-            // just exited, so finish the resume the park was waiting for.
-            // A failed hotplug stop can also leave a tracked process in
-            // .reconnecting, but its reason is .hotplug so it falls through
-            // to classify below instead of resuming here.
+        if resumeIntent.isWakeParkedOverSleepStop(state: state, lastStopReason: lastStopReason) {
+            // The stuck helper just exited, so finish the resume the park was
+            // waiting for. A parked failed hotplug stop falls through to
+            // classify below instead of resuming here.
             if let uid = settings.outputDeviceUid,
                let selected = devices.first(where: { $0.uid == uid }),
                selected.isAlive,

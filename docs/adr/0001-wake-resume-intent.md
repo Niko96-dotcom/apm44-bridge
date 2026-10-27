@@ -1,6 +1,6 @@
 # ADR-0001: Keep the resume intent across sleep, wake and hotplug interleavings
 
-- **Status:** Accepted, implemented (updated 2026-09-29; originally Proposed 2026-09-27). Decision items 1-4 shipped in #46 (`10af56f`); action item 5 stays open. See "Implementation status".
+- **Status:** Accepted, implemented (updated 2026-10-27; originally Proposed 2026-09-27). Decision items 1-4 shipped in #46 (`10af56f`). Action item 5 is partly done: the model half of Option B (`ResumeIntent`) shipped on 2026-10-27; the reconciler stays deferred. See "Implementation status".
 - **Date:** 2026-09-27
 - **Deciders:** Niko (owner)
 - **Source:** tech-debt item #3 and test gap T16 in the 2026-09-27 audit (`.audit/tech-debt.md`, `.audit/test-plan.md`), both at `30707e6`.
@@ -121,7 +121,7 @@ The four fixes listed under Decision.
   - **Superseded wake.** Gate `FakeBridgeDeviceSource.listDevices` so wake's refresh blocks inside `Task.detached` (`:248-250`), start a second `refreshDevices()`, then release both. The run ends `.running`, not `.reconnecting`.
   - **User stop during wake.** Wake's refresh is gated, the user calls `stop()`, then the gate is released. The run ends `.idle` with no new launch.
   - The existing sleep, wake and hotplug tests (`test_bridge_process_manager.swift:486-530`, `:601-670`) pass unchanged.
-- **Still open:** path 3 (sleep during a hotplug or settings restart), T14 and T15 (settings restarts against a user stop or a device change), and #13. If fixing those needs more intent flags, take that as the signal to start Option B instead.
+- **Still open:** path 3 (sleep during a hotplug or settings restart), T14 and T15 (settings restarts against a user stop or a device change), and #13. If fixing those needs more intent flags, take that as the signal to start Option B instead. (Superseded: T14, T15 and #13 now have tests, and path 3 is fixed for settings and hotplug restarts. See "Implementation status".)
 
 ## Action items
 
@@ -131,7 +131,7 @@ Checked against the code and tests at `844be44` on 2026-09-29.
 2. [x] Have wake await an in-flight stop before refreshing, and set `wasRunningBeforeDisconnect` on every wake park. `handleSystemDidWake` waits with `waitForTermination(timeout: stopTimeout * 2 + 1)` while the sleep stop is in flight; `parkAfterWake` sets the flag for every park it makes.
 3. [x] Clear `resumeAfterSystemWake` on a user stop, and re-read it in wake after its awaits. `initiateUserStop` clears it; wake copies and clears it only after its awaits.
 4. [x] Add a `listDevices` gate to `FakeBridgeDeviceSource`, plus the three tests above, and show each one failing on `30707e6`. `gateNextListing()` / `ListDevicesGate` in `tests/test_bridge_process_manager.swift`. The #46 description records each test failing on `main` at `6df0350` (the base of that PR, not `30707e6`) and failing under a matching mutation.
-5. [ ] Later: decide on Option B when path 3, T14/T15 or #13 are picked up. Still deferred; see "Implementation status" for which of those remain.
+5. [ ] Later: decide on Option B when path 3, T14/T15 or #13 are picked up. Partly done: the model half (`ResumeIntent`) shipped on 2026-10-27; the reconciler is still deferred. See "Implementation status".
 
 ## Implementation status (2026-09-29)
 
@@ -153,7 +153,18 @@ The original Context, Decision and Options above are unchanged. Nothing here cha
 - `c569760` (audit B-series): `performRestart` captures `systemSleepGeneration` and `userStopGeneration` before its stop wait. A sleep during a restart defers the relaunch to the wake, and `handleSystemWillSleep` keeps the intent while `restartTask` is set. This addresses path 3 for settings and hotplug restarts (`testSleepDuringSettingsRestartDefersRelaunchToWake`, `testUserStopDuringSettingsRestartCancelsRelaunch`). Tech-debt #13, the resume-after-update flag outliving a cancel, is covered by `testUserStopRevokesPendingUpdateResume` and `testAbandonedUpdateInstallRevokesResume`.
 - `fade2f0` (architecture audit A001): the hotplug output-loss stop settles through `reconcileAfterOutputLossStop`, with the same generation guards, instead of parking from the pre-wait decision.
 
-**Still open:** T14 (a settings change during a user stop) and T15 (a device-change restart together with a settings restart) have no test named for them. Path 3 was verified only for the restart flows above, not for every trigger; no test was found for a sleep that lands between a hotplug restart's synchronous `.stopping` and its relaunch other than the settings-restart case. Action item 5 (Option B) is deferred until more intent flags appear. Nothing here was checked against real sleep or USB hardware.
+- `1339398` (T14): `testSettingsRestartQueuedDuringUserStopDoesNotRelaunch`. A settings restart queued while a user stop waits on the old helper does not relaunch.
+- `cdd79b1` (T15): `testSettingsRestartDuringHotplugRestartLaunchesLatestOutputAndQuality` and `testHotplugDuringSettingsRestartLaunchesLatestOutputAndQuality`. A device-change restart and a settings restart that overlap launch once, with the newest output and quality.
+
+**Still open (corrected 2026-10-27):** The 2026-09-29 entry said T14 and T15 had no test. That was stale: the two commits above added them on the same day. Path 3 was verified only for the restart flows above, not for every trigger; no test was found for a sleep that lands between a hotplug restart's synchronous `.stopping` and its relaunch other than the settings-restart case. Nothing here was checked against real sleep or USB hardware.
+
+### 2026-10-27: `ResumeIntent`, the model half of Option B
+
+`App/APM44Bridge/ResumeIntent.swift` gathers the three resume intents into one value type: `resumesOnWake` (was `resumeAfterSystemWake`), `resumesWhenOutputReturns` (was `wasRunningBeforeDisconnect`) and `updateRequestedAt` (`settings.resumeAfterUpdateRequestedAt`). The type has no I/O, no `async` and no clock. It owns every rule for recording, cancelling, consuming and expiring the intents, as operations named after the events: `userStop`, `helperLaunched`, `systemWillSleep(bridgeActive:)`, `sleepDuringRestart`, `consumeWakeResume`, `parkAfterWake`, `outputLostWhileRunning`, `outputSelectionClearedWhileRunning`, `outputReturned`, `updateInstallStarted(at:bridgeRunning:)`, `updateInstallAbandoned` and `checkUpdateResume(at:state:selectedOutputListed:startBlocked:)` (the 10-minute window and the guard against a future timestamp). The query `isWakeParkedOverSleepStop(state:lastStopReason:)` replaces the three-variable inference in `handleTermination`.
+
+`BridgeProcessManager` holds one `ResumeIntent` and calls these operations instead of writing flags. `BridgeSettings` still persists the update request; the manager's `resumeIntent` accessor is the one place that loads it from and stores it to the settings.
+
+This is only the model half of Option B. The scheduling, every `await`, the generation counters, restart coalescing and stuck-helper handling are unchanged, and there is no `reconcile()`. The reconciler stays deferred until more intent flags appear. Tests: `tests/test_resume_intent.swift` (table tests through the `ResumeIntent` interface); every test in `tests/test_bridge_process_manager.swift` passes with unchanged assertions.
 
 ## Review record
 
