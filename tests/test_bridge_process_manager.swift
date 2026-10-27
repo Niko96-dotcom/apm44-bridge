@@ -24,6 +24,14 @@ final class MockProcessLauncher: ProcessLaunching {
     /// bounded wait for final output; tests of late or withheld output
     /// turn this off and close the pipe themselves.
     var closesStderrOnTermination = true
+    /// A real `Process` calls its termination handler on a background thread
+    /// at default QoS. The fake does the same, so the manager's bounded
+    /// stderr wait in that handler never blocks the main thread.
+    private let terminationQueue = DispatchQueue(
+        label: "MockProcessLauncher.termination",
+        qos: .default,
+        attributes: .concurrent
+    )
 
     func makeProcess() -> Process {
         makeCount += 1
@@ -59,12 +67,15 @@ final class MockProcessLauncher: ProcessLaunching {
 
     func forceKill(_ process: Process) {
         forceKilled.append(process)
-        // Mock processes never really run, so mirror fireTermination
-        // synchronously: drop the running token and invoke the handler.
+        // Mock processes never really run, so mirror fireTermination: drop
+        // the running token and deliver the handler without waiting for it,
+        // as a real exit after SIGKILL does.
         if terminateOnForceKill {
             running.remove(ObjectIdentifier(process))
             closeStderrIfExiting(process)
-            process.terminationHandler?(process)
+            terminationQueue.async {
+                process.terminationHandler?(process)
+            }
         }
     }
 
@@ -74,13 +85,20 @@ final class MockProcessLauncher: ProcessLaunching {
         running.remove(ObjectIdentifier(proc))
     }
 
+    /// Returns after the termination handler has run, so the manager's
+    /// main-actor follow-up is already queued when the caller resumes.
     func fireTermination(for proc: Process) async {
         if terminationDelayNanoseconds > 0 {
             try? await Task.sleep(nanoseconds: terminationDelayNanoseconds)
         }
         running.remove(ObjectIdentifier(proc))
         closeStderrIfExiting(proc)
-        proc.terminationHandler?(proc)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            terminationQueue.async {
+                proc.terminationHandler?(proc)
+                continuation.resume()
+            }
+        }
     }
 
     private func closeStderrIfExiting(_ proc: Process) {
@@ -333,6 +351,13 @@ final class BridgeProcessManagerTests: XCTestCase {
     /// only fail a test, never pass a broken one.
     private func settlePipeDelivery() async {
         try? await Task.sleep(nanoseconds: 500_000_000)
+    }
+
+    /// Holds the main thread without suspending, so main-actor work queued
+    /// meanwhile (a pipe handler's Task) cannot run until the test goes on.
+    /// Synchronous on purpose: an await here would let that work run.
+    private func blockMainActor(for interval: TimeInterval) {
+        Thread.sleep(forTimeInterval: interval)
     }
 
     private func pollUntil(
@@ -788,7 +813,7 @@ final class BridgeProcessManagerTests: XCTestCase {
         // Let the pipe handler queue its main-actor Task while the main actor
         // is blocked, then replace the child before that Task can run.
         writeStdout(metricsJSONLine, launcher: launcher)
-        Thread.sleep(forTimeInterval: 0.3)
+        blockMainActor(for: 0.3)
         launcher.markExited(old)
         manager.stop()
         manager.start()
