@@ -130,7 +130,7 @@ stapling, and troubleshooting steps.
 | [cubase-soak.md](docs/cubase-soak.md) | 30+ minute QA soak |
 | [daw-matrix.md](docs/daw-matrix.md) | DAW validation matrix |
 | [release.md](docs/release.md) | Signing and notarization |
-| [architecture.md](docs/architecture.md) | How the driver, shm ring, daemon and app fit together |
+| [architecture.md](docs/architecture.md) | Architecture map (entry points, modules, contracts, state owners) and how the driver, shm ring, daemon and app fit together |
 | [hal-driver.md](docs/hal-driver.md) | HAL driver and shared memory IPC |
 | [menu-bar-app.md](docs/menu-bar-app.md) | Menu bar app architecture |
 | [mvp-routing.md](docs/mvp-routing.md) | BlackHole fallback path |
