@@ -212,8 +212,10 @@ final class HotplugMonitor {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        var value: CFString?
-        var size = UInt32(MemoryLayout<CFString?>.size)
+        // Core Audio writes a +1 CFString reference; Unmanaged storage keeps
+        // the raw write off an ARC-managed variable.
+        var value: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         guard AudioObjectGetPropertyData(
             deviceId,
             &address,
@@ -222,6 +224,6 @@ final class HotplugMonitor {
             &size,
             &value
         ) == noErr, let value else { return nil }
-        return value as String
+        return value.takeRetainedValue() as String
     }
 }

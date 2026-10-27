@@ -222,12 +222,16 @@ enum HalDriverDetector {
               dataSize > 0 else {
             return nil
         }
-        var cfString: CFString?
+        // Core Audio writes a +1 CFString reference; Unmanaged storage keeps
+        // the raw write off an ARC-managed variable, and the size passed in
+        // bounds the write to that storage.
+        var cfString: Unmanaged<CFString>?
+        dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         guard AudioObjectGetPropertyData(objectId, &address, 0, nil, &dataSize, &cfString) == noErr,
               let cfString else {
             return nil
         }
-        return cfString as String
+        return cfString.takeRetainedValue() as String
     }
 }
 
