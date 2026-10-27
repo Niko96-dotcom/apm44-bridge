@@ -17,10 +17,9 @@ This file uses three kinds of statement:
 
 ## Map
 
-Last checked on 2026-10-27 against branch `arch/review-findings` (HEAD
-`d442be7`), not against `81a20ad`. When you add, move or remove an
-entry point, module, contract or state owner, update this Map in the same
-change.
+Last checked against the code on 2026-10-27 (branch `arch/review-findings`).
+When you add, move or remove an entry point, module, contract or state
+owner, update this Map in the same change.
 
 ### Processes and entry points
 
@@ -194,9 +193,13 @@ The code does not answer these. Ask the owner before a change depends on
 an answer.
 
 1. **Driver language level.** `Driver/CMakeLists.txt` sets C++17; all
-   other native code is C++20. The driver includes `MmapShmRing.h`,
-   which includes `ShmRingLayout.h` and `ShmObjectIdentity.h`, and
-   `HalDeviceIdentity.h`, so those headers must stay C++17. Nothing says whether this is deliberate.
+   other native code is C++20. The driver sources include shared headers
+   directly: `Driver/src/ShmIoHandler.h` includes `MmapShmRing.h` (which
+   includes `ShmRingLayout.h` and `ShmObjectIdentity.h`),
+   `Driver/src/ShmIoHandler.cpp` includes `ShmRingLayout.h`,
+   `Driver/src/Driver.cpp` includes `HalDeviceIdentity.h`, and
+   `Driver/src/DriverFormat.h` includes `AudioFormats.h`. So those headers
+   must stay C++17. Nothing says whether this is deliberate.
 2. **Supervisor size.** `BridgeProcessManager` has about 50 stored
    properties. The sleep, wake, hotplug and user-stop paths share
    generation counters, so they belong together. The 2026-09-27 splits
@@ -624,7 +627,7 @@ Core Audio (`scripts/build-release-pkg.sh`). See `docs/release.md` and
 | Engine, SRC, drift, IOProcs | `BridgeDaemon/src/engine/BridgeEngine.h`, `BridgeEngine.cpp`, `LibSamplerateSrc.h`, `IoProcHandlers.h`, `IoProcHandlers.cpp`, `BridgeControlLoop.h` | `tests/test_lib_samplerate_src.cpp`, `tests/test_drift_controller.cpp`, `tests/test_io_proc_callbacks.cpp`, `tests/test_control_loop_wait.cpp`, `tests/test_input_frame_demand.cpp`, `tests/test_planar_ring_buffer.cpp` |
 | Virtual feed and stale recovery | `BridgeDaemon/src/engine/VirtualDeviceFeed.h`, `VirtualDeviceFeed.cpp`, `StaleRingRecoveryPlan.h`, `ShmMismatchDebounce.h`, `VirtualPrebufferGate.h` | `tests/test_virtual_device_feed.cpp`, `tests/test_virtual_prebuffer_gate.cpp`, `tests/test_shm_stale_recovery.cpp` |
 | Daemon CLI, exits, metrics | `BridgeDaemon/src/main.cpp`, `CliOptions.h`, `CliOptions.cpp`, `DaemonExitCodes.h`, `HelperContract.h`, `HelperContract.cpp`, `ProcessSingletonLock.h`, `ParentDeathWatch.h`, `engine/BridgeMetrics.h`, `engine/MetricsPublisher.h` | `tests/test_daemon_exit_codes.cpp`, `tests/test_daemon_exit_codes.sh`, `tests/test_cli_options.cpp`, `tests/test_helper_contract.cpp`, `tests/test_helper_contract.swift`, `tests/test_bridge_metrics_json.cpp`, `tests/test_audio_formats.cpp` |
-| App launch, states, retry | `App/APM44Bridge/BridgeProcessManager.swift`, `BridgeProcessPolicy.swift`, `BridgeEnvironment.swift`, `MetricsParser.swift`, `BridgeErrorPresentation.swift`, `ProcessLaunching.swift` | `tests/test_bridge_process_manager.swift`, `tests/test_bridge_process_policy.swift`, `tests/test_bridge_retry_budget.swift`, `tests/test_metrics_parser.swift`, `tests/test_setup_and_error_presentation.swift` |
+| App launch, states, retry | `App/APM44Bridge/BridgeProcessManager.swift`, `ResumeIntent.swift`, `BridgeProcessPolicy.swift`, `BridgeEnvironment.swift`, `MetricsParser.swift`, `BridgeErrorPresentation.swift`, `ProcessLaunching.swift` | `tests/test_bridge_process_manager.swift`, `tests/test_resume_intent.swift`, `tests/test_bridge_process_policy.swift`, `tests/test_bridge_retry_budget.swift`, `tests/test_metrics_parser.swift`, `tests/test_setup_and_error_presentation.swift` |
 | Devices, hotplug, sleep, HAL gate | `App/APM44Bridge/HotplugMonitor.swift`, `SystemLifecycleMonitor.swift`, `HalDriverDetector.swift`, `DeviceCatalog.swift`, `BridgeStartReadiness.swift`, `DriverMaintenance.swift` | `tests/test_system_lifecycle_monitor.swift`, `tests/test_device_catalog.swift`, `tests/test_verify_devices.sh` |
 | Settings and presentation | `App/APM44Bridge/BridgeSettings.swift`, `LatencyPreset.swift`, `SrcQuality.swift`, `MenuControlCard.swift`, `APM44BridgeApp.swift` | `tests/test_latency_preset.swift`, `tests/test_bridge_start_readiness.swift`, `tests/test_menu_presentation.swift` |
 | Updates and packaging | `App/APM44Bridge/SparkleUpdateController.swift`, `UpdateActivationCoordinator.swift`, `scripts/build-release-pkg.sh`, `scripts/lib/apm44-stop-running.sh` | `tests/test_sparkle_updater.swift`, `tests/test_update_error_policy.swift`, `tests/test_release_scripts.sh`, `tests/test_appcast.sh`, `tests/test_e2e_scripts.sh` |
