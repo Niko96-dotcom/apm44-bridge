@@ -103,9 +103,15 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertEqual(row(bits: 16, float32Stereo: false).compatibilityIssue, .float32OutputRequired)
     }
 
-    /// The German strings are read through the app bundle at run time. The
-    /// keys and the German text are pinned here: a changed key or a lost
-    /// translation fails this test.
+    /// The strings are read through the app bundle at run time. The keys, the
+    /// English defaults and the German text are pinned here. Two checks catch
+    /// two different mistakes:
+    /// - The de.lproj lookup with the pinned key fails when a translation is
+    ///   lost or a key in Localizable.strings changes.
+    /// - The rendered text of AppStrings is compared with the pinned text of the
+    ///   active localization. A key typo in AppStrings makes a German-hosted run
+    ///   render the English default instead of the pinned German text, and an
+    ///   English-hosted run proves the English defaults.
     func testEveryCompatibilityIssueHasEnglishTextAndAGermanTranslation() throws {
         let expected: [(OutputCompatibilityIssue, key: String, english: String, german: String)] = [
             (.disconnected, "compat_disconnected", "Disconnected", "Getrennt"),
@@ -128,14 +134,12 @@ final class DeviceCatalogTests: XCTestCase {
         let germanPath = try XCTUnwrap(Bundle.main.path(forResource: "de", ofType: "lproj"))
         let german = try XCTUnwrap(Bundle(path: germanPath))
         let missing = "\u{0}missing"
-        let englishUI = Bundle.main.preferredLocalizations.first != "de"
+        let germanUI = Bundle.main.preferredLocalizations.first == "de"
         for issue in OutputCompatibilityIssue.allCases {
             let entry = try XCTUnwrap(expected.first { $0.0 == issue }, "\(issue)")
             let text = AppStrings.compatibility(issue)
             XCTAssertFalse(text.isEmpty, "\(issue)")
-            if englishUI {
-                XCTAssertEqual(text, entry.english, "\(issue)")
-            }
+            XCTAssertEqual(text, germanUI ? entry.german : entry.english, "rendered text for \(issue)")
             XCTAssertEqual(
                 german.localizedString(forKey: entry.key, value: missing, table: "Localizable"),
                 entry.german,
