@@ -484,7 +484,11 @@ final class BridgeProcessManager: ObservableObject {
         // The gate has checked all three; this only unwraps them.
         guard let url = binaryURL,
               let uid = settings.outputDeviceUid,
-              let selectedOutput = devices.first(where: { $0.uid == uid }) else { return }
+              let selectedOutput = devices.first(where: { $0.uid == uid }) else {
+            logger.fault("Bridge start gate passed without a binary, output UID or listed output")
+            assertionFailure("BridgeStartReadiness.blocker passed, but start() cannot unwrap the binary, the output UID or the listed output")
+            return
+        }
 
         if resetRetryAttempt {
             logger.info("Bridge starting")
