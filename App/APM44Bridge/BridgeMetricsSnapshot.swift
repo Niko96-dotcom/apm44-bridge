@@ -24,7 +24,9 @@ struct BridgeMetricsSnapshot: Codable, Equatable {
     var targetFillMs: Double
     var srcQuality: String
 
-    enum CodingKeys: String, CodingKey {
+    /// The metrics JSON keys. tests/test_helper_contract.swift compares
+    /// `allCases` with the keys the helper's JSON writer emits.
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case fillMs = "fill_ms"
         case ratio
         case ppm

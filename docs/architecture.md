@@ -54,7 +54,7 @@ Native code is C++20. The driver target sets C++17 (`Driver/CMakeLists.txt`).
 | Driver | `Driver/src/` | Publishes the 44.1 kHz device through libASPL (`Driver.cpp`); copies DAW output into the ring and pairs mono lanes (`ShmIoHandler`); format constants (`DriverFormat.h`) |
 | Helper process shell | `BridgeDaemon/src/main.cpp`, `CliOptions`, `DaemonExitCodes.h`, `HelperContract`, `ProcessSingletonLock`, `ParentDeathWatch` | Parses the CLI, serves the info verbs (`HelperContract` builds the `--print-contract` JSON), takes the per-user lock, watches the parent, maps failures to exit codes |
 | Helper HAL access | `BridgeDaemon/src/hal/` | Lists devices (`DeviceEnumerator`), checks formats (`FormatNegotiator`) |
-| Bridge engine | `BridgeDaemon/src/engine/` | `BridgeEngine` owns prepare, start, stop, the control loop and the real-time callbacks `onInput`/`onOutput`. `IoProcHandlers` adapt Core Audio buffers. `LibSamplerateSrc` resamples. `VirtualDeviceFeed`, `StaleRingRecoveryPlan`, `ShmMismatchDebounce` and `VirtualPrebufferGate` handle the HAL-mode ring. `MetricsPublisher` and `BridgeMetrics` publish and format metrics; both loop over the counter table `kMetricsCounterFields` in `Shared/include/apm44/MetricsSnapshot.h`, so a new counter edits only that header and the Swift snapshot |
+| Bridge engine | `BridgeDaemon/src/engine/` | `BridgeEngine` owns prepare, start, stop, the control loop and the real-time callbacks `onInput`/`onOutput`. `IoProcHandlers` adapt Core Audio buffers. `LibSamplerateSrc` resamples. `VirtualDeviceFeed`, `StaleRingRecoveryPlan`, `ShmMismatchDebounce` and `VirtualPrebufferGate` handle the HAL-mode ring. `MetricsPublisher` and `BridgeMetrics` publish and format metrics; both loop over the counter table `kMetricsCounterFields` in `Shared/include/apm44/MetricsSnapshot.h`. A new counter edits that header, the engine code that fills it (`BridgeEngine::publishMetricsSnapshot`) and the Swift snapshot; the publisher and the JSON writer need no edit |
 
 The app is one Swift 5.10 target (`App/APM44Bridge/`) with SwiftUI and
 AppKit. It has no internal module split; the groups below are by
@@ -115,9 +115,11 @@ implicit, so a call site does not show them:
 ### Contracts across a process or language
 
 Each side keeps its own copy. Change both sides in one commit.
-`--print-contract` prints the helper's exit codes, HAL fill floor and
-device UID as one JSON object (`BridgeDaemon/src/HelperContract.cpp` /
-`HelperContractJson`). `tests/test_helper_contract.swift` runs the built
+`--print-contract` prints the helper's exit codes, HAL fill floor,
+device UID and metrics JSON keys as one JSON object
+(`BridgeDaemon/src/HelperContract.cpp` / `HelperContractJson`). It reads
+the metrics keys from the output of `ToJsonLine`, so it keeps no second
+key list. `tests/test_helper_contract.swift` runs the built
 helper and compares that object with the app's copies; `scripts/ci.sh`
 passes the helper path as `TEST_RUNNER_APM44_DAEMON_PATH`.
 
@@ -125,7 +127,7 @@ passes the helper path as `TEST_RUNNER_APM44_DAEMON_PATH`.
 |---|---|---|---|
 | CLI flags | `BridgeProcessPolicy.swift` / `BridgeLaunchArguments` | `CliOptions.cpp` / `ParseCliOptions` | `tests/test_bridge_process_policy.swift`, `tests/test_cli_options.cpp` (each side alone) |
 | Exit codes 0–3, 42, 43, 44 (section 4) | `DaemonExitCodes.h`, `main.cpp` | `BridgeProcessPolicy.swift` / `DaemonExitCode`, `BridgeTerminationPolicy` | `static_assert` in `tests/test_daemon_exit_codes.cpp`; literal values in `tests/test_bridge_process_policy.swift`; 42, 43, 44 compared across sides by `tests/test_helper_contract.swift` |
-| Metrics JSON keys | `engine/BridgeMetrics.cpp` / `ToJsonLine`; counter keys in `apm44/MetricsSnapshot.h` / `kMetricsCounterFields` | `MetricsParser.swift`, `BridgeMetricsSnapshot.CodingKeys` | `tests/test_bridge_metrics_json.cpp`, `tests/test_metrics_parser.swift` |
+| Metrics JSON keys | `engine/BridgeMetrics.cpp` / `ToJsonLine`; counter keys in `apm44/MetricsSnapshot.h` / `kMetricsCounterFields` | `MetricsParser.swift`, `BridgeMetricsSnapshot.CodingKeys` | `tests/test_bridge_metrics_json.cpp`, `tests/test_metrics_parser.swift`; the key set compared across sides by `tests/test_helper_contract.swift` (key names only: the app decodes most counters with `decodeIfPresent ?? 0`) |
 | `--list-devices` table (12 tab-separated columns) | `main.cpp` / `RunListDevices` | `DeviceCatalog.parseListDevicesOutput` | `tests/test_device_catalog.swift` (parser side only) |
 | stderr text | helper `std::cerr` lines | `DaemonStderrTail.failure(exitStatus:)`; "shm" substring is a fallback | `tests/test_bridge_process_policy.swift` |
 | Parent liveness | app keeps the stdin pipe's write end | `ParentDeathWatch`: EOF stops the engine | `tests/test_process_lifecycle.cpp`, `tests/test_engine_prepare_stop.cpp` |
