@@ -470,7 +470,7 @@ final class BridgeProcessManager: ObservableObject {
             if case .selectedOutputIncompatible(let issue) = blocker {
                 bannerMessage = AppStrings.namedIssue(
                     deviceDisplayName,
-                    issue: BridgeError.compatibilityText(issue)
+                    issue: AppStrings.compatibility(issue)
                 )
             }
             return

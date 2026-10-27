@@ -9,7 +9,7 @@ enum BridgeError: Equatable {
     case selectOutputDevice
     case selectedOutputGone
     /// `issue` is the first compatibility problem `AudioDeviceRow` found.
-    case selectedOutputIncompatible(issue: OutputCompatibilityIssue?)
+    case selectedOutputIncompatible(issue: OutputCompatibilityIssue)
     case outputDeviceDisconnected
     case bridgeDidNotStop
     /// A nil build ID is a missing or malformed one.
@@ -35,7 +35,7 @@ enum BridgeError: Equatable {
         case .selectedOutputGone:
             return AppStrings.selectedOutputGone
         case .selectedOutputIncompatible(let issue):
-            return AppStrings.selectedOutputIncompatible(issue: Self.compatibilityText(issue))
+            return AppStrings.selectedOutputIncompatible(issue: AppStrings.compatibility(issue))
         case .outputDeviceDisconnected:
             return AppStrings.outputDeviceDisconnected
         case .bridgeDidNotStop:
@@ -127,12 +127,6 @@ enum BridgeError: Equatable {
         default:
             return nil
         }
-    }
-
-    /// The localized wording of a compatibility issue; the generic
-    /// "Unsupported" label when there is none.
-    static func compatibilityText(_ issue: OutputCompatibilityIssue?) -> String {
-        issue.map(AppStrings.compatibility) ?? AppStrings.unsupportedPrefix
     }
 }
 

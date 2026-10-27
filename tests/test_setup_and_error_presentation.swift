@@ -111,7 +111,6 @@ final class BridgeErrorPresentationTests: XCTestCase {
     func testRecoveryChoiceComesFromKindNotWording() {
         XCTAssertEqual(BridgeError.selectedOutputIncompatible(issue: .stereoOutputUnavailable).recovery, .chooseCompatibleOutput)
         XCTAssertEqual(BridgeError.selectedOutputIncompatible(issue: .disconnected).recovery, .chooseCompatibleOutput)
-        XCTAssertEqual(BridgeError.selectedOutputIncompatible(issue: nil).recovery, .chooseCompatibleOutput)
         // A helper line that happens to read like another known error is
         // still just helper output.
         let lookalikes = [
