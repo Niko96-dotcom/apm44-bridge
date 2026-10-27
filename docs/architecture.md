@@ -17,7 +17,8 @@ This file uses three kinds of statement:
 
 ## Map
 
-Checked against `81a20ad` on 2026-10-27. When you add, move or remove an
+Last checked on 2026-10-27 against branch `arch/review-findings` (HEAD
+`d442be7`), not against `81a20ad`. When you add, move or remove an
 entry point, module, contract or state owner, update this Map in the same
 change.
 
