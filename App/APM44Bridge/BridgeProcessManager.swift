@@ -67,13 +67,22 @@ final class BridgeProcessManager: ObservableObject {
     @Published private(set) var metricsStale = false
     @Published private(set) var devices: [AudioDeviceRow] = []
     @Published private(set) var routingMode: RoutingMode = .blackHoleFallback
-    @Published private(set) var connectionPhase: BridgeConnectionPhase = .stopped
     @Published private(set) var lastStopReason: StopReason?
     @Published private var notice: BridgeNotice?
     @Published private(set) var isApplyingSettings = false
     @Published private(set) var cachedAppBuildID: String?
     @Published private(set) var cachedDriverBuildID: String?
     @Published private(set) var cachedBinaryURL: URL?
+
+    /// Derived from published inputs, so SwiftUI readers refresh whenever
+    /// `state`, `routingMode`, or `latestMetrics` change.
+    var connectionPhase: BridgeConnectionPhase {
+        BridgeConnectionPhase.derive(
+            state: state,
+            halMode: routingMode == .halVirtualDevice,
+            metrics: latestMetrics
+        )
+    }
 
     var bannerMessage: String? {
         get {
@@ -418,7 +427,6 @@ final class BridgeProcessManager: ObservableObject {
             appID: check.appBuildID,
             driverID: check.driverBuildID
         )
-        updateConnectionPhase()
     }
 
     func start(resetRetryAttempt: Bool = true) {
@@ -490,7 +498,6 @@ final class BridgeProcessManager: ObservableObject {
         }
         state = .starting
         processHealth = .spawning
-        connectionPhase = routingMode == .halVirtualDevice ? .waitingForDAW : .connected
         let collector = DaemonStderrCollector()
         stderrCollector = collector
         stdoutBuffer.reset()
@@ -561,7 +568,6 @@ final class BridgeProcessManager: ObservableObject {
             state = .running
             logger.info("Bridge running")
             wasRunningBeforeDisconnect = false
-            updateConnectionPhase()
             scheduleStaleWatch()
             drainPendingRestart()
         } catch {
@@ -608,7 +614,6 @@ final class BridgeProcessManager: ObservableObject {
     /// Records a helper that survived SIGKILL; its late exit frees the slot.
     private func markStuckHelper() {
         state = .error(.bridgeDidNotStop)
-        connectionPhase = .stopped
         awaitingStuckHelperExit = true
     }
 
@@ -823,7 +828,6 @@ final class BridgeProcessManager: ObservableObject {
     private func parkAfterWake(banner: String) {
         wasRunningBeforeDisconnect = true
         state = .reconnecting
-        connectionPhase = .stopped
         bannerMessage = banner
     }
 
@@ -1003,15 +1007,6 @@ final class BridgeProcessManager: ObservableObject {
             processHealth = .handshaking
             scheduleStabilityReset()
         }
-        updateConnectionPhase()
-    }
-
-    private func updateConnectionPhase() {
-        connectionPhase = BridgeConnectionPhase.derive(
-            state: state,
-            halMode: routingMode == .halVirtualDevice,
-            metrics: latestMetrics
-        )
     }
 
     private func triggerGlitchFlash() {
@@ -1102,7 +1097,6 @@ final class BridgeProcessManager: ObservableObject {
         clearPipeHandlers()
         resetMetricsState()
         state = .idle
-        connectionPhase = .stopped
         lastStopReason = nil
         resumeTerminationWaiters()
         drainPendingRestart()
@@ -1205,7 +1199,6 @@ final class BridgeProcessManager: ObservableObject {
         lastStopReason = nil
         state = .error(error)
         bannerMessage = error.message
-        connectionPhase = .stopped
         resumeTerminationWaiters()
     }
 
@@ -1243,7 +1236,6 @@ final class BridgeProcessManager: ObservableObject {
                 start()
             } else {
                 // Output still missing; keep the park for the next hotplug.
-                connectionPhase = .stopped
                 resumeTerminationWaiters()
             }
             return
@@ -1270,7 +1262,6 @@ final class BridgeProcessManager: ObservableObject {
             return
         case .autoRetry:
             scheduleAutoRetry()
-            connectionPhase = .stopped
             resumeTerminationWaiters()
             return
         case .failWhileRunning:
@@ -1278,7 +1269,6 @@ final class BridgeProcessManager: ObservableObject {
             let error = stderrTail.failure(exitStatus: exitStatus)
             state = .error(error)
             bannerMessage = error.message
-            connectionPhase = .stopped
             resumeTerminationWaiters()
             return
         case .cleanExitWhileRunning:
@@ -1290,7 +1280,6 @@ final class BridgeProcessManager: ObservableObject {
         case .ignore:
             break
         }
-        connectionPhase = .stopped
         resumeTerminationWaiters()
     }
 
