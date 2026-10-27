@@ -80,6 +80,20 @@ enum BridgeError: Equatable {
         }
     }
 
+    /// The short "why Start is blocked" text shown next to the Start button
+    /// for a `BridgeStartReadiness.blocker` result. `outputName` names the
+    /// remembered output that is no longer listed.
+    func startBlockedText(outputName: String) -> String {
+        switch self {
+        case .selectOutputDevice:
+            return AppStrings.chooseOutputToStart
+        case .selectedOutputGone:
+            return AppStrings.previousOutputUnavailable(name: outputName)
+        default:
+            return headline
+        }
+    }
+
     /// What the user should do next; nil when the headline already says it.
     var recovery: BridgeErrorRecovery? {
         switch self {
