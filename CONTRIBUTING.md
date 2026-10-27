@@ -34,6 +34,38 @@ See [Local verification and performance](docs/development-verification.md)
 for isolated UI launch, fresh worktrees, benchmarks, sanitizer commands, and
 the opt-in Xcode 26.6 compiler-probe workaround exercised on the development Mac.
 
+## Engineering Baseline
+
+Write for the next reader: keep the code maintainable, readable, and
+straightforward enough for a new developer to follow, with a clear owner for
+each responsibility.
+
+Before you change structure, read the Map in
+[docs/architecture.md](docs/architecture.md). It lists the entry points,
+modules, cross-language contracts and state owners, and it keeps observed
+structure apart from intended rules and open questions. When you add, move or
+remove one of those, update the Map in the same change.
+
+- **Keep related knowledge and invariants together.** Put a rule next to the
+  state it protects, in the module that owns that state. When a rule crosses a
+  process or language (exit codes, CLI flags, metrics keys, the
+  `--list-devices` table, the HAL fill floor), change both sides in one commit
+  and keep a test on each side.
+- **Make dependencies and control flow explicit.** Pass collaborators through
+  `init` or parameters, as `BridgeProcessManager` does with
+  `ProcessLaunching` and `BridgeDeviceSource`. Prefer a direct call to a new
+  `NotificationCenter` notification, `.shared` instance or global.
+- **Require abstractions to reduce the reader's total mental workload.** A new
+  type, protocol, wrapper or file must hide more than it adds. Add a protocol
+  seam only when it has a second adapter, usually a test fake.
+- **Split by responsibility, not by file or function size.** A long type that
+  owns one state machine can stay whole. Split out a part when it has its own
+  state and invariants that a reader can understand alone.
+- **Respect the language's idioms and the project's constraints.** Write
+  idiomatic C++20 (C++17 in `Driver/`), keep app state on the main actor in
+  Swift, and start Bash scripts with `set -euo pipefail` like the existing
+  ones. The real-time rules below override every other preference.
+
 ## Real-Time Audio Rules
 
 The bridge and HAL paths have a stricter bar than ordinary app code.

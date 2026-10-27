@@ -236,3 +236,38 @@ hardware soak. Those require a disposable DAW project, the USB-C headphones,
 and a separately authorized driver install/Core Audio restart during an idle
 audio session. No release signing, publication, or production installation was
 performed.
+
+## Full local check — 2026-10-27
+
+Mac Studio, macOS 27.0.1, Xcode 27.0, CMake 4.4.4, revision `891ee00`, clean
+tree. Build directory outside the checkout:
+
+```bash
+BUILD_DIR="<scratch dir>/ci-build" APM44_BUFFER_COMPILER_PROBE=1 bash scripts/ci.sh
+```
+
+Result: `ci: OK`, exit 0. No check failed.
+
+- Secret scan OK. Native tests: 22 of 22 passed. Swift tests: 299, 0 failures.
+- Script suites OK. `tests/test_daemon_exit_codes.sh` printed `NOT RUN` for the
+  real singleton-lock proof, as designed (T020). It runs in hosted CI or with
+  `APM44_RUN_SINGLETON_PROOF=1`.
+- Helper embedding, version identity (`0.12.16+891ee0024663`), universal
+  architectures and the installed-sync dry run: OK.
+
+Warnings that were present before any change:
+
+- `App/APM44Bridge/HotplugMonitor.swift:223` and
+  `App/APM44Bridge/HalDriverDetector.swift:226`: "forming
+  'UnsafeMutableRawPointer' to a variable of type 'Optional<CFString>'".
+- `tests/test_bridge_process_manager.swift:791`: `Thread.sleep` in an async
+  context. This is an error in the Swift 6 language mode.
+- The Thread Performance Checker reported a priority inversion 7 times in
+  `BridgeProcessManagerTests`. The fake launcher calls the termination handler
+  on the main thread (`tests/test_bridge_process_manager.swift:83`), so
+  `DaemonStderrCollector.waitForEnd` blocks it for up to 250 ms. In production,
+  `Process` calls the handler on a background thread.
+- Vendored libASPL `include/aspl/Stream.hpp:51-54`: `-Wreorder-init-list`.
+
+Not run: sanitizer builds (hosted CI only), the offline soak (opt-in), and all
+hardware, HAL install, DAW and update checks.
