@@ -93,12 +93,12 @@ final class BridgeErrorPresentationTests: XCTestCase {
     }
 
     func testIncompatibleOutputKeepsHeadlineWithCompatibleRecovery() {
-        let error = BridgeError.selectedOutputIncompatible(issue: "Stereo output unavailable")
+        let error = BridgeError.selectedOutputIncompatible(issue: .stereoOutputUnavailable)
         let presentation = BridgeErrorPresentation.presentation(for: error)
         XCTAssertEqual(
             presentation.headline,
             AppStrings.selectedOutputIncompatible(
-                issue: AppStrings.compatibility("Stereo output unavailable")
+                issue: AppStrings.compatibility(.stereoOutputUnavailable)
             )
         )
         XCTAssertEqual(presentation.recovery, AppStrings.incompatibleOutputRecovery)
@@ -109,8 +109,8 @@ final class BridgeErrorPresentationTests: XCTestCase {
     /// it without looking at any rendered text, so it cannot vary with the
     /// user's language or with wording in the payload.
     func testRecoveryChoiceComesFromKindNotWording() {
-        XCTAssertEqual(BridgeError.selectedOutputIncompatible(issue: "Stereo output unavailable").recovery, .chooseCompatibleOutput)
-        XCTAssertEqual(BridgeError.selectedOutputIncompatible(issue: "Ausgabe nicht stereo").recovery, .chooseCompatibleOutput)
+        XCTAssertEqual(BridgeError.selectedOutputIncompatible(issue: .stereoOutputUnavailable).recovery, .chooseCompatibleOutput)
+        XCTAssertEqual(BridgeError.selectedOutputIncompatible(issue: .disconnected).recovery, .chooseCompatibleOutput)
         XCTAssertEqual(BridgeError.selectedOutputIncompatible(issue: nil).recovery, .chooseCompatibleOutput)
         // A helper line that happens to read like another known error is
         // still just helper output.

@@ -74,9 +74,74 @@ final class DeviceCatalogTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         for row in rows {
             XCTAssertFalse(row.isMonitoringCompatible, row.uid)
-            XCTAssertEqual(row.compatibilityIssue, "A 32-bit float stereo stream is required")
+            XCTAssertEqual(row.compatibilityIssue, .float32StereoStreamRequired)
         }
         XCTAssertNil(DeviceCatalog.preferredDefault(from: rows))
+    }
+
+    func testCompatibilityIssuesAreReportedInCheckOrder() {
+        func row(
+            alive: Bool = true, output: Bool = true, channels: Int = 2, supports48000: Bool = true,
+            rate: Double = 48_000, formatId: UInt32 = 0, bits: Int = 0, float32Stereo: Bool = true
+        ) -> AudioDeviceRow {
+            AudioDeviceRow(
+                uid: "U", name: "N", nominalRate: rate, hasInput: false, hasOutput: output,
+                isAlive: alive, outputChannels: channels, outputFormatId: formatId,
+                outputFormatBits: bits, supports48000: supports48000,
+                outputFloat32Stereo: float32Stereo
+            )
+        }
+        XCTAssertNil(row().compatibilityIssue)
+        XCTAssertEqual(row(alive: false, output: false).compatibilityIssue, .disconnected)
+        XCTAssertEqual(row(channels: 1, supports48000: false).compatibilityIssue, .stereoOutputUnavailable)
+        XCTAssertEqual(row(output: false).compatibilityIssue, .stereoOutputUnavailable)
+        XCTAssertEqual(row(supports48000: false, rate: 44_100).compatibilityIssue, .rate48000Unsupported)
+        XCTAssertEqual(row(rate: 44_100, formatId: 1).compatibilityIssue, .currentRateNot48000)
+        XCTAssertEqual(row(formatId: 1, bits: 16).compatibilityIssue, .linearPCMRequired)
+        XCTAssertEqual(row(formatId: 1_819_304_813, bits: 16).compatibilityIssue, .float32OutputRequired)
+        XCTAssertEqual(row(float32Stereo: false).compatibilityIssue, .float32StereoStreamRequired)
+        XCTAssertEqual(row(bits: 16, float32Stereo: false).compatibilityIssue, .float32OutputRequired)
+    }
+
+    /// The German strings are read through the app bundle at run time. The
+    /// keys and the German text are pinned here: a changed key or a lost
+    /// translation fails this test.
+    func testEveryCompatibilityIssueHasEnglishTextAndAGermanTranslation() throws {
+        let expected: [(OutputCompatibilityIssue, key: String, english: String, german: String)] = [
+            (.disconnected, "compat_disconnected", "Disconnected", "Getrennt"),
+            (.stereoOutputUnavailable, "compat_stereo_output_unavailable",
+             "Stereo output unavailable", "Stereoausgabe nicht verfügbar"),
+            (.rate48000Unsupported, "compat_rate_48000_unsupported",
+             "48 kHz is not supported", "48 kHz wird nicht unterstützt"),
+            (.currentRateNot48000, "compat_current_rate_not_48000",
+             "Set the current rate to 48 kHz", "Aktuelle Rate auf 48 kHz stellen"),
+            (.linearPCMRequired, "compat_linear_pcm_required",
+             "Linear PCM output is required", "Linear-PCM-Ausgabe erforderlich"),
+            (.float32OutputRequired, "compat_float32_output_required",
+             "32-bit float output is required", "32-Bit-Float-Ausgabe erforderlich"),
+            (.float32StereoStreamRequired, "compat_float32_stereo_stream_required",
+             "A 32-bit float stereo stream is required", "Stereo-Stream mit 32-Bit-Float erforderlich"),
+        ]
+        XCTAssertEqual(expected.count, OutputCompatibilityIssue.allCases.count)
+        XCTAssertEqual(Set(expected.map(\.key)).count, expected.count, "keys must be unique")
+
+        let germanPath = try XCTUnwrap(Bundle.main.path(forResource: "de", ofType: "lproj"))
+        let german = try XCTUnwrap(Bundle(path: germanPath))
+        let missing = "\u{0}missing"
+        let englishUI = Bundle.main.preferredLocalizations.first != "de"
+        for issue in OutputCompatibilityIssue.allCases {
+            let entry = try XCTUnwrap(expected.first { $0.0 == issue }, "\(issue)")
+            let text = AppStrings.compatibility(issue)
+            XCTAssertFalse(text.isEmpty, "\(issue)")
+            if englishUI {
+                XCTAssertEqual(text, entry.english, "\(issue)")
+            }
+            XCTAssertEqual(
+                german.localizedString(forKey: entry.key, value: missing, table: "Localizable"),
+                entry.german,
+                "German entry for \(entry.key)"
+            )
+        }
     }
 
     func testIncompatibleOutputRemainsVisibleButCannotBeStarted() {

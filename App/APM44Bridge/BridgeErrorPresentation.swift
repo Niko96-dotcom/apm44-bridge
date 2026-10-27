@@ -8,8 +8,8 @@ enum BridgeError: Equatable {
     case bridgeNotFound
     case selectOutputDevice
     case selectedOutputGone
-    /// `issue` is the English compatibility key from `AudioDeviceRow`.
-    case selectedOutputIncompatible(issue: String?)
+    /// `issue` is the first compatibility problem `AudioDeviceRow` found.
+    case selectedOutputIncompatible(issue: OutputCompatibilityIssue?)
     case outputDeviceDisconnected
     case bridgeDidNotStop
     /// A nil build ID is a missing or malformed one.
@@ -129,9 +129,9 @@ enum BridgeError: Equatable {
         }
     }
 
-    /// The compatibility key is the English text; `compatibility` looks up
-    /// its localization.
-    static func compatibilityText(_ issue: String?) -> String {
+    /// The localized wording of a compatibility issue; the generic
+    /// "Unsupported" label when there is none.
+    static func compatibilityText(_ issue: OutputCompatibilityIssue?) -> String {
         issue.map(AppStrings.compatibility) ?? AppStrings.unsupportedPrefix
     }
 }

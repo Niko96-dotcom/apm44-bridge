@@ -334,8 +334,36 @@ enum AppStrings {
         )
     }
 
-    static func compatibility(_ english: String) -> String {
-        t(english, english)
+    static func compatibility(_ issue: OutputCompatibilityIssue) -> String {
+        switch issue {
+        case .disconnected: return compatDisconnected
+        case .stereoOutputUnavailable: return compatStereoOutputUnavailable
+        case .rate48000Unsupported: return compatRate48000Unsupported
+        case .currentRateNot48000: return compatCurrentRateNot48000
+        case .linearPCMRequired: return compatLinearPCMRequired
+        case .float32OutputRequired: return compatFloat32OutputRequired
+        case .float32StereoStreamRequired: return compatFloat32StereoStreamRequired
+        }
+    }
+
+    static var compatDisconnected: String { t("compat_disconnected", "Disconnected") }
+    static var compatStereoOutputUnavailable: String {
+        t("compat_stereo_output_unavailable", "Stereo output unavailable")
+    }
+    static var compatRate48000Unsupported: String {
+        t("compat_rate_48000_unsupported", "48 kHz is not supported")
+    }
+    static var compatCurrentRateNot48000: String {
+        t("compat_current_rate_not_48000", "Set the current rate to 48 kHz")
+    }
+    static var compatLinearPCMRequired: String {
+        t("compat_linear_pcm_required", "Linear PCM output is required")
+    }
+    static var compatFloat32OutputRequired: String {
+        t("compat_float32_output_required", "32-bit float output is required")
+    }
+    static var compatFloat32StereoStreamRequired: String {
+        t("compat_float32_stereo_stream_required", "A 32-bit float stereo stream is required")
     }
 
     private static func t(_ key: String, _ defaultValue: String) -> String {

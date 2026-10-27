@@ -127,11 +127,11 @@
 "error_details" = "Details";
 "error_status" = "Fehler";
 
-/* Device compatibility issues (English keys, German values) */
-"Disconnected" = "Getrennt";
-"Stereo output unavailable" = "Stereoausgabe nicht verfügbar";
-"48 kHz is not supported" = "48 kHz wird nicht unterstützt";
-"Set the current rate to 48 kHz" = "Aktuelle Rate auf 48 kHz stellen";
-"Linear PCM output is required" = "Linear-PCM-Ausgabe erforderlich";
-"32-bit float output is required" = "32-Bit-Float-Ausgabe erforderlich";
-"A 32-bit float stereo stream is required" = "Stereo-Stream mit 32-Bit-Float erforderlich";
+/* Device compatibility issues (OutputCompatibilityIssue) */
+"compat_disconnected" = "Getrennt";
+"compat_stereo_output_unavailable" = "Stereoausgabe nicht verfügbar";
+"compat_rate_48000_unsupported" = "48 kHz wird nicht unterstützt";
+"compat_current_rate_not_48000" = "Aktuelle Rate auf 48 kHz stellen";
+"compat_linear_pcm_required" = "Linear-PCM-Ausgabe erforderlich";
+"compat_float32_output_required" = "32-Bit-Float-Ausgabe erforderlich";
+"compat_float32_stereo_stream_required" = "Stereo-Stream mit 32-Bit-Float erforderlich";

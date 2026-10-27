@@ -1,5 +1,18 @@
 import Foundation
 
+/// Why an output device cannot carry the bridge. The case is the issue's
+/// identity; wording and translation live in `AppStrings.compatibility`.
+/// `AudioDeviceRow.compatibilityIssue` reports the first one that applies.
+enum OutputCompatibilityIssue: Equatable, CaseIterable {
+    case disconnected
+    case stereoOutputUnavailable
+    case rate48000Unsupported
+    case currentRateNot48000
+    case linearPCMRequired
+    case float32OutputRequired
+    case float32StereoStreamRequired
+}
+
 struct AudioDeviceRow: Identifiable, Equatable {
     let uid: String
     let name: String
@@ -76,18 +89,21 @@ struct AudioDeviceRow: Identifiable, Equatable {
         }
     }
 
-    var compatibilityIssue: String? {
-        if !isAlive { return "Disconnected" }
-        if !hasOutput || outputChannels < 2 { return "Stereo output unavailable" }
-        if !supports48000 { return "48 kHz is not supported" }
-        if abs(nominalRate - 48_000) > 1 { return "Set the current rate to 48 kHz" }
+    /// The first reason this output cannot carry the bridge, or nil. The case
+    /// is the identity; `AppStrings.compatibility` renders it. The checks run
+    /// in the order of the enum cases.
+    var compatibilityIssue: OutputCompatibilityIssue? {
+        if !isAlive { return .disconnected }
+        if !hasOutput || outputChannels < 2 { return .stereoOutputUnavailable }
+        if !supports48000 { return .rate48000Unsupported }
+        if abs(nominalRate - 48_000) > 1 { return .currentRateNot48000 }
         if outputFormatId != 0 && outputFormatId != 1_819_304_813 { // 'lpcm'
-            return "Linear PCM output is required"
+            return .linearPCMRequired
         }
         if outputFormatBits != 0 && outputFormatBits != 32 {
-            return "32-bit float output is required"
+            return .float32OutputRequired
         }
-        if !outputFloat32Stereo { return "A 32-bit float stereo stream is required" }
+        if !outputFloat32Stereo { return .float32StereoStreamRequired }
         return nil
     }
 

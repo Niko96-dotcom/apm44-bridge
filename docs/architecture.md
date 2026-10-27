@@ -435,6 +435,10 @@ The app carries errors as a typed `BridgeError`
 `BridgeErrorPresentation.presentation(for:)` on top of them, derive the
 localized sentence, short headline, recovery guidance and Details text
 from the kind and its raw payload (build IDs, exit status, stderr).
+The output compatibility problem is a typed `OutputCompatibilityIssue`
+(`DeviceCatalog.swift`), carried by `selectedOutputIncompatible`. Each case
+has its own `AppStrings` accessor and snake_case key (`compat_…`); no English
+sentence serves as a key or identity.
 
 ## 5. The app's run-state machine
 
