@@ -217,15 +217,14 @@ final class BridgeProcessManager: ObservableObject {
     /// file system. Caches refresh in refreshRoutingMode(),
     /// refreshDevices(), and start().
     var startBlockedReason: String? {
-        BridgeStartReadiness.blockedReason(
+        BridgeStartReadiness.blocker(
             binaryMissing: binaryURL == nil,
             selectedUid: settings.outputDeviceUid,
             devices: devices,
-            lastKnownName: deviceDisplayName,
             halDevicePresent: routingMode == .halVirtualDevice,
             appBuildID: cachedAppBuildID,
             driverBuildID: cachedDriverBuildID
-        )
+        )?.startBlockedText(outputName: deviceDisplayName)
     }
 
     var isTransitioning: Bool { state.isTransitioning }
@@ -445,51 +444,41 @@ final class BridgeProcessManager: ObservableObject {
             retryBudget.reset()
         }
         resolveCachedBinaryURL()
-        guard let url = binaryURL else {
-            logger.error("Bridge start blocked: missing binary")
-            state = .error(.bridgeNotFound)
-            return
-        }
-        guard let uid = settings.outputDeviceUid, !uid.isEmpty else {
-            logger.error("Bridge start blocked: no output selected")
-            state = .error(.selectOutputDevice)
-            return
-        }
-        // APM44 build-mismatch gate: in HAL mode the installed driver build
-        // ID must equal the app's full build ID. Fail closed on
-        // missing/malformed IDs. Never silently fall back to BlackHole here;
-        // when the HAL device is absent this gate does not block.
+        // The Start gate uses the live HAL build check, never the cached
+        // `routingMode`, which may be stale (last hotplug refresh). The same
+        // check refreshes the readiness caches first, so the launch route
+        // (`connectionPhase`, `buildArguments`, target fill) and the
+        // SwiftUI `startBlockedReason` agree with this gate decision. No
+        // silent fallback to BlackHole: HAL present plus an ID mismatch
+        // still blocks.
         let check = deviceSource.halBuildCheck()
-        let halPresent = check.halPresent
-        let appID = check.appBuildID
-        let driverID = check.driverBuildID
-        // Keep the launch route in lockstep with the live build-gate
-        // decision: `routingMode` may be stale (last hotplug refresh), so
-        // derive it from the same `halPresent` used for gating. This keeps
-        // `connectionPhase`, `buildArguments`, and target fill consistent.
-        // No silent fallback: HAL present + ID mismatch still errors below.
-        // Store the gate inputs in the readiness caches for SwiftUI.
-        updateReadinessCaches(halPresent: halPresent, appID: appID, driverID: driverID)
-        if halPresent,
-           !HalDriverDetector.buildIDsMatch(appBuildID: appID, driverBuildID: driverID) {
-            state = .error(.driverBuildMismatch(
-                appBuildID: HalDriverDetector.normalizedBuildID(appID),
-                driverBuildID: HalDriverDetector.normalizedBuildID(driverID)
-            ))
+        updateReadinessCaches(
+            halPresent: check.halPresent,
+            appID: check.appBuildID,
+            driverID: check.driverBuildID
+        )
+        if let blocker = BridgeStartReadiness.blocker(
+            binaryMissing: binaryURL == nil,
+            selectedUid: settings.outputDeviceUid,
+            devices: devices,
+            halDevicePresent: check.halPresent,
+            appBuildID: check.appBuildID,
+            driverBuildID: check.driverBuildID
+        ) {
+            logger.error("Bridge start blocked: \(String(describing: blocker), privacy: .public)")
+            state = .error(blocker)
+            if case .selectedOutputIncompatible(let issue) = blocker {
+                bannerMessage = AppStrings.namedIssue(
+                    deviceDisplayName,
+                    issue: BridgeError.compatibilityText(issue)
+                )
+            }
             return
         }
-        guard let selectedOutput = devices.first(where: { $0.uid == uid }) else {
-            logger.error("Bridge start blocked: selected output gone")
-            state = .error(.selectedOutputGone)
-            return
-        }
-        guard selectedOutput.isMonitoringCompatible else {
-            logger.error("Bridge start blocked: incompatible output")
-            let issue = selectedOutput.compatibilityIssue
-            state = .error(.selectedOutputIncompatible(issue: issue))
-            bannerMessage = AppStrings.namedIssue(selectedOutput.name, issue: BridgeError.compatibilityText(issue))
-            return
-        }
+        // The gate has checked all three; this only unwraps them.
+        guard let url = binaryURL,
+              let uid = settings.outputDeviceUid,
+              let selectedOutput = devices.first(where: { $0.uid == uid }) else { return }
 
         if resetRetryAttempt {
             logger.info("Bridge starting")

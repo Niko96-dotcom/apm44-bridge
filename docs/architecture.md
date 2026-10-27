@@ -64,7 +64,7 @@ responsibility.
 |---|---|---|
 | Composition root | `APM44BridgeApp.swift` | Creates settings, manager, updater and monitors; sends monitor events to the manager; owns the main menu (`AppDelegate`) |
 | Bridge supervisor | `BridgeProcessManager.swift` | Run-state machine, child process and pipes, retry budget, sleep/wake/hotplug/update resume, device-list cache, build-ID gate caches, metrics health |
-| Supervisor policy (pure) | `BridgeProcessPolicy.swift`, `BridgeStartReadiness.swift`, `BridgeErrorPresentation.swift`, `MetricsParser.swift`, `BridgeMetricsSnapshot.swift` | Launch arguments, exit classification, retry budget, stdout/stderr buffering, the Start gate, typed errors and their text, metrics decoding |
+| Supervisor policy (pure) | `BridgeProcessPolicy.swift`, `BridgeStartReadiness.swift`, `BridgeErrorPresentation.swift`, `MetricsParser.swift`, `BridgeMetricsSnapshot.swift` | Launch arguments, exit classification, retry budget, stdout/stderr buffering, the Start gate (one pure function returning a typed error), typed errors and their text, metrics decoding |
 | Supervisor seams | `ProcessLaunching.swift`, `BridgeEnvironment.swift` | `ProcessLaunching`, `BridgeDeviceSource`, `BridgeClock` and `BridgeTiming`, passed to `BridgeProcessManager.init` |
 | Device and driver access | `DeviceCatalog.swift`, `HalDriverDetector.swift`, `HotplugMonitor.swift`, `SystemLifecycleMonitor.swift`, `DriverMaintenance.swift`, `BridgeBinaryLocator.swift` | Device list (runs `apm44-bridge --list-devices`); HAL presence and build IDs (Core Audio and the installed plist); device-list and sleep/wake events; privileged Core Audio reload; helper path |
 | Settings | `BridgeSettings.swift`, `LatencyPreset.swift`, `SrcQuality.swift`, `LaunchAtLogin.swift` | Persisted user choices and their effective values; the login item |
@@ -460,7 +460,10 @@ Transitions:
   when the HAL device is present (`HalDriverDetector.swift` /
   `buildIDsMatch`, missing ids fail closed), output
   alive and compatible; then `starting` to `running`. Anything blocked
-  becomes `error`.
+  becomes `error` with the `BridgeError` the gate returns. The gate is
+  one pure function (`BridgeStartReadiness.blocker`): `start` passes the
+  live HAL build check, and the menu's `startBlockedReason` passes the
+  cached inputs and shows `BridgeError.startBlockedText`.
 - `stop` / `stopAsync`: `user` stop, `stopping`, escalate
   (TERM, 5 s wait, KILL, 5 s wait), then `idle`.
 - `quitApplication` (`MenuFooterViews.swift` quit button): stop, then

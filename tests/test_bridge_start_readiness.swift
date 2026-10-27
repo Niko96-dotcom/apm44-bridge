@@ -2,6 +2,8 @@ import XCTest
 @testable import APM44Bridge
 
 final class BridgeStartReadinessTests: XCTestCase {
+    private static let appID = "0.12.7+3fc0b148b674"
+    private static let driverID = "0.12.7+c2728cba0591"
     private let compatible = AudioDeviceRow(
         uid: "ok",
         name: "AirPods Max",
@@ -9,74 +11,100 @@ final class BridgeStartReadinessTests: XCTestCase {
         hasInput: false,
         hasOutput: true
     )
+    private let mono = AudioDeviceRow(
+        uid: "mono",
+        name: "Mono Output",
+        nominalRate: 48_000,
+        hasInput: false,
+        hasOutput: true,
+        outputChannels: 1
+    )
 
-    func testMissingBinaryBlocksStart() {
-        XCTAssertEqual(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: true,
-                selectedUid: compatible.uid,
-                devices: [compatible],
-                lastKnownName: compatible.name
-            ),
-            AppStrings.bridgeNotFound
-        )
+    private struct GateCase {
+        let name: String
+        var binaryMissing = false
+        var selectedUid: String? = "ok"
+        var halPresent = false
+        var appBuildID: String? = BridgeStartReadinessTests.appID
+        var driverBuildID: String? = BridgeStartReadinessTests.appID
+        let expected: BridgeError?
     }
 
-    func testMissingSelectionExplainsStart() {
-        XCTAssertEqual(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: nil,
-                devices: [compatible],
-                lastKnownName: AppStrings.outputNotSelected
-            ),
-            AppStrings.chooseOutputToStart
-        )
-    }
-
-    func testStaleSelectionKeepsNamedUnavailableReason() {
-        let reason = BridgeStartReadiness.blockedReason(
-            binaryMissing: false,
-            selectedUid: "gone",
-            devices: [compatible],
-            lastKnownName: "Studio Speakers"
-        )
-        XCTAssertEqual(reason, AppStrings.previousOutputUnavailable(name: "Studio Speakers"))
-        XCTAssertTrue(reason?.contains("Studio Speakers") == true)
-        XCTAssertEqual(reason?.filter { $0 == "." }.count, 0)
-    }
-
-    func testIncompatibleSelectionUsesLocalizedIssue() {
-        let mono = AudioDeviceRow(
-            uid: "mono",
-            name: "Mono Output",
-            nominalRate: 48_000,
-            hasInput: false,
-            hasOutput: true,
-            outputChannels: 1
-        )
-        XCTAssertEqual(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: mono.uid,
-                devices: [mono],
-                lastKnownName: mono.name
-            ),
-            AppStrings.selectedOutputIncompatible(
-                issue: AppStrings.compatibility("Stereo output unavailable")
+    func testGateReturnsFirstBlockingCondition() {
+        let cases = [
+            GateCase(name: "missing binary wins over every other blocker",
+                     binaryMissing: true, selectedUid: nil, halPresent: true,
+                     driverBuildID: Self.driverID, expected: .bridgeNotFound),
+            GateCase(name: "no output selected",
+                     selectedUid: nil, expected: .selectOutputDevice),
+            GateCase(name: "empty selection counts as none",
+                     selectedUid: "", expected: .selectOutputDevice),
+            GateCase(name: "no output selected wins over a build mismatch",
+                     selectedUid: nil, halPresent: true, driverBuildID: Self.driverID,
+                     expected: .selectOutputDevice),
+            GateCase(name: "HAL present with mismatched build IDs",
+                     halPresent: true, driverBuildID: Self.driverID,
+                     expected: .driverBuildMismatch(appBuildID: Self.appID, driverBuildID: Self.driverID)),
+            GateCase(name: "HAL present with a missing driver ID fails closed",
+                     halPresent: true, driverBuildID: nil,
+                     expected: .driverBuildMismatch(appBuildID: Self.appID, driverBuildID: nil)),
+            GateCase(name: "malformed IDs are reported as missing",
+                     halPresent: true, appBuildID: "unknown", driverBuildID: "$(APM44_BUILD_ID)",
+                     expected: .driverBuildMismatch(appBuildID: nil, driverBuildID: nil)),
+            GateCase(name: "build mismatch wins over a gone output",
+                     selectedUid: "gone", halPresent: true, driverBuildID: Self.driverID,
+                     expected: .driverBuildMismatch(appBuildID: Self.appID, driverBuildID: Self.driverID)),
+            GateCase(name: "BlackHole fallback ignores a missing driver",
+                     halPresent: false, driverBuildID: nil, expected: nil),
+            GateCase(name: "selected output not in the device list",
+                     selectedUid: "gone", expected: .selectedOutputGone),
+            GateCase(name: "selected output incompatible",
+                     selectedUid: "mono",
+                     expected: .selectedOutputIncompatible(issue: "Stereo output unavailable")),
+            GateCase(name: "HAL present with matching IDs and a compatible output",
+                     halPresent: true, expected: nil),
+            GateCase(name: "compatible output without HAL", expected: nil),
+        ]
+        for gate in cases {
+            XCTAssertEqual(
+                BridgeStartReadiness.blocker(
+                    binaryMissing: gate.binaryMissing,
+                    selectedUid: gate.selectedUid,
+                    devices: [compatible, mono],
+                    halDevicePresent: gate.halPresent,
+                    appBuildID: gate.appBuildID,
+                    driverBuildID: gate.driverBuildID
+                ),
+                gate.expected,
+                gate.name
             )
-        )
+        }
     }
 
-    func testCompatibleSelectionAllowsStart() {
-        XCTAssertNil(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: compatible.uid,
-                devices: [compatible],
-                lastKnownName: compatible.name
+    func testStartBlockedTextForEachGateResult() {
+        let cases: [(BridgeError, String)] = [
+            (.bridgeNotFound, AppStrings.bridgeNotFound),
+            (.selectOutputDevice, AppStrings.chooseOutputToStart),
+            (.driverBuildMismatch(appBuildID: Self.appID, driverBuildID: Self.driverID), AppStrings.driverBuildMismatch),
+            (.driverBuildMismatch(appBuildID: Self.appID, driverBuildID: nil), AppStrings.driverBuildMismatch),
+            (.selectedOutputGone, AppStrings.previousOutputUnavailable(name: "Studio Speakers")),
+            (
+                .selectedOutputIncompatible(issue: "Stereo output unavailable"),
+                AppStrings.selectedOutputIncompatible(
+                    issue: AppStrings.compatibility("Stereo output unavailable")
+                )
+            ),
+        ]
+        for (error, expected) in cases {
+            XCTAssertEqual(
+                error.startBlockedText(outputName: "Studio Speakers"),
+                expected,
+                String(describing: error)
             )
-        )
+        }
+        let gone = BridgeError.selectedOutputGone.startBlockedText(outputName: "Studio Speakers")
+        XCTAssertTrue(gone.contains("Studio Speakers"))
+        XCTAssertEqual(gone.filter { $0 == "." }.count, 0)
     }
 }
 
@@ -224,91 +252,6 @@ final class HalBuildIDTests: XCTestCase {
         let dict: NSDictionary = ["CFBundleName": "APM44Bridge"]
         XCTAssertTrue(dict.write(to: url, atomically: true))
         XCTAssertNil(HalDriverDetector.driverBuildID(plistURL: url))
-    }
-}
-
-final class BridgeStartReadinessBuildMismatchTests: XCTestCase {
-    private let appID = "0.12.7+3fc0b148b674"
-    private let driverID = "0.12.7+c2728cba0591"
-    private let compatible = AudioDeviceRow(
-        uid: "ok",
-        name: "AirPods Max",
-        nominalRate: 48_000,
-        hasInput: false,
-        hasOutput: true
-    )
-
-    func testMismatchBlocksCompatibleOutput() {
-        XCTAssertEqual(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: compatible.uid,
-                devices: [compatible],
-                lastKnownName: compatible.name,
-                halDevicePresent: true,
-                appBuildID: appID,
-                driverBuildID: driverID
-            ),
-            AppStrings.driverBuildMismatch
-        )
-    }
-
-    func testMatchingIDsAllowCompatibleOutputToStart() {
-        XCTAssertNil(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: compatible.uid,
-                devices: [compatible],
-                lastKnownName: compatible.name,
-                halDevicePresent: true,
-                appBuildID: appID,
-                driverBuildID: appID
-            )
-        )
-    }
-
-    func testFallbackWithoutHalDoesNotBlockOnMissingDriver() {
-        XCTAssertNil(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: compatible.uid,
-                devices: [compatible],
-                lastKnownName: compatible.name,
-                halDevicePresent: false,
-                appBuildID: appID,
-                driverBuildID: nil
-            )
-        )
-    }
-
-    func testMissingDriverIDWithHalEnumeratedBlocks() {
-        XCTAssertEqual(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: compatible.uid,
-                devices: [compatible],
-                lastKnownName: compatible.name,
-                halDevicePresent: true,
-                appBuildID: appID,
-                driverBuildID: nil
-            ),
-            AppStrings.driverBuildMismatch
-        )
-    }
-
-    func testNoOutputSelectedKeepsOutputWarningDespiteMismatch() {
-        XCTAssertEqual(
-            BridgeStartReadiness.blockedReason(
-                binaryMissing: false,
-                selectedUid: nil,
-                devices: [compatible],
-                lastKnownName: AppStrings.outputNotSelected,
-                halDevicePresent: true,
-                appBuildID: appID,
-                driverBuildID: driverID
-            ),
-            AppStrings.chooseOutputToStart
-        )
     }
 }
 
