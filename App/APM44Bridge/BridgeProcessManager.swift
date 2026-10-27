@@ -114,20 +114,26 @@ final class BridgeProcessManager: ObservableObject {
     private var retryTask: Task<Void, Never>?
     private var stabilityTask: Task<Void, Never>?
     private var processHealth: BridgeProcessHealth = .stopped
-    /// Read and changed only through `resumeIntent`.
-    private var resumeIntentInMemory = ResumeIntent()
-    /// The resume intents. `ResumeIntent` owns their rules. This accessor is
-    /// the one place that syncs its update request with `BridgeSettings`,
-    /// which persists it across the relaunch: reading loads the persisted
-    /// value, and writing stores it when it changed.
+    /// The wake and output-return intents. Read and changed only through
+    /// `resumeIntent`. The update request has no copy here.
+    private var storedResumesOnWake = false
+    private var storedResumesWhenOutputReturns = false
+    /// The resume intents. `ResumeIntent` owns their rules. `BridgeSettings`
+    /// is the only storage of the update request, which it persists across
+    /// the relaunch: reading loads it from the settings, and writing stores
+    /// it there when it changed.
     private var resumeIntent: ResumeIntent {
         get {
-            var intent = resumeIntentInMemory
+            var intent = ResumeIntent(
+                resumesOnWake: storedResumesOnWake,
+                resumesWhenOutputReturns: storedResumesWhenOutputReturns
+            )
             intent.loadPersistedUpdateRequest(settings.resumeAfterUpdateRequestedAt)
             return intent
         }
         set {
-            resumeIntentInMemory = newValue
+            storedResumesOnWake = newValue.resumesOnWake
+            storedResumesWhenOutputReturns = newValue.resumesWhenOutputReturns
             if settings.resumeAfterUpdateRequestedAt != newValue.updateRequestedAt {
                 settings.resumeAfterUpdateRequestedAt = newValue.updateRequestedAt
             }
