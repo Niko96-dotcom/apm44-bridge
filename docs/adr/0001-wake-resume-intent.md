@@ -3,7 +3,7 @@
 - **Status:** Accepted, implemented (updated 2026-10-27; originally Proposed 2026-09-27). Decision items 1-4 shipped in #46 (`10af56f`). Action item 5 is partly done: the model half of Option B (`ResumeIntent`) shipped on 2026-10-27; the reconciler stays deferred. See "Implementation status".
 - **Date:** 2026-09-27
 - **Deciders:** Niko (owner)
-- **Source:** tech-debt item #3 and test gap T16 in the 2026-09-27 audit (`.audit/tech-debt.md`, `.audit/test-plan.md`), both at `30707e6`.
+- **Source:** tech-debt item #3 and test gap T16 in the 2026-09-27 audit at `30707e6`. The audit's tech-debt and test-plan files are local and not tracked in this repository.
 - **Evidence rule:** every `file:line` below is at `30707e6`, the revision the decision was written against. Line numbers in the Context, Decision and Consequences sections are therefore historical; the "Implementation status" section names symbols and tests at the current revision.
 
 ## Context
