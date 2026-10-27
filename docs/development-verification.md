@@ -239,7 +239,7 @@ performed.
 
 ## Full local check — 2026-10-27
 
-Mac Studio, macOS 27.0.1, Xcode 27.0, CMake 4.4.4, revision `891ee00`, clean
+Mac Studio, macOS 27.0.1, Xcode 27.0, CMake 4.4.4, revision `81a20ad`, clean
 tree. Build directory outside the checkout:
 
 ```bash
@@ -253,7 +253,8 @@ Result: `ci: OK`, exit 0. No check failed.
   real singleton-lock proof, as designed (T020). It runs in hosted CI or with
   `APM44_RUN_SINGLETON_PROOF=1`.
 - Helper embedding, version identity (`0.12.16+891ee0024663`), universal
-  architectures and the installed-sync dry run: OK.
+  architectures and the installed-sync dry run: OK. The build ID names
+  `891ee00`, the hash of the same tree before the rebase merge of PR #62.
 
 Warnings that were present before any change:
 
