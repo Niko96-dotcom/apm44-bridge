@@ -54,7 +54,7 @@ Native code is C++20. The driver target sets C++17 (`Driver/CMakeLists.txt`).
 | Driver | `Driver/src/` | Publishes the 44.1 kHz device through libASPL (`Driver.cpp`); copies DAW output into the ring and pairs mono lanes (`ShmIoHandler`); format constants (`DriverFormat.h`) |
 | Helper process shell | `BridgeDaemon/src/main.cpp`, `CliOptions`, `DaemonExitCodes.h`, `ProcessSingletonLock`, `ParentDeathWatch` | Parses the CLI, serves the info verbs, takes the per-user lock, watches the parent, maps failures to exit codes |
 | Helper HAL access | `BridgeDaemon/src/hal/` | Lists devices (`DeviceEnumerator`), checks formats (`FormatNegotiator`) |
-| Bridge engine | `BridgeDaemon/src/engine/` | `BridgeEngine` owns prepare, start, stop, the control loop and the real-time callbacks `onInput`/`onOutput`. `IoProcHandlers` adapt Core Audio buffers. `LibSamplerateSrc` resamples. `VirtualDeviceFeed`, `StaleRingRecoveryPlan`, `ShmMismatchDebounce` and `VirtualPrebufferGate` handle the HAL-mode ring. `MetricsPublisher` and `BridgeMetrics` publish and format metrics |
+| Bridge engine | `BridgeDaemon/src/engine/` | `BridgeEngine` owns prepare, start, stop, the control loop and the real-time callbacks `onInput`/`onOutput`. `IoProcHandlers` adapt Core Audio buffers. `LibSamplerateSrc` resamples. `VirtualDeviceFeed`, `StaleRingRecoveryPlan`, `ShmMismatchDebounce` and `VirtualPrebufferGate` handle the HAL-mode ring. `MetricsPublisher` and `BridgeMetrics` publish and format metrics; both loop over the counter table `kMetricsCounterFields` in `Shared/include/apm44/MetricsSnapshot.h`, so a new counter edits only that header and the Swift snapshot |
 
 The app is one Swift 5.10 target (`App/APM44Bridge/`) with SwiftUI and
 AppKit. It has no internal module split; the groups below are by
@@ -120,7 +120,7 @@ Each side keeps its own copy. Change both sides in one commit.
 |---|---|---|---|
 | CLI flags | `BridgeProcessPolicy.swift` / `BridgeLaunchArguments` | `CliOptions.cpp` / `ParseCliOptions` | `tests/test_bridge_process_policy.swift`, `tests/test_cli_options.cpp` (each side alone) |
 | Exit codes 0–3, 42, 43, 44 (section 4) | `DaemonExitCodes.h`, `main.cpp` | `BridgeProcessPolicy.swift` / `DaemonExitCode`, `BridgeTerminationPolicy` | `static_assert` in `tests/test_daemon_exit_codes.cpp`; literal values in `tests/test_bridge_process_policy.swift` |
-| Metrics JSON keys | `engine/BridgeMetrics.cpp` / `ToJsonLine` | `MetricsParser.swift`, `BridgeMetricsSnapshot.CodingKeys` | `tests/test_bridge_metrics_json.cpp`, `tests/test_metrics_parser.swift` |
+| Metrics JSON keys | `engine/BridgeMetrics.cpp` / `ToJsonLine`; counter keys in `apm44/MetricsSnapshot.h` / `kMetricsCounterFields` | `MetricsParser.swift`, `BridgeMetricsSnapshot.CodingKeys` | `tests/test_bridge_metrics_json.cpp`, `tests/test_metrics_parser.swift` |
 | `--list-devices` table (12 tab-separated columns) | `main.cpp` / `RunListDevices` | `DeviceCatalog.parseListDevicesOutput` | `tests/test_device_catalog.swift` (parser side only) |
 | stderr text | helper `std::cerr` lines | `DaemonStderrTail.failure(exitStatus:)`; "shm" substring is a fallback | `tests/test_bridge_process_policy.swift` |
 | Parent liveness | app keeps the stdin pipe's write end | `ParentDeathWatch`: EOF stops the engine | `tests/test_process_lifecycle.cpp`, `tests/test_engine_prepare_stop.cpp` |
