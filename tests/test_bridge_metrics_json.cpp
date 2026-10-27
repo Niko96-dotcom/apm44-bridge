@@ -16,7 +16,49 @@ bool Contains(const std::string& haystack, const std::string& needle) {
   return haystack.find(needle) != std::string::npos;
 }
 
+// Every field holds a value no other field holds, so a swapped, dropped or
+// duplicated field changes the result.
+apm44::MetricsSnapshot DistinctSnapshot() {
+  apm44::MetricsSnapshot snapshot;
+  snapshot.fillMs = 15.25;
+  snapshot.smoothedRatio = 1.088435;
+  snapshot.ppm = -12.75;
+  snapshot.underruns = 101;
+  snapshot.overruns = 102;
+  snapshot.xruns = 103;
+  snapshot.inputDroppedFrames = 104;
+  snapshot.producerOverrunEvents = 105;
+  snapshot.producerDroppedFrames = 106;
+  snapshot.producerNotReadyDroppedFrames = 107;
+  snapshot.laneQueueDrops = 108;
+  snapshot.laneTimestampMismatches = 109;
+  snapshot.laneFrameMismatchDroppedFrames = 110;
+  snapshot.consumerResets = 111;
+  snapshot.outputStarvationFrames = 112;
+  snapshot.partialShortageEvents = 113;
+  snapshot.converterResetEvents = 114;
+  snapshot.rebufferEvents = 115;
+  snapshot.recoveryFadeEvents = 18446744073709551615ULL;
+  return snapshot;
+}
+
 }  // namespace
+
+TEST_CASE("BridgeMetrics JSON line is byte-identical to the app's contract",
+          "[metrics][golden]") {
+  const auto metrics = apm44::MakeBridgeMetrics(DistinctSnapshot(), 20.0, "high");
+
+  REQUIRE(apm44::ToJsonLine(metrics) ==
+          R"({"fill_ms":15.250,"ratio":1.08843500,"ppm":-12.75,)"
+          R"("underruns":101,"overruns":102,"xruns":103,"input_dropped_frames":104,)"
+          R"("producer_overrun_events":105,"producer_dropped_frames":106,)"
+          R"("producer_not_ready_dropped_frames":107,"lane_queue_drops":108,)"
+          R"("lane_timestamp_mismatches":109,"lane_frame_mismatch_dropped_frames":110,)"
+          R"("consumer_resets":111,"output_starvation_frames":112,)"
+          R"("partial_shortage_events":113,"converter_reset_events":114,)"
+          R"("rebuffer_events":115,"recovery_fade_events":18446744073709551615,)"
+          R"("estimated_rt_ms":17.750,"target_fill_ms":20.000,"src_quality":"high"})");
+}
 
 TEST_CASE("BridgeMetrics exposes every known frame-loss counter", "[metrics][F-05]") {
   apm44::MetricsSnapshot snapshot;
@@ -70,23 +112,26 @@ TEST_CASE("BridgeMetrics exposes every known frame-loss counter", "[metrics][F-0
 TEST_CASE("BridgeMetrics JSON truncation fails closed without overreading buffer",
           "[metrics][JSON-01][JSON-02]") {
   const std::string longQuality(4096, 'q');
-  const auto metrics =
-      apm44::MakeBridgeMetrics(15.2, 1.088435, 12.0, 1, 2, 3, 15.0, longQuality);
+  const auto metrics = apm44::MakeBridgeMetrics(DistinctSnapshot(), 15.0, longQuality);
   const std::string line = apm44::ToJsonLine(metrics);
 
   REQUIRE(line == "{}");
 }
 
 TEST_CASE("estimated_rt_ms equals fill_ms plus group delay") {
-  const auto metrics = apm44::MakeBridgeMetrics(10.0, 1.0, 0.0, 0, 0, 0, 10.0, "medium");
+  apm44::MetricsSnapshot snapshot;
+  snapshot.fillMs = 10.0;
+  const auto metrics = apm44::MakeBridgeMetrics(snapshot, 10.0, "medium");
   REQUIRE(std::abs(metrics.estimatedRtMs - (10.0 + apm44::kSrcGroupDelayMediumMs)) < 0.001);
   REQUIRE(metrics.estimatedRtMs > 0.0);
 }
 
 TEST_CASE("estimated_rt_ms distinguishes public SRC quality labels", "[metrics][SRC-01]") {
-  const auto medium = apm44::MakeBridgeMetrics(15.0, 1.0, 0.0, 0, 0, 0, 15.0, "medium");
-  const auto high = apm44::MakeBridgeMetrics(15.0, 1.0, 0.0, 0, 0, 0, 15.0, "high");
-  const auto best = apm44::MakeBridgeMetrics(15.0, 1.0, 0.0, 0, 0, 0, 15.0, "best");
+  apm44::MetricsSnapshot snapshot;
+  snapshot.fillMs = 15.0;
+  const auto medium = apm44::MakeBridgeMetrics(snapshot, 15.0, "medium");
+  const auto high = apm44::MakeBridgeMetrics(snapshot, 15.0, "high");
+  const auto best = apm44::MakeBridgeMetrics(snapshot, 15.0, "best");
 
   REQUIRE(medium.estimatedRtMs < high.estimatedRtMs);
   REQUIRE(high.estimatedRtMs < best.estimatedRtMs);
@@ -137,32 +182,14 @@ TEST_CASE("MetricsPublisher keeps fields from the same publication", "[metrics][
   REQUIRE(apm44::ReadMetrics(state).underruns == kPublications);
 }
 
-TEST_CASE("MetricsPublisherPackedFloatingFieldsRoundTrip",
+TEST_CASE("MetricsPublisher round-trips every snapshot field",
           "[metrics][rt][METR-04]") {
   apm44::MetricsPublisherState state;
-  apm44::MetricsSnapshot next;
-  next.fillMs = 15.25;
+  apm44::MetricsSnapshot next = DistinctSnapshot();
   next.smoothedRatio = 48000.0 / 44100.0;
-  next.ppm = -12.75;
-  next.underruns = 2;
-  next.overruns = 3;
-  next.xruns = 5;
-  next.partialShortageEvents = 7;
-  next.converterResetEvents = 11;
-  next.rebufferEvents = 13;
-  next.recoveryFadeEvents = 17;
 
   apm44::PublishMetrics(state, next);
   const apm44::MetricsSnapshot read = apm44::ReadMetrics(state);
 
-  REQUIRE(read.fillMs == next.fillMs);
-  REQUIRE(read.smoothedRatio == next.smoothedRatio);
-  REQUIRE(read.ppm == next.ppm);
-  REQUIRE(read.underruns == next.underruns);
-  REQUIRE(read.overruns == next.overruns);
-  REQUIRE(read.xruns == next.xruns);
-  REQUIRE(read.partialShortageEvents == next.partialShortageEvents);
-  REQUIRE(read.converterResetEvents == next.converterResetEvents);
-  REQUIRE(read.rebufferEvents == next.rebufferEvents);
-  REQUIRE(read.recoveryFadeEvents == next.recoveryFadeEvents);
+  REQUIRE(read == next);
 }

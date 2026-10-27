@@ -2,7 +2,6 @@
 
 #include <apm44/MetricsSnapshot.h>
 
-#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -15,34 +14,14 @@ inline constexpr double kSrcGroupDelayBestMs = 3.0;
 
 double SrcGroupDelayMsForCli(std::string_view srcQuality);
 
+// One metrics JSON line: the published snapshot plus the values the CLI adds.
 struct BridgeMetrics {
-  double fillMs = 0.0;
-  double ratio = 0.0;
-  double ppm = 0.0;
-  uint64_t underruns = 0;
-  uint64_t overruns = 0;
-  uint64_t xruns = 0;
-  uint64_t inputDroppedFrames = 0;
-  uint64_t producerOverrunEvents = 0;
-  uint64_t producerDroppedFrames = 0;
-  uint64_t producerNotReadyDroppedFrames = 0;
-  uint64_t laneQueueDrops = 0;
-  uint64_t laneTimestampMismatches = 0;
-  uint64_t laneFrameMismatchDroppedFrames = 0;
-  uint64_t consumerResets = 0;
-  uint64_t outputStarvationFrames = 0;
-  uint64_t partialShortageEvents = 0;
-  uint64_t converterResetEvents = 0;
-  uint64_t rebufferEvents = 0;
-  uint64_t recoveryFadeEvents = 0;
+  MetricsSnapshot snapshot;
   double estimatedRtMs = 0.0;
   double targetFillMs = 15.0;
   std::string srcQuality = "medium";
 };
 
-BridgeMetrics MakeBridgeMetrics(double fillMs, double ratio, double ppm, uint64_t underruns,
-                                uint64_t overruns, uint64_t xruns, double targetFillMs,
-                                std::string_view srcQuality);
 BridgeMetrics MakeBridgeMetrics(const MetricsSnapshot& snapshot, double targetFillMs,
                                 std::string_view srcQuality);
 
