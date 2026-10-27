@@ -6,8 +6,10 @@ import Foundation
 /// This is the model half of Option B in
 /// `docs/adr/0001-wake-resume-intent.md`. It does no I/O, never awaits and
 /// reads no clock: the caller passes the time in. `BridgeProcessManager`
-/// holds one value, calls the operation that names each event, and keeps
-/// all scheduling, generation counters and the run state itself.
+/// builds one value through its `resumeIntent` accessor, calls the operation
+/// that names each event, and keeps all scheduling, generation counters and
+/// the run state itself. The manager stores the wake and output-return
+/// intents; `BridgeSettings` stores the update request.
 struct ResumeIntent: Equatable {
     /// A request older than this when the relaunched app checks it is stale.
     static let updateResumeWindow: TimeInterval = 10 * 60
