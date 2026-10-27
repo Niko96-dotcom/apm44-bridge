@@ -1205,7 +1205,7 @@ final class BridgeProcessManagerTests: XCTestCase {
 
         XCTAssertEqual(launcher.makeCount, 0)
         if case .error(let error) = manager.state {
-            XCTAssertEqual(error, .selectedOutputIncompatible(issue: incompatible.compatibilityIssue))
+            XCTAssertEqual(error, .selectedOutputIncompatible(issue: .stereoOutputUnavailable))
             XCTAssertTrue(error.message.localizedCaseInsensitiveContains("stereo"))
         } else {
             XCTFail("Expected compatibility error, got \(manager.state)")
