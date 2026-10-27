@@ -60,7 +60,7 @@ final class BridgeStartReadinessTests: XCTestCase {
                      selectedUid: "gone", expected: .selectedOutputGone),
             GateCase(name: "selected output incompatible",
                      selectedUid: "mono",
-                     expected: .selectedOutputIncompatible(issue: "Stereo output unavailable")),
+                     expected: .selectedOutputIncompatible(issue: .stereoOutputUnavailable)),
             GateCase(name: "HAL present with matching IDs and a compatible output",
                      halPresent: true, expected: nil),
             GateCase(name: "compatible output without HAL", expected: nil),
@@ -89,9 +89,9 @@ final class BridgeStartReadinessTests: XCTestCase {
             (.driverBuildMismatch(appBuildID: Self.appID, driverBuildID: nil), AppStrings.driverBuildMismatch),
             (.selectedOutputGone, AppStrings.previousOutputUnavailable(name: "Studio Speakers")),
             (
-                .selectedOutputIncompatible(issue: "Stereo output unavailable"),
+                .selectedOutputIncompatible(issue: .stereoOutputUnavailable),
                 AppStrings.selectedOutputIncompatible(
-                    issue: AppStrings.compatibility("Stereo output unavailable")
+                    issue: AppStrings.compatibility(.stereoOutputUnavailable)
                 )
             ),
         ]
