@@ -11,11 +11,13 @@ final class HelperContractTests: XCTestCase {
         let exitCodes: [String: Int32]
         let halFillFloorMs: Double
         let deviceUid: String
+        let metricsJsonKeys: [String]
 
         enum CodingKeys: String, CodingKey {
             case exitCodes = "exit_codes"
             case halFillFloorMs = "hal_fill_floor_ms"
             case deviceUid = "device_uid"
+            case metricsJsonKeys = "metrics_json_keys"
         }
     }
 
@@ -38,6 +40,10 @@ final class HelperContractTests: XCTestCase {
         XCTAssertEqual(contract.exitCodes, appExitCodes)
         XCTAssertEqual(contract.halFillFloorMs, LatencyPreset.halMinimumTargetFillMs)
         XCTAssertEqual(contract.deviceUid, HalDriverDetector.deviceUid)
+        XCTAssertEqual(
+            Set(contract.metricsJsonKeys),
+            Set(BridgeMetricsSnapshot.CodingKeys.allCases.map(\.rawValue))
+        )
     }
 
     private func helperURL() throws -> URL {

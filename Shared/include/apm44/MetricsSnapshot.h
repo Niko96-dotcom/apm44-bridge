@@ -14,8 +14,10 @@ namespace apm44 {
 // `BridgeDaemon/src/engine/MetricsPublisher.h`.
 //
 // To add a counter: add the member here, add its row to
-// `kMetricsCounterFields` below, and add its key to the Swift
-// `BridgeMetricsSnapshot`. The publisher and the JSON line follow the table.
+// `kMetricsCounterFields` below, fill it in
+// `BridgeEngine::publishMetricsSnapshot`, and add its key to the Swift
+// `BridgeMetricsSnapshot`. The publisher and the JSON line follow the table;
+// tests/test_helper_contract.swift fails until the Swift key exists.
 struct MetricsSnapshot {
   double fillMs = 0.0;
   double smoothedRatio = 1.0;
