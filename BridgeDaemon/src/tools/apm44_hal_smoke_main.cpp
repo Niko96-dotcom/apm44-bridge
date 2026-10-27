@@ -1,5 +1,6 @@
 #include "hal/DeviceEnumerator.h"
 
+#include <apm44/HalDeviceIdentity.h>
 #include <apm44/MmapShmRing.h>
 
 #include <CoreAudio/CoreAudio.h>
@@ -14,8 +15,6 @@
 #include <thread>
 
 namespace {
-
-constexpr std::string_view kApm44DeviceUid = "com.niko.apm44.bridge.device";
 
 OSStatus ProbeIoProc(AudioDeviceID,
                      const AudioTimeStamp*,
@@ -72,7 +71,7 @@ int main(int argc, char* argv[]) {
   const double timeoutSec = ParseTimeoutSeconds(argc, argv);
 
   apm44::DeviceEnumerator enumerator;
-  const auto device = enumerator.findOutputByUid(kApm44DeviceUid);
+  const auto device = enumerator.findOutputByUid(apm44::kApm44DeviceUid);
   if (!device) {
     std::cerr << "error: APM44 Bridge output device is not visible to Core Audio\n";
     return 1;

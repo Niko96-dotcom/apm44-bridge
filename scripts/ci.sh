@@ -86,7 +86,11 @@ if [[ "${APM44_SKIP_APP:-0}" != "1" ]]; then
       "$APM44_APP_DERIVED_DATA/Build/Products/$CONFIG/APM44 Bridge.app" \
       "$APM44_APP_DERIVED_DATA/Build/Products/Debug/APM44 Bridge.app.dSYM" \
       "$APM44_APP_DERIVED_DATA/Build/Products/$CONFIG/APM44 Bridge.app.dSYM"
-    bash scripts/run-xcodebuild.sh -project App/APM44Bridge.xcodeproj \
+    # xcodebuild passes TEST_RUNNER_* variables to the test process without
+    # the prefix; tests/test_helper_contract.swift runs this helper.
+    TEST_RUNNER_APM44_DAEMON_PATH="$APM44_DAEMON_PATH" \
+      TEST_RUNNER_CI="${CI:-}" \
+      bash scripts/run-xcodebuild.sh -project App/APM44Bridge.xcodeproj \
       -scheme APM44Bridge \
       -destination 'platform=macOS' \
       -derivedDataPath "$APM44_APP_DERIVED_DATA" \

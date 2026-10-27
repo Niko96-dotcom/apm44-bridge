@@ -5,6 +5,8 @@ enum LatencyPreset: String, CaseIterable, Identifiable {
     case balanced
     case safe
 
+    /// Mirrors `kHalTargetFillFloorMs` in the helper;
+    /// tests/test_helper_contract.swift compares them.
     static let halMinimumTargetFillMs: Double = 20
 
     var id: String { rawValue }

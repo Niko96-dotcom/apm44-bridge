@@ -42,6 +42,11 @@ target_sources(test_cli_options PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/CliOptions.cpp
 )
 target_link_libraries(test_cli_options PRIVATE samplerate::samplerate)
+apm44_add_test(test_helper_contract test_helper_contract.cpp)
+target_sources(test_helper_contract PRIVATE
+  ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/HelperContract.cpp
+)
+target_link_libraries(test_helper_contract PRIVATE samplerate::samplerate)
 apm44_add_test(test_process_lifecycle test_process_lifecycle.cpp)
 target_sources(test_process_lifecycle PRIVATE
   ${CMAKE_SOURCE_DIR}/BridgeDaemon/src/ParentDeathWatch.cpp

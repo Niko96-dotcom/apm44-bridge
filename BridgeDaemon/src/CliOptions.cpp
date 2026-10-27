@@ -76,6 +76,7 @@ void PrintUsage(const char* programName) {
             << "  --preflight         Validate devices/rates without starting audio\n"
             << "  --print-config      Print resolved device/config (no audio)\n"
             << "  --shm-status        Check APM44Bridge.driver shared-memory ring once\n"
+            << "  --print-contract    Print the values the app copies from the helper as JSON\n"
             << "  --input-device UID  Input device UID (default: BlackHole 2ch)\n"
             << "  --output-device UID Output device UID (default: AirPods Max)\n"
             << "  --target-fill-ms N  Ring target fill 6–120 ms (default 15)\n"
@@ -109,6 +110,8 @@ CliOptions ParseCliOptions(int argc, char* argv[]) {
       options.printConfig = true;
     } else if (arg == "--shm-status") {
       options.shmStatus = true;
+    } else if (arg == "--print-contract") {
+      options.printContract = true;
     } else if (arg == "--metrics-json") {
       options.metricsJson = true;
     } else if (arg == "--virtual-device") {
