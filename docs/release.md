@@ -112,9 +112,10 @@ Each enclosure is the signed, notarized `APM44Bridge-<version>.pkg` and carries
 `sparkle:installationType="package"`, so Sparkle requests administrator
 authorization before replacing the app and HAL driver.
 
-The app contains only the public Ed25519 key. Keep the matching private key in
-the local Sparkle Keychain item or the GitHub Actions `SPARKLE_PRIVATE_KEY`
-secret. Never put the private key in a plist, source file, appcast, log, or
+The app contains only the public Ed25519 key. Keep the matching private key only
+in the local Sparkle Keychain item; no GitHub Actions workflow receives it (the
+publish workflow verifies with `scripts/sparkle-verify.swift`, which checks
+signatures against the app's `SUPublicEDKey`). Never put the private key in a plist, source file, appcast, log, or
 command-line argument. `scripts/generate-appcast.sh` accepts the secret via
 stdin and `scripts/validate-appcast.sh` fails closed on malformed, unsigned,
 non-HTTPS, or incorrectly typed package items. With `--pkg <path>` it also
@@ -145,6 +146,9 @@ Verify public propagation without authentication with:
 SPARKLE_SIGN_UPDATE="$(bash scripts/ensure-sparkle-tools.sh)" \
   bash scripts/verify-published-release.sh
 ```
+
+or, without the private key, with
+`SPARKLE_SIGN_UPDATE="$PWD/scripts/sparkle-verify.swift"`.
 
 Manual steps (after Release build):
 
